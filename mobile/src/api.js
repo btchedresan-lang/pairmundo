@@ -1,4 +1,4 @@
-// API client for the PairMundo server (the Express app in ../aupair-connect).
+// API client for the PairMundo server (the Express app in ../server).
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
@@ -28,8 +28,11 @@ export async function loadSession() {
 export const getBase = () => base;
 export async function setBase(url) {
   base = String(url || '').trim().replace(/\/$/, '') || defaultBase();
-  await store.set('apiBase', base);
+  // Only remember a server someone typed in, so a new default reaches everyone else.
+  if (base === defaultBase()) await store.del('apiBase'); else await store.set('apiBase', base);
 }
+/** True for a server on this computer or local network, where the demo accounts live. */
+export const isLocalServer = (url = base) => /^https?:\/\/(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(url);
 export async function setToken(t) {
   token = t;
   if (t) await store.set('token', t); else await store.del('token');

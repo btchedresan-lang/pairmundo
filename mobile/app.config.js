@@ -29,7 +29,8 @@ module.exports = {
     ],
     extra: {
       // Leave empty to use the computer running `expo start` (port 3000). Set it to your hosted API for real users.
-      apiUrl: process.env.EXPO_PUBLIC_API_URL || '',
+      // The live server by default; set EXPO_PUBLIC_API_URL (or use ⚙ Server on the sign-in screen) to point at another one.
+      apiUrl: process.env.EXPO_PUBLIC_API_URL ?? brand.apiUrl ?? '',
     },
   },
 };
