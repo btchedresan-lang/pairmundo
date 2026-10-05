@@ -1,0 +1,34 @@
+# Render Blueprint: in Render choose New > Blueprint and pick this repository.
+services:
+  - type: web
+    name: pairmundo
+    runtime: node
+    rootDir: server
+    region: frankfurt
+    # A paid plan is needed for the disk below, which keeps the database and photos between deploys.
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/programs
+    autoDeploy: true
+    disk:
+      name: data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: DB_FILE
+        value: /var/data/pairmundo.db
+      - key: UPLOAD_DIR
+        value: /var/data/uploads
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        sync: false

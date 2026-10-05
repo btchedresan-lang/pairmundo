@@ -17,6 +17,8 @@ Demo accounts after seeding: `millers@aupair.test` (US host family), `schmidts@a
 
 Settings: `PORT` (default 3000), `DB_FILE` (default `data/aupair.db`), `UPLOAD_DIR` (default `data/uploads`), `NODE_ENV=production` (secure cookies).
 
+Live hosting: `ADMIN_EMAIL` and `ADMIN_PASSWORD` (12+ characters) create the first admin account on an empty database; `TRUST_PROXY=1` (automatic with `NODE_ENV=production`) makes rate limits use the visitor's IP behind a proxy. See `../DEPLOY.md`.
+
 Email: set `RESEND_API_KEY` and `MAIL_FROM` (for example `PairMundo <hello@pairmundo.com>`) to send verification and password-reset codes through [Resend](https://resend.com). Without them the server prints each email, code included, in its terminal, which is fine for local testing.
 
 ## Features

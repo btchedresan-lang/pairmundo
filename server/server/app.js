@@ -54,6 +54,8 @@ export function createApp(db, { mailer = createMailer() } = {}) {
   seedPrograms(db);
   const app = express();
   app.disable('x-powered-by');
+  // Behind a hosting proxy (Render, Railway, ...) this makes req.ip the visitor's address, so rate limits apply per person.
+  if (process.env.NODE_ENV === 'production' || process.env.TRUST_PROXY) app.set('trust proxy', 1);
   app.use('/api/me/photos', express.json({ limit: '8mb' }));
   app.use(express.json({ limit: '200kb' }));
   // The mobile app talks to this API with a Bearer token. Native apps ignore CORS; this lets its web preview work too.
