@@ -27,6 +27,17 @@ In the Render service, open **Settings** → **Custom Domains**, add `pairmundo.
 2. Create an API key.
 3. In Render → **Environment**, set `RESEND_API_KEY` to the key and `MAIL_FROM` to `PairMundo <hello@pairmundo.com>`, then save.
 
+## Photo storage
+
+Until it is set up, photos are kept on the Render disk, which is fine for a start (1 GB holds a few thousand photos). For backups and room to grow, use Cloudflare R2 (10 GB free):
+
+1. In the [Cloudflare dashboard](https://dash.cloudflare.com), open **R2**, and create a bucket called `pairmundo-photos`.
+2. In the bucket's **Settings** → **Public access**, connect a custom domain such as `photos.pairmundo.com` (this needs the domain on Cloudflare), or for testing turn on the `r2.dev` address.
+3. In **R2** → **Manage API tokens**, create a token with **Object Read & Write** on that bucket. Copy the access key ID, the secret access key and the endpoint (`https://<account id>.r2.cloudflarestorage.com`).
+4. In Render → **Environment**, set `S3_BUCKET`, `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, and `S3_PUBLIC_URL` (the public address from step 2, for example `https://photos.pairmundo.com`), then save.
+
+New photos then go to R2. Photos uploaded before stay on the disk and keep working.
+
 ## Pointing the phone app at the live server
 
 Build the app with `EXPO_PUBLIC_API_URL=https://your-render-address` (or `https://api.pairmundo.com` once the domain is set up). See `mobile/README.md`.

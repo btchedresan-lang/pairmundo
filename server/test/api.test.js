@@ -7,11 +7,12 @@ import { PROGRAMS } from '../server/programs.js';
 
 let server; let base;
 const outbox = [];
+const pushed = []; let pushReply = null;
 const lastCode = (to) => [...outbox].reverse().find((m) => m.to === to)?.text.match(/\b(\d{6})\b/)[1];
 before(async () => {
   process.env.AUTH_RATE_LIMIT = '1000';
   process.env.UPLOAD_DIR = (await import('node:fs')).mkdtempSync((await import('node:os')).tmpdir() + '/aupair-test-');
-  const app = createApp(openDb(':memory:'), { mailer: async (m) => { outbox.push(m); } });
+  const app = createApp(openDb(':memory:'), { mailer: async (m) => { outbox.push(m); }, pusher: async (msgs) => { pushed.push(...msgs); return pushReply ? msgs.map(pushReply) : msgs.map(() => ({ status: 'ok' })); } });
   await new Promise((r) => { server = app.listen(0, r); });
   base = `http://127.0.0.1:${server.address().port}/api`;
 });
@@ -291,4 +292,52 @@ test('deleting an account removes the user, their photos and shared placements',
   assert.equal((await call(fam.token, 'GET', '/conversations')).body.conversations.length, 0);
   const { readdirSync } = await import('node:fs');
   assert.ok(!readdirSync(process.env.UPLOAD_DIR).some((f) => f.startsWith(`${ap.id}-`)));
+});
+
+test('push notifications: matches and messages reach the phone; logout and uninstall stop them', async () => {
+  const wait = () => new Promise((r) => setTimeout(r, 50));
+  const fam = await register('pushfam@test.io', 'family', 'US', 'Push Family');
+  const ap = await register('pushap@test.io', 'aupair', 'BR', 'Push Aupair');
+  const tok = 'ExponentPushToken[abcdefghijklmnop]';
+  assert.equal((await call(fam.token, 'POST', '/me/push-token', { token: 'nope' })).status, 400);
+  assert.equal((await call(fam.token, 'POST', '/me/push-token', { token: tok })).status, 200);
+
+  await call(fam.token, 'POST', '/swipe', { target_id: ap.id, direction: 'like' });
+  const m = await call(ap.token, 'POST', '/swipe', { target_id: fam.id, direction: 'like' });
+  await wait();
+  const match = pushed.find((p) => p.to === tok && /match/i.test(p.body));
+  assert.ok(match, JSON.stringify(pushed));
+  assert.equal(match.data.link, `#/messages/${m.body.conversation_id}`);
+
+  await call(ap.token, 'POST', `/conversations/${m.body.conversation_id}/messages`, { body: 'Hello from Brazil' });
+  await wait();
+  const msg = pushed.at(-1);
+  assert.deepEqual([msg.to, msg.title, msg.body], [tok, 'Push Aupair', 'Hello from Brazil']);
+
+  // Signing out with the token stops pushes to that phone.
+  const before = pushed.length;
+  await call(fam.token, 'POST', '/auth/logout', { push_token: tok });
+  await call(ap.token, 'POST', `/conversations/${m.body.conversation_id}/messages`, { body: 'Still there?' });
+  await wait();
+  assert.equal(pushed.length, before);
+
+  // A phone that uninstalled the app is forgotten after the first failed send.
+  await call(ap.token, 'POST', '/me/push-token', { token: tok });
+  pushReply = () => ({ status: 'error', details: { error: 'DeviceNotRegistered' } });
+  const login = await call(null, 'POST', '/auth/login', { email: 'pushfam@test.io', password: 'password123' });
+  await call(login.body.token, 'POST', `/conversations/${m.body.conversation_id}/messages`, { body: 'One' });
+  await wait();
+  pushReply = null;
+  const n = pushed.length;
+  await call(login.body.token, 'POST', `/conversations/${m.body.conversation_id}/messages`, { body: 'Two' });
+  await wait();
+  assert.equal(pushed.length, n);
+});
+
+test('sign-in ignores capital letters and spaces in the email', async () => {
+  await register('casey@test.io', 'aupair', 'PE');
+  const login = await call(null, 'POST', '/auth/login', { email: ' Casey@Test.io ', password: 'password123' });
+  assert.equal(login.status, 200, JSON.stringify(login.body));
+  const again = await call(null, 'POST', '/auth/register', { email: 'CASEY@test.io', password: 'password123', role: 'aupair', name: 'Dup', country: 'PE' });
+  assert.equal(again.status, 409);
 });

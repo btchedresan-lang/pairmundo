@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { api, loadSession, setToken } from './api';
+import { pushToken, registerForPush } from './push';
 
 const AuthContext = createContext(null);
 
@@ -20,6 +21,10 @@ export function AuthProvider({ children }) {
     })();
   }, [refresh]);
 
+  // Once signed in, ask to send notifications for matches and messages.
+  const userId = me?.user.id;
+  useEffect(() => { if (userId) registerForPush(); }, [userId]);
+
   // Keep badge counts fresh while signed in.
   useEffect(() => {
     if (!me) return undefined;
@@ -33,7 +38,7 @@ export function AuthProvider({ children }) {
     return refresh();
   };
   const signOut = async () => {
-    await api('/auth/logout', { method: 'POST' }).catch(() => {});
+    await api('/auth/logout', { method: 'POST', body: { push_token: pushToken() } }).catch(() => {});
     await setToken(null);
     setMe(null);
   };

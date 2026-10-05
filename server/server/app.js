@@ -1,18 +1,21 @@
 import express from 'express';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { mkdirSync, writeFileSync, unlinkSync } from 'node:fs';
 import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import { json, tx } from './db.js';
 import { hashPassword, verifyPassword, createSession, sessionMiddleware, requireAuth, requireRole, rateLimit } from './auth.js';
 import { scoreMatch, checkCompliance, ageOn } from './matching.js';
 import { PROGRAMS, REVIEW_CRITERIA, PLACEMENT_TASKS } from './programs.js';
 import { createMailer, codeEmail } from './mailer.js';
+import { createPusher, isPushToken } from './push.js';
+import { createStorage } from './storage.js';
 
 const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
 const MAX_PHOTOS = 6;
 const PHOTO_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
+/** Emails are matched without case or spaces, so "Me@x.com " and "me@x.com" are the same account. */
+export const normEmail = (e) => String(e || '').trim().toLowerCase();
 
 const AP_JSON = ['languages', 'preferred_countries', 'age_groups', 'skills'];
 const FAM_JSON = ['children', 'languages', 'required_languages', 'preferred_nationalities'];
@@ -49,8 +52,9 @@ export function seedPrograms(db) {
   }
 }
 
-export function createApp(db, { mailer = createMailer() } = {}) {
+export function createApp(db, { mailer = createMailer(), pusher = createPusher(), storage } = {}) {
   const UPLOAD_DIR = process.env.UPLOAD_DIR || 'data/uploads';
+  storage ??= createStorage({ dir: UPLOAD_DIR });
   seedPrograms(db);
   const app = express();
   app.disable('x-powered-by');
@@ -127,8 +131,22 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     };
   };
 
-  const notify = (userId, kind, text, link = null) =>
+  /** Sends a push notification to every phone the user is signed in on. Never blocks or fails the request. */
+  const push = (userId, body, link = null, title = 'PairMundo') => {
+    const tokens = db.prepare('SELECT token FROM push_tokens WHERE user_id = ?').all(userId).map((r) => r.token);
+    if (!tokens.length) return;
+    const messages = tokens.map((to) => ({ to, title, body, sound: 'default', data: { link } }));
+    Promise.resolve().then(() => pusher(messages)).then((tickets) => {
+      // Forget phones that uninstalled the app or turned notifications off.
+      (tickets || []).forEach((t, i) => {
+        if (t?.details?.error === 'DeviceNotRegistered') db.prepare('DELETE FROM push_tokens WHERE token = ?').run(tokens[i]);
+      });
+    }).catch((e) => console.error('Push failed:', e.message));
+  };
+  const notify = (userId, kind, text, link = null) => {
     db.prepare('INSERT INTO notifications (user_id, kind, text, link) VALUES (?,?,?,?)').run(userId, kind, text, link);
+    push(userId, text, link);
+  };
 
   const getUser = (id) => db.prepare('SELECT * FROM users WHERE id = ?').get(Number(id));
 
@@ -189,7 +207,8 @@ export function createApp(db, { mailer = createMailer() } = {}) {
   const wrap = (fn) => (req, res, next) => {
     try {
       const out = fn(req, res);
-      if (out !== undefined && !res.headersSent) res.json(out);
+      const send = (v) => { if (v !== undefined && !res.headersSent) res.json(v); };
+      if (typeof out?.then === 'function') out.then(send, next); else send(out);
     } catch (e) { next(e); }
   };
 
@@ -199,12 +218,13 @@ export function createApp(db, { mailer = createMailer() } = {}) {
   const authLimit = rateLimit({ windowMs: 60000, max: Number(process.env.AUTH_RATE_LIMIT || 30) });
 
   api.post('/auth/register', authLimit, wrap((req, res) => {
-    const { email, password, role, name, country, city } = req.body || {};
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email || '')) throw bad('Enter a valid email.');
+    const { password, role, name, country, city } = req.body || {};
+    const email = normEmail(req.body?.email);
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw bad('Enter a valid email.');
     if (!password || String(password).length < 8) throw bad('Password must be at least 8 characters.');
     if (!['aupair', 'family'].includes(role)) throw bad('Choose au pair or host family.');
     if (!str(name)) throw bad('Name is required.');
-    if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(email)) throw new HttpError(409, 'An account with this email already exists.');
+    if (db.prepare('SELECT 1 FROM users WHERE lower(trim(email)) = ?').get(email)) throw new HttpError(409, 'An account with this email already exists.');
     const user = tx(db, () => {
       const r = db.prepare('INSERT INTO users (email, password_hash, role, name, country, city) VALUES (?,?,?,?,?,?)')
         .run(email, hashPassword(String(password)), role, str(name, 120), str(country, 2)?.toUpperCase() ?? null, str(city, 120));
@@ -221,7 +241,7 @@ export function createApp(db, { mailer = createMailer() } = {}) {
 
   api.post('/auth/login', authLimit, wrap((req, res) => {
     const { email, password } = req.body || {};
-    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(String(email || ''));
+    const user = db.prepare('SELECT * FROM users WHERE lower(trim(email)) = ?').get(normEmail(email));
     if (!user || !verifyPassword(String(password || ''), user.password_hash)) throw new HttpError(401, 'Wrong email or password.');
     if (user.suspended) throw forbidden('This account is suspended. Contact support.');
     const s = createSession(db, user.id);
@@ -243,7 +263,7 @@ export function createApp(db, { mailer = createMailer() } = {}) {
 
   // Always answers the same way, so nobody can use it to find out which emails have accounts.
   api.post('/auth/forgot', authLimit, wrap((req) => {
-    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(String(req.body?.email || '').trim());
+    const user = db.prepare('SELECT * FROM users WHERE lower(trim(email)) = ?').get(normEmail(req.body?.email));
     if (user && !user.suspended) issueCode(user, 'reset');
     return { ok: true };
   }));
@@ -251,7 +271,7 @@ export function createApp(db, { mailer = createMailer() } = {}) {
   api.post('/auth/reset', authLimit, wrap((req, res) => {
     const { email, code, password } = req.body || {};
     if (!password || String(password).length < 8) throw bad('Password must be at least 8 characters.');
-    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(String(email || '').trim());
+    const user = db.prepare('SELECT * FROM users WHERE lower(trim(email)) = ?').get(normEmail(email));
     if (!user || user.suspended) throw bad('That code has expired. Ask for a new one.');
     useCode(user.id, 'reset', code);
     tx(db, () => {
@@ -265,6 +285,8 @@ export function createApp(db, { mailer = createMailer() } = {}) {
   }));
 
   api.post('/auth/logout', wrap((req, res) => {
+    // The app sends its push token so this phone stops getting notifications for the account.
+    if (req.user && isPushToken(req.body?.push_token)) db.prepare('DELETE FROM push_tokens WHERE token = ? AND user_id = ?').run(req.body.push_token, req.user.id);
     if (req.sessionToken) db.prepare('DELETE FROM sessions WHERE token = ?').run(req.sessionToken);
     res.set('Set-Cookie', 'sid=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
     return { ok: true };
@@ -319,7 +341,7 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     const u = req.user;
     if (u.role === 'admin') throw forbidden('Admin accounts cannot be deleted here.');
     if (!verifyPassword(String(req.body?.password || ''), u.password_hash)) throw new HttpError(401, 'Wrong password.');
-    const photos = photosOf(u).filter((p) => p.startsWith('/uploads/'));
+    const photos = photosOf(u).filter(storage.owns);
     tx(db, () => {
       const mine = 'SELECT id FROM placements WHERE aupair_id = ? OR family_id = ?';
       const reviews = `SELECT id FROM reviews WHERE reviewer_id = ? OR reviewee_id = ? OR placement_id IN (${mine})`;
@@ -328,7 +350,7 @@ export function createApp(db, { mailer = createMailer() } = {}) {
       db.prepare('DELETE FROM placements WHERE aupair_id = ? OR family_id = ? OR created_by = ?').run(u.id, u.id, u.id);
       db.prepare('DELETE FROM users WHERE id = ?').run(u.id);
     });
-    for (const p of photos) { try { unlinkSync(join(UPLOAD_DIR, p.slice('/uploads/'.length))); } catch { /* already gone */ } }
+    for (const p of photos) storage.remove(p);
     res.set('Set-Cookie', 'sid=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
     return { ok: true };
   }));
@@ -511,10 +533,19 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     };
   }));
 
+  // ---------- push notifications ----------
+  api.post('/me/push-token', requireAuth, wrap((req) => {
+    const token = String(req.body?.token || '');
+    if (!isPushToken(token)) throw bad('That is not a push token.');
+    // A phone belongs to whoever signed in last on it.
+    db.prepare('INSERT INTO push_tokens (token, user_id) VALUES (?, ?) ON CONFLICT(token) DO UPDATE SET user_id = excluded.user_id').run(token, req.user.id);
+    return { ok: true };
+  }));
+
   // ---------- photos ----------
   const setPhotos = (userId, photos) => db.prepare('UPDATE users SET photos = ?, photo_url = ? WHERE id = ?').run(JSON.stringify(photos), photos[0] || null, userId);
 
-  api.post('/me/photos', requireAuth, wrap((req, res) => {
+  api.post('/me/photos', requireAuth, wrap(async (req, res) => {
     const m = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body?.data_url || ''));
     if (!m) throw bad('Upload a JPEG, PNG or WebP image.');
     const buf = Buffer.from(m[2], 'base64');
@@ -524,12 +555,11 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     const real = sig.startsWith('ffd8ff') ? 'image/jpeg' : sig.startsWith('89504e47') ? 'image/png'
       : sig.startsWith('52494646') && sig.slice(16, 24) === '57454250' ? 'image/webp' : null;
     if (!real) throw bad('That file is not a valid image.');
-    const photos = photosOf(getUser(req.user.id)).filter((p) => p.startsWith('/uploads/') || p.startsWith('http'));
-    if (photos.length >= MAX_PHOTOS) throw bad(`You can have up to ${MAX_PHOTOS} photos.`);
-    mkdirSync(UPLOAD_DIR, { recursive: true });
-    const name = `${req.user.id}-${randomBytes(8).toString('hex')}.${PHOTO_TYPES[real]}`;
-    writeFileSync(join(UPLOAD_DIR, name), buf);
-    photos.push(`/uploads/${name}`);
+    const keep = (list) => list.filter((p) => storage.owns(p) || p.startsWith('http'));
+    if (keep(photosOf(getUser(req.user.id))).length >= MAX_PHOTOS) throw bad(`You can have up to ${MAX_PHOTOS} photos.`);
+    const url = await storage.save(`${req.user.id}-${randomBytes(8).toString('hex')}.${PHOTO_TYPES[real]}`, buf, real);
+    // Read the list again after the upload, in case another upload finished meanwhile.
+    const photos = [...keep(photosOf(getUser(req.user.id))), url];
     setPhotos(req.user.id, photos);
     res.status(201);
     return { photos };
@@ -540,9 +570,7 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     const current = photosOf(getUser(req.user.id));
     const next = Array.isArray(req.body?.photos) ? req.body.photos.filter((p, i, a) => current.includes(p) && a.indexOf(p) === i) : null;
     if (!next) throw bad('Send the photo list.');
-    for (const p of current.filter((x) => !next.includes(x) && x.startsWith('/uploads/'))) {
-      try { unlinkSync(join(UPLOAD_DIR, p.slice('/uploads/'.length))); } catch { /* already gone */ }
-    }
+    for (const p of current.filter((x) => !next.includes(x))) storage.remove(p);
     setPhotos(req.user.id, next);
     return { photos: next };
   }));
@@ -659,6 +687,7 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     const body = str(req.body?.body, 4000);
     if (!body) throw bad('Message is empty.');
     const r = db.prepare('INSERT INTO messages (conversation_id, sender_id, body) VALUES (?,?,?)').run(c.id, req.user.id, body);
+    push(c.user_a === req.user.id ? c.user_b : c.user_a, body.length > 140 ? `${body.slice(0, 139)}…` : body, `#/messages/${c.id}`, req.user.name);
     res.status(201);
     return db.prepare('SELECT id, sender_id, body, created_at, read_at FROM messages WHERE id = ?').get(Number(r.lastInsertRowid));
   }));

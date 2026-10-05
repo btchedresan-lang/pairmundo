@@ -1,9 +1,25 @@
-import { Stack } from 'expo-router';
+import { useEffect } from 'react';
+import { Platform } from 'react-native';
+import { Stack, router } from 'expo-router';
+import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from '../auth';
 import { Loading } from '../components/ui';
 import { C, useTheme } from '../theme';
+import { screenForLink } from '../push';
+
+/** Tapping a notification opens the chat, placement or tab it is about. */
+function NotificationOpener() {
+  const response = Notifications.useLastNotificationResponse();
+  useEffect(() => {
+    if (!response || response.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) return;
+    const screen = screenForLink(response.notification.request.content.data?.link);
+    Notifications.clearLastNotificationResponse();
+    if (screen) router.push(screen);
+  }, [response]);
+  return null;
+}
 
 function RootStack() {
   const { me, ready } = useAuth();
@@ -11,6 +27,8 @@ function RootStack() {
   if (!ready) return <Loading />;
   const signedIn = !!me;
   return (
+    <>
+    {signedIn && Platform.OS !== 'web' ? <NotificationOpener /> : null}
     <Stack screenOptions={{ headerTintColor: C.primary, headerStyle: { backgroundColor: t.card }, headerTitleStyle: { color: t.ink }, contentStyle: { backgroundColor: t.bg }, headerBackButtonDisplayMode: 'minimal' }}>
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Protected guard={!signedIn}>
@@ -30,6 +48,7 @@ function RootStack() {
       <Stack.Screen name="programs/index" options={{ title: 'Country programs' }} />
       <Stack.Screen name="programs/[code]" options={{ title: 'Program' }} />
     </Stack>
+    </>
   );
 }
 

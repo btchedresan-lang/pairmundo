@@ -48,6 +48,16 @@ The app is called **PairMundo** (it was AuPair Connect until 2026-10-05, when we
 
 Change `name` (what people see), `slug`, `scheme` and `bundleId` (store identifiers, e.g. `com.yourcompany.yourapp`), and the colours if you like. The app icon and splash image are in `assets/`.
 
+## Push notifications
+
+New matches, likes, messages and placement updates arrive as push notifications. They need an Expo project ID, which you create once:
+
+```bash
+npx eas-cli init
+```
+
+Copy the project ID it prints into `easProjectId` in `brand.json`. Until then the app works normally, just without notifications. On Android, push notifications need a store build (Expo Go on Android doesn't support them); on iPhone they also work in Expo Go.
+
 ## Publishing to the App Store and Google Play
 
 1. Host the API somewhere public with HTTPS (any Node host with a persistent disk for `data/`).

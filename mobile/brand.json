@@ -6,5 +6,6 @@
   "tagline": "Swipe. Match. Welcome your au pair.",
   "primary": "#fd3a73",
   "primaryDark": "#ff6036",
-  "apiUrl": "https://pairmundo.onrender.com"
+  "apiUrl": "https://pairmundo.onrender.com",
+  "easProjectId": ""
 }
