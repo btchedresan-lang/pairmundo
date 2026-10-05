@@ -1,0 +1,937 @@
+import express from 'express';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+import { mkdirSync, writeFileSync, unlinkSync } from 'node:fs';
+import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
+import { json, tx } from './db.js';
+import { hashPassword, verifyPassword, createSession, sessionMiddleware, requireAuth, requireRole, rateLimit } from './auth.js';
+import { scoreMatch, checkCompliance, ageOn } from './matching.js';
+import { PROGRAMS, REVIEW_CRITERIA, PLACEMENT_TASKS } from './programs.js';
+import { createMailer, codeEmail } from './mailer.js';
+
+const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
+const MAX_PHOTOS = 6;
+const PHOTO_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
+const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
+
+const AP_JSON = ['languages', 'preferred_countries', 'age_groups', 'skills'];
+const FAM_JSON = ['children', 'languages', 'required_languages', 'preferred_nationalities'];
+const AP_FIELDS = ['birth_date', 'nationality', 'gender', 'childcare_years', 'drivers_license', 'non_smoker', 'ok_with_pets', 'available_from', 'duration_months', 'education', 'bio', 'video_url', 'visible', ...AP_JSON];
+const FAM_FIELDS = ['start_date', 'duration_months', 'weekly_hours', 'pocket_money', 'needs_driver', 'has_pets', 'smoking_household', 'private_room', 'bio', 'visible', ...FAM_JSON];
+const USER_FIELDS = ['name', 'country', 'city'];
+// Reviews become visible once both sides have reviewed, or 14 days after the placement ends.
+const REVIEW_REVEAL_DAYS = 14;
+const CODE_MINUTES = 30;
+const CODE_MAX_ATTEMPTS = 5;
+
+class HttpError extends Error {
+  constructor(status, message, code) { super(message); this.status = status; this.code = code; }
+}
+const bad = (msg) => new HttpError(400, msg);
+const notFound = (msg = 'Not found.') => new HttpError(404, msg);
+const forbidden = (msg = 'Not allowed.') => new HttpError(403, msg);
+
+/** node:sqlite only binds numbers, strings, null and buffers. */
+const sql = (v) => (v === undefined ? null : typeof v === 'boolean' ? Number(v) : v);
+const str = (v, max = 5000) => (v == null ? null : String(v).trim().slice(0, max));
+const isDate = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v));
+
+export function seedPrograms(db) {
+  // Seed rows are refreshed on every start so corrections reach existing databases, unless an admin has edited the row.
+  const cols = ['name', 'currency', 'visa', 'min_age', 'max_age', 'max_weekly_hours', 'max_daily_hours', 'min_pocket_money', 'pocket_money_note',
+    'min_months', 'max_months', 'agency_required', 'family_obligations', 'notes', 'official_source', 'last_reviewed', 'status', 'status_note', 'eu_eea_only'];
+  const ins = db.prepare(`INSERT INTO country_programs (code, ${cols.join(', ')}) VALUES (?${', ?'.repeat(cols.length)})
+    ON CONFLICT(code) DO UPDATE SET ${cols.map((c) => `${c} = excluded.${c}`).join(', ')} WHERE admin_edited = 0`);
+  for (const p of PROGRAMS) {
+    ins.run(p.code, p.name, p.currency, p.visa, p.min_age, p.max_age, p.max_weekly_hours, sql(p.max_daily_hours),
+      sql(p.min_pocket_money), p.pocket_money_note, p.min_months, p.max_months, p.agency_required,
+      json.str(p.family_obligations), p.notes, p.official_source, '2026-10', p.status || 'open', sql(p.status_note), p.eu_eea_only || 0);
+  }
+}
+
+export function createApp(db, { mailer = createMailer() } = {}) {
+  const UPLOAD_DIR = process.env.UPLOAD_DIR || 'data/uploads';
+  seedPrograms(db);
+  const app = express();
+  app.disable('x-powered-by');
+  app.use('/api/me/photos', express.json({ limit: '8mb' }));
+  app.use(express.json({ limit: '200kb' }));
+  // The mobile app talks to this API with a Bearer token. Native apps ignore CORS; this lets its web preview work too.
+  const corsOrigin = process.env.CORS_ORIGIN || '*';
+  app.use('/api', (req, res, next) => {
+    res.set('Access-Control-Allow-Origin', corsOrigin);
+    res.set('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+    res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+    next();
+  });
+  app.use((_req, res, next) => {
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.set('Referrer-Policy', 'same-origin');
+    next();
+  });
+  app.use(sessionMiddleware(db));
+
+  // ---------- helpers ----------
+  const getProgram = (code) => {
+    const p = db.prepare('SELECT * FROM country_programs WHERE code = ?').get(code ?? '');
+    if (p) p.family_obligations = json.parse(p.family_obligations);
+    return p;
+  };
+
+  const photosOf = (u) => { const ph = json.parse(u.photos); return ph.length ? ph : u.photo_url ? [u.photo_url] : []; };
+  const publicUser = (u) => u && ({
+    id: u.id, role: u.role, name: u.name, country: u.country, city: u.city, photo_url: photosOf(u)[0] || null, photos: photosOf(u),
+    verification: { id: !!u.id_verified, references: !!u.references_checked, background: !!u.background_checked },
+    member_since: u.created_at, last_active_at: u.last_active_at,
+  });
+
+  const getProfile = (user) => {
+    if (user.role === 'aupair') {
+      const p = db.prepare('SELECT * FROM aupair_profiles WHERE user_id = ?').get(user.id);
+      if (!p) return null;
+      for (const k of AP_JSON) p[k] = json.parse(p[k]);
+      p.age = ageOn(p.birth_date);
+      return p;
+    }
+    if (user.role === 'family') {
+      const p = db.prepare('SELECT * FROM family_profiles WHERE user_id = ?').get(user.id);
+      if (!p) return null;
+      for (const k of FAM_JSON) p[k] = json.parse(p[k]);
+      return p;
+    }
+    return null;
+  };
+
+  const visibleReviewsSql = `r.hidden = 0 AND (
+      EXISTS (SELECT 1 FROM reviews r2 WHERE r2.placement_id = r.placement_id AND r2.reviewer_id = r.reviewee_id)
+      OR date(p.end_date, '+${REVIEW_REVEAL_DAYS} days') <= date('now'))`;
+
+  const ratingSummary = (userId) => {
+    const rows = db.prepare(`SELECT r.overall, r.criteria FROM reviews r JOIN placements p ON p.id = r.placement_id
+                             WHERE r.reviewee_id = ? AND ${visibleReviewsSql}`).all(userId);
+    if (!rows.length) return { avg: null, count: 0, criteria: {} };
+    const crit = {};
+    for (const r of rows) {
+      for (const [k, v] of Object.entries(json.parse(r.criteria, {}))) {
+        (crit[k] ||= []).push(v);
+      }
+    }
+    const avg = (a) => Math.round((a.reduce((s, x) => s + x, 0) / a.length) * 10) / 10;
+    return {
+      avg: avg(rows.map((r) => r.overall)),
+      count: rows.length,
+      criteria: Object.fromEntries(Object.entries(crit).map(([k, v]) => [k, avg(v)])),
+    };
+  };
+
+  const notify = (userId, kind, text, link = null) =>
+    db.prepare('INSERT INTO notifications (user_id, kind, text, link) VALUES (?,?,?,?)').run(userId, kind, text, link);
+
+  const getUser = (id) => db.prepare('SELECT * FROM users WHERE id = ?').get(Number(id));
+
+  const acceptedRequestBetween = (a, b) => db.prepare(`SELECT id FROM match_requests WHERE status = 'accepted'
+      AND ((from_user = ? AND to_user = ?) OR (from_user = ? AND to_user = ?))`).get(a, b, b, a);
+
+  const conversationFor = (a, b, create = false) => {
+    const [x, y] = a < b ? [a, b] : [b, a];
+    let c = db.prepare('SELECT * FROM conversations WHERE user_a = ? AND user_b = ?').get(x, y);
+    if (!c && create) {
+      db.prepare('INSERT INTO conversations (user_a, user_b) VALUES (?, ?)').run(x, y);
+      c = db.prepare('SELECT * FROM conversations WHERE user_a = ? AND user_b = ?').get(x, y);
+    }
+    return c;
+  };
+
+  /** Accept a pending request: opens the conversation and carries the intro message into it. */
+  const acceptRequest = (r) => tx(db, () => {
+    db.prepare("UPDATE match_requests SET status = 'accepted', responded_at = datetime('now') WHERE id = ?").run(r.id);
+    const c = conversationFor(r.from_user, r.to_user, true);
+    if (r.message) db.prepare('INSERT INTO messages (conversation_id, sender_id, body, created_at) VALUES (?,?,?,?)')
+      .run(c.id, r.from_user, r.message, r.created_at);
+    return c;
+  });
+
+  // ---------- blocking ----------
+  /** SQL condition: neither side has blocked the other. Bind the viewer's id twice. */
+  const notBlocked = (col) => `NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.user_id = ? AND b.target_id = ${col}) OR (b.target_id = ? AND b.user_id = ${col}))`;
+  const blockedBetween = (a, b) => !!db.prepare('SELECT 1 FROM blocks WHERE (user_id = ? AND target_id = ?) OR (user_id = ? AND target_id = ?)').get(a, b, b, a);
+
+  // ---------- email codes ----------
+  const hashCode = (code) => createHash('sha256').update(String(code)).digest('hex');
+  const issueCode = (user, purpose) => {
+    const code = String(randomInt(0, 1000000)).padStart(6, '0');
+    const expires = new Date(Date.now() + CODE_MINUTES * 60000).toISOString();
+    db.prepare(`INSERT INTO email_codes (user_id, purpose, code_hash, expires_at, attempts) VALUES (?,?,?,?,0)
+      ON CONFLICT(user_id, purpose) DO UPDATE SET code_hash = excluded.code_hash, expires_at = excluded.expires_at, attempts = 0`)
+      .run(user.id, purpose, hashCode(code), expires);
+    Promise.resolve(mailer({ to: user.email, ...codeEmail(purpose, code) })).catch((e) => console.error('Email failed:', e.message));
+  };
+  /** Checks a code and uses it up. Wrong guesses count; after a few the code stops working. */
+  const useCode = (userId, purpose, code) => {
+    const row = db.prepare('SELECT * FROM email_codes WHERE user_id = ? AND purpose = ?').get(userId, purpose);
+    if (!row || row.expires_at < new Date().toISOString()) throw bad('That code has expired. Ask for a new one.');
+    if (row.attempts >= CODE_MAX_ATTEMPTS) throw bad('Too many wrong tries. Ask for a new code.');
+    const ok = timingSafeEqual(Buffer.from(row.code_hash, 'hex'), Buffer.from(hashCode(String(code || '').trim()), 'hex'));
+    if (!ok) {
+      db.prepare('UPDATE email_codes SET attempts = attempts + 1 WHERE user_id = ? AND purpose = ?').run(userId, purpose);
+      throw bad('That code is not right. Check the email and try again.');
+    }
+    db.prepare('DELETE FROM email_codes WHERE user_id = ? AND purpose = ?').run(userId, purpose);
+  };
+  /** Liking, messaging and proposing placements need a confirmed email. */
+  const mustBeVerified = (user) => {
+    if (user.role !== 'admin' && !user.email_verified) throw new HttpError(403, 'Confirm your email first. We sent you a 6-digit code.', 'email_unverified');
+  };
+
+  const wrap = (fn) => (req, res, next) => {
+    try {
+      const out = fn(req, res);
+      if (out !== undefined && !res.headersSent) res.json(out);
+    } catch (e) { next(e); }
+  };
+
+  const api = express.Router();
+
+  // ---------- auth ----------
+  const authLimit = rateLimit({ windowMs: 60000, max: Number(process.env.AUTH_RATE_LIMIT || 30) });
+
+  api.post('/auth/register', authLimit, wrap((req, res) => {
+    const { email, password, role, name, country, city } = req.body || {};
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email || '')) throw bad('Enter a valid email.');
+    if (!password || String(password).length < 8) throw bad('Password must be at least 8 characters.');
+    if (!['aupair', 'family'].includes(role)) throw bad('Choose au pair or host family.');
+    if (!str(name)) throw bad('Name is required.');
+    if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(email)) throw new HttpError(409, 'An account with this email already exists.');
+    const user = tx(db, () => {
+      const r = db.prepare('INSERT INTO users (email, password_hash, role, name, country, city) VALUES (?,?,?,?,?,?)')
+        .run(email, hashPassword(String(password)), role, str(name, 120), str(country, 2)?.toUpperCase() ?? null, str(city, 120));
+      const id = Number(r.lastInsertRowid);
+      db.prepare(`INSERT INTO ${role === 'aupair' ? 'aupair_profiles' : 'family_profiles'} (user_id) VALUES (?)`).run(id);
+      return getUser(id);
+    });
+    issueCode(user, 'verify');
+    const s = createSession(db, user.id);
+    setCookie(res, s.token);
+    res.status(201);
+    return { user: { ...publicUser(user), email: user.email, email_verified: false }, token: s.token };
+  }));
+
+  api.post('/auth/login', authLimit, wrap((req, res) => {
+    const { email, password } = req.body || {};
+    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(String(email || ''));
+    if (!user || !verifyPassword(String(password || ''), user.password_hash)) throw new HttpError(401, 'Wrong email or password.');
+    if (user.suspended) throw forbidden('This account is suspended. Contact support.');
+    const s = createSession(db, user.id);
+    setCookie(res, s.token);
+    return { user: { ...publicUser(user), email: user.email, email_verified: !!user.email_verified }, token: s.token };
+  }));
+
+  api.post('/auth/verify-email', requireAuth, authLimit, wrap((req) => {
+    if (req.user.email_verified) return { ok: true };
+    useCode(req.user.id, 'verify', req.body?.code);
+    db.prepare('UPDATE users SET email_verified = 1 WHERE id = ?').run(req.user.id);
+    return { ok: true };
+  }));
+
+  api.post('/auth/resend-verification', requireAuth, authLimit, wrap((req) => {
+    if (!req.user.email_verified) issueCode(req.user, 'verify');
+    return { ok: true };
+  }));
+
+  // Always answers the same way, so nobody can use it to find out which emails have accounts.
+  api.post('/auth/forgot', authLimit, wrap((req) => {
+    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(String(req.body?.email || '').trim());
+    if (user && !user.suspended) issueCode(user, 'reset');
+    return { ok: true };
+  }));
+
+  api.post('/auth/reset', authLimit, wrap((req, res) => {
+    const { email, code, password } = req.body || {};
+    if (!password || String(password).length < 8) throw bad('Password must be at least 8 characters.');
+    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(String(email || '').trim());
+    if (!user || user.suspended) throw bad('That code has expired. Ask for a new one.');
+    useCode(user.id, 'reset', code);
+    tx(db, () => {
+      // Getting the code by email also proves the address.
+      db.prepare('UPDATE users SET password_hash = ?, email_verified = 1 WHERE id = ?').run(hashPassword(String(password)), user.id);
+      db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user.id);
+    });
+    const s = createSession(db, user.id);
+    setCookie(res, s.token);
+    return { user: { ...publicUser(user), email: user.email, email_verified: true }, token: s.token };
+  }));
+
+  api.post('/auth/logout', wrap((req, res) => {
+    if (req.sessionToken) db.prepare('DELETE FROM sessions WHERE token = ?').run(req.sessionToken);
+    res.set('Set-Cookie', 'sid=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
+    return { ok: true };
+  }));
+
+  // ---------- me / profile ----------
+  api.get('/me', requireAuth, wrap((req) => {
+    const u = req.user;
+    return {
+      user: { ...publicUser(u), email: u.email, email_verified: !!u.email_verified },
+      profile: getProfile(u),
+      rating: ratingSummary(u.id),
+      counts: {
+        notifications: db.prepare('SELECT COUNT(*) n FROM notifications WHERE user_id = ? AND read = 0').get(u.id).n,
+        requests: db.prepare("SELECT COUNT(*) n FROM match_requests WHERE to_user = ? AND status = 'pending'").get(u.id).n,
+        messages: db.prepare(`SELECT COUNT(*) n FROM messages m JOIN conversations c ON c.id = m.conversation_id
+                   WHERE (c.user_a = ? OR c.user_b = ?) AND m.sender_id != ? AND m.read_at IS NULL`).get(u.id, u.id, u.id).n,
+      },
+    };
+  }));
+
+  api.put('/me', requireAuth, wrap((req) => {
+    const body = req.body || {};
+    const u = req.user;
+    tx(db, () => {
+      const userSets = USER_FIELDS.filter((k) => k in body);
+      if (userSets.length) {
+        const vals = userSets.map((k) => (k === 'country' ? str(body[k], 2)?.toUpperCase() : str(body[k], 300)));
+        if (userSets.includes('name') && !vals[userSets.indexOf('name')]) throw bad('Name is required.');
+        db.prepare(`UPDATE users SET ${userSets.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`).run(...vals, u.id);
+      }
+      const p = body.profile || {};
+      const [table, fields, jsonFields] = u.role === 'aupair' ? ['aupair_profiles', AP_FIELDS, AP_JSON]
+        : u.role === 'family' ? ['family_profiles', FAM_FIELDS, FAM_JSON] : [null, [], []];
+      if (!table) return;
+      const sets = fields.filter((k) => k in p);
+      for (const k of ['birth_date', 'available_from', 'start_date']) {
+        if (k in p && p[k] && !isDate(p[k])) throw bad(`${k} must be YYYY-MM-DD.`);
+      }
+      if (sets.length) {
+        const vals = sets.map((k) => (jsonFields.includes(k) ? json.str(Array.isArray(p[k]) ? p[k] : [])
+          : typeof p[k] === 'string' ? str(p[k]) : sql(p[k])));
+        db.prepare(`UPDATE ${table} SET ${sets.map((k) => `${k} = ?`).join(', ')} WHERE user_id = ?`).run(...vals, u.id);
+      }
+    });
+    const fresh = getUser(u.id);
+    return { user: publicUser(fresh), profile: getProfile(fresh) };
+  }));
+
+  // Deletes the account and everything tied to it. Placements and reviews with the other person go too.
+  api.delete('/me', requireAuth, wrap((req, res) => {
+    const u = req.user;
+    if (u.role === 'admin') throw forbidden('Admin accounts cannot be deleted here.');
+    if (!verifyPassword(String(req.body?.password || ''), u.password_hash)) throw new HttpError(401, 'Wrong password.');
+    const photos = photosOf(u).filter((p) => p.startsWith('/uploads/'));
+    tx(db, () => {
+      const mine = 'SELECT id FROM placements WHERE aupair_id = ? OR family_id = ?';
+      const reviews = `SELECT id FROM reviews WHERE reviewer_id = ? OR reviewee_id = ? OR placement_id IN (${mine})`;
+      db.prepare(`DELETE FROM reports WHERE reporter_id = ? OR target_user_id = ? OR review_id IN (${reviews})`).run(u.id, u.id, u.id, u.id, u.id, u.id);
+      db.prepare(`DELETE FROM reviews WHERE id IN (${reviews})`).run(u.id, u.id, u.id, u.id);
+      db.prepare('DELETE FROM placements WHERE aupair_id = ? OR family_id = ? OR created_by = ?').run(u.id, u.id, u.id);
+      db.prepare('DELETE FROM users WHERE id = ?').run(u.id);
+    });
+    for (const p of photos) { try { unlinkSync(join(UPLOAD_DIR, p.slice('/uploads/'.length))); } catch { /* already gone */ } }
+    res.set('Set-Cookie', 'sid=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
+    return { ok: true };
+  }));
+
+  // ---------- public profiles ----------
+  api.get('/users/:id', requireAuth, wrap((req) => {
+    const u = getUser(req.params.id);
+    if (!u || u.role === 'admin' || (u.suspended && req.user.role !== 'admin')) throw notFound('Profile not found.');
+    const iBlocked = !!db.prepare('SELECT 1 FROM blocks WHERE user_id = ? AND target_id = ?').get(req.user.id, u.id);
+    if (!iBlocked && blockedBetween(req.user.id, u.id)) throw notFound('Profile not found.');
+    const reviews = db.prepare(`SELECT r.id, r.overall, r.criteria, r.comment, r.response, r.created_at,
+          p.start_date, p.end_date, p.country, ru.id reviewer_id, ru.name reviewer_name, ru.role reviewer_role
+        FROM reviews r JOIN placements p ON p.id = r.placement_id JOIN users ru ON ru.id = r.reviewer_id
+        WHERE r.reviewee_id = ? AND ${visibleReviewsSql} ORDER BY r.created_at DESC`).all(u.id)
+      .map((r) => ({ ...r, criteria: json.parse(r.criteria, {}) }));
+    const me = req.user;
+    let match = null;
+    if (me.role !== u.role && me.role !== 'admin') {
+      const [ap, fam] = me.role === 'aupair' ? [me, u] : [u, me];
+      match = scoreMatch({ user: ap, profile: getProfile(ap) }, { user: fam, profile: getProfile(fam) }, getProgram(fam.country), ratingSummary(ap.id));
+    }
+    const req_ = db.prepare(`SELECT id, from_user, status FROM match_requests WHERE
+        ((from_user = ? AND to_user = ?) OR (from_user = ? AND to_user = ?)) ORDER BY id DESC LIMIT 1`).get(me.id, u.id, u.id, me.id);
+    return {
+      user: publicUser(u),
+      profile: getProfile(u),
+      rating: ratingSummary(u.id),
+      reviews,
+      placements_completed: db.prepare(`SELECT COUNT(*) n FROM placements WHERE status = 'completed' AND (aupair_id = ? OR family_id = ?)`).get(u.id, u.id).n,
+      match,
+      request: req_ || null,
+      favorite: !!db.prepare('SELECT 1 FROM favorites WHERE user_id = ? AND target_id = ?').get(me.id, u.id),
+      blocked: iBlocked,
+    };
+  }));
+
+  api.post('/users/:id/block', requireAuth, wrap((req) => {
+    const t = getUser(req.params.id);
+    if (!t || t.id === req.user.id || t.role === 'admin') throw notFound();
+    const me = req.user.id;
+    tx(db, () => {
+      db.prepare('INSERT OR IGNORE INTO blocks (user_id, target_id) VALUES (?, ?)').run(me, t.id);
+      db.prepare(`UPDATE match_requests SET status = 'declined', responded_at = datetime('now') WHERE status = 'pending'
+          AND ((from_user = ? AND to_user = ?) OR (from_user = ? AND to_user = ?))`).run(me, t.id, t.id, me);
+      const c = conversationFor(me, t.id);
+      if (c) db.prepare("UPDATE messages SET read_at = datetime('now') WHERE conversation_id = ? AND sender_id = ? AND read_at IS NULL").run(c.id, t.id);
+      const reason = str(req.body?.reason, 2000);
+      if (reason) db.prepare('INSERT INTO reports (reporter_id, target_user_id, reason) VALUES (?,?,?)').run(me, t.id, reason);
+    });
+    return { ok: true };
+  }));
+
+  api.delete('/users/:id/block', requireAuth, wrap((req) => {
+    db.prepare('DELETE FROM blocks WHERE user_id = ? AND target_id = ?').run(req.user.id, Number(req.params.id));
+    return { ok: true };
+  }));
+
+  api.get('/blocks', requireAuth, wrap((req) => ({
+    blocked: db.prepare('SELECT u.* FROM blocks b JOIN users u ON u.id = b.target_id WHERE b.user_id = ? ORDER BY b.created_at DESC')
+      .all(req.user.id).map(publicUser),
+  })));
+
+  // ---------- search & matching ----------
+  const findCandidates = (me, q, discover = false) => {
+    const myProfile = getProfile(me);
+    const targetRole = me.role === 'family' ? 'aupair' : 'family';
+    const table = targetRole === 'aupair' ? 'aupair_profiles' : 'family_profiles';
+    const where = ['u.role = ?', 'u.suspended = 0', 'p.visible = 1', notBlocked('u.id')];
+    const params = [targetRole, me.id, me.id];
+    if (q.country) { where.push('u.country = ?'); params.push(String(q.country).toUpperCase()); }
+    if (q.nationality && targetRole === 'aupair') { where.push('p.nationality = ?'); params.push(String(q.nationality).toUpperCase()); }
+    if (q.verified === '1') where.push('u.id_verified = 1');
+    if (q.driver === '1' && targetRole === 'aupair') where.push('p.drivers_license = 1');
+    if (discover) {
+      // Hide anyone already swiped on, liked, or matched with; keep people who liked me so I can like them back.
+      where.push(`u.id NOT IN (SELECT target_id FROM swipes WHERE user_id = ?)`, `u.id NOT IN (SELECT to_user FROM match_requests WHERE from_user = ? AND status IN ('pending','accepted'))`,
+        `u.id NOT IN (SELECT from_user FROM match_requests WHERE to_user = ? AND status = 'accepted')`);
+      params.push(me.id, me.id, me.id);
+    }
+    if (q.q) { where.push('(u.name LIKE ? OR p.bio LIKE ? OR u.city LIKE ?)'); const like = `%${q.q}%`; params.push(like, like, like); }
+    const rows = db.prepare(`SELECT u.* FROM users u JOIN ${table} p ON p.user_id = u.id WHERE ${where.join(' AND ')}`).all(...params);
+
+    let results = rows.map((u) => {
+      const profile = getProfile(u);
+      const rating = ratingSummary(u.id);
+      const [ap, fam] = me.role === 'aupair'
+        ? [{ user: me, profile: myProfile }, { user: u, profile }]
+        : [{ user: u, profile }, { user: me, profile: myProfile }];
+      const match = scoreMatch(ap, fam, getProgram(fam.user.country), ratingSummary(ap.user.id));
+      const likesYou = !!db.prepare("SELECT 1 FROM match_requests WHERE from_user = ? AND to_user = ? AND status = 'pending'").get(u.id, me.id);
+      return { user: publicUser(u), profile, rating, match, likes_you: likesYou };
+    });
+
+    if (q.language) {
+      const lang = String(q.language).toLowerCase();
+      results = results.filter((r) => targetRole === 'aupair'
+        ? r.profile.languages.some((l) => l.code === lang)
+        : r.profile.languages.includes(lang) || r.profile.required_languages.includes(lang));
+    }
+    if (q.min_rating) results = results.filter((r) => (r.rating.avg ?? 0) >= Number(q.min_rating));
+    if (q.min_age && targetRole === 'aupair') results = results.filter((r) => r.profile.age != null && r.profile.age >= Number(q.min_age));
+    if (q.max_age && targetRole === 'aupair') results = results.filter((r) => r.profile.age != null && r.profile.age <= Number(q.max_age));
+    if (q.available_by && targetRole === 'aupair') results = results.filter((r) => !r.profile.available_from || r.profile.available_from <= q.available_by);
+
+    const sort = q.sort || 'match';
+    const byNum = (f) => (a, b) => (f(b) ?? -1) - (f(a) ?? -1);
+    results.sort(sort === 'rating' ? byNum((r) => r.rating.avg)
+      : sort === 'recent' ? (a, b) => String(b.user.last_active_at).localeCompare(String(a.user.last_active_at))
+        : byNum((r) => r.match.score));
+    const limit = Math.min(Number(q.limit) || 50, 100);
+    return { total: results.length, results: results.slice(0, limit) };
+  };
+
+  api.get('/search', requireRole('aupair', 'family'), wrap((req) => findCandidates(req.user, req.query)));
+  api.get('/discover', requireRole('aupair', 'family'), wrap((req) => findCandidates(req.user, { ...req.query, limit: req.query.limit || 20 }, true)));
+
+  // ---------- swiping ----------
+  api.post('/swipe', requireRole('aupair', 'family'), wrap((req) => {
+    const me = req.user;
+    const { target_id, direction, message } = req.body || {};
+    if (!['like', 'pass', 'super'].includes(direction)) throw bad('Swipe left (pass), right (like) or up (super like).');
+    const t = getUser(target_id);
+    if (!t || t.suspended || t.role === me.role || t.role === 'admin') throw bad('You can only swipe on the other side (au pair ↔ host family).');
+    if (blockedBetween(me.id, t.id)) throw notFound('Profile not found.');
+    if (direction !== 'pass') mustBeVerified(me);
+    db.prepare('INSERT OR REPLACE INTO swipes (user_id, target_id, direction) VALUES (?,?,?)').run(me.id, t.id, direction);
+    const theirs = db.prepare("SELECT * FROM match_requests WHERE from_user = ? AND to_user = ? AND status = 'pending'").get(t.id, me.id);
+    if (direction === 'pass') {
+      if (theirs) db.prepare("UPDATE match_requests SET status = 'declined', responded_at = datetime('now') WHERE id = ?").run(theirs.id);
+      return { matched: false };
+    }
+    if (theirs) {
+      const c = acceptRequest(theirs);
+      notify(t.id, 'match', `It's a match! ${me.name} liked you back.`, `#/messages/${c.id}`);
+      return { matched: true, conversation_id: c.id, other: publicUser(t) };
+    }
+    const mine = db.prepare("SELECT id FROM match_requests WHERE from_user = ? AND to_user = ? AND status IN ('pending','accepted')").get(me.id, t.id);
+    if (!mine) {
+      db.prepare('INSERT INTO match_requests (from_user, to_user, message) VALUES (?, ?, ?)').run(me.id, t.id, str(message, 2000));
+      notify(t.id, 'like', direction === 'super' ? `${me.name} super liked you! ⭐` : 'Someone new liked you. See who in Likes.', '#/likes');
+    }
+    return { matched: false };
+  }));
+
+  api.post('/swipe/undo', requireRole('aupair', 'family'), wrap((req) => {
+    const me = req.user;
+    const last = db.prepare('SELECT * FROM swipes WHERE user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1').get(me.id);
+    if (!last) throw bad('Nothing to undo.');
+    if (db.prepare("SELECT 1 FROM match_requests WHERE status = 'accepted' AND ((from_user = ? AND to_user = ?) OR (from_user = ? AND to_user = ?))").get(me.id, last.target_id, last.target_id, me.id)) {
+      throw bad('You already matched with them, so this swipe can\'t be undone.');
+    }
+    tx(db, () => {
+      db.prepare('DELETE FROM swipes WHERE user_id = ? AND target_id = ?').run(me.id, last.target_id);
+      db.prepare("DELETE FROM match_requests WHERE from_user = ? AND to_user = ? AND status = 'pending'").run(me.id, last.target_id);
+      // A pass on someone who liked me declined their like; restore it.
+      db.prepare("UPDATE match_requests SET status = 'pending', responded_at = NULL WHERE from_user = ? AND to_user = ? AND status = 'declined'").run(last.target_id, me.id);
+    });
+    const t = getUser(last.target_id);
+    return { user: publicUser(t) };
+  }));
+
+  api.delete('/swipes/passes', requireRole('aupair', 'family'), wrap((req) => {
+    const r = db.prepare("DELETE FROM swipes WHERE user_id = ? AND direction = 'pass'").run(req.user.id);
+    return { cleared: r.changes };
+  }));
+
+  api.get('/likes', requireRole('aupair', 'family'), wrap((req) => {
+    const me = req.user;
+    const rows = db.prepare(`SELECT r.id request_id, r.message, r.created_at, u.* FROM match_requests r JOIN users u ON u.id = r.from_user
+        WHERE r.to_user = ? AND r.status = 'pending' AND u.suspended = 0 AND ${notBlocked('u.id')} ORDER BY r.created_at DESC`).all(me.id, me.id, me.id);
+    const myProfile = getProfile(me);
+    return {
+      likes: rows.map((u) => {
+        const profile = getProfile(u);
+        const [ap, fam] = me.role === 'aupair' ? [{ user: me, profile: myProfile }, { user: u, profile }] : [{ user: u, profile }, { user: me, profile: myProfile }];
+        const sw = db.prepare('SELECT direction FROM swipes WHERE user_id = ? AND target_id = ?').get(u.id, me.id);
+        return { request_id: u.request_id, message: u.message, created_at: u.created_at, super: sw?.direction === 'super',
+          user: publicUser(u), profile, rating: ratingSummary(u.id), match: scoreMatch(ap, fam, getProgram(fam.user.country), ratingSummary(ap.user.id)) };
+      }),
+    };
+  }));
+
+  // ---------- photos ----------
+  const setPhotos = (userId, photos) => db.prepare('UPDATE users SET photos = ?, photo_url = ? WHERE id = ?').run(JSON.stringify(photos), photos[0] || null, userId);
+
+  api.post('/me/photos', requireAuth, wrap((req, res) => {
+    const m = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body?.data_url || ''));
+    if (!m) throw bad('Upload a JPEG, PNG or WebP image.');
+    const buf = Buffer.from(m[2], 'base64');
+    if (buf.length > MAX_PHOTO_BYTES) throw bad('Photos must be under 5 MB.');
+    // Check magic bytes so the declared type can't lie.
+    const sig = buf.subarray(0, 12).toString('hex');
+    const real = sig.startsWith('ffd8ff') ? 'image/jpeg' : sig.startsWith('89504e47') ? 'image/png'
+      : sig.startsWith('52494646') && sig.slice(16, 24) === '57454250' ? 'image/webp' : null;
+    if (!real) throw bad('That file is not a valid image.');
+    const photos = photosOf(getUser(req.user.id)).filter((p) => p.startsWith('/uploads/') || p.startsWith('http'));
+    if (photos.length >= MAX_PHOTOS) throw bad(`You can have up to ${MAX_PHOTOS} photos.`);
+    mkdirSync(UPLOAD_DIR, { recursive: true });
+    const name = `${req.user.id}-${randomBytes(8).toString('hex')}.${PHOTO_TYPES[real]}`;
+    writeFileSync(join(UPLOAD_DIR, name), buf);
+    photos.push(`/uploads/${name}`);
+    setPhotos(req.user.id, photos);
+    res.status(201);
+    return { photos };
+  }));
+
+  api.put('/me/photos', requireAuth, wrap((req) => {
+    // Reorder or remove: body.photos must be a subset of the current photos.
+    const current = photosOf(getUser(req.user.id));
+    const next = Array.isArray(req.body?.photos) ? req.body.photos.filter((p, i, a) => current.includes(p) && a.indexOf(p) === i) : null;
+    if (!next) throw bad('Send the photo list.');
+    for (const p of current.filter((x) => !next.includes(x) && x.startsWith('/uploads/'))) {
+      try { unlinkSync(join(UPLOAD_DIR, p.slice('/uploads/'.length))); } catch { /* already gone */ }
+    }
+    setPhotos(req.user.id, next);
+    return { photos: next };
+  }));
+
+
+  // ---------- favorites ----------
+  api.get('/favorites', requireAuth, wrap((req) => ({
+    results: db.prepare('SELECT u.* FROM favorites f JOIN users u ON u.id = f.target_id WHERE f.user_id = ? ORDER BY f.created_at DESC')
+      .all(req.user.id).map((u) => ({ user: publicUser(u), rating: ratingSummary(u.id) })),
+  })));
+  api.post('/favorites/:id', requireAuth, wrap((req) => {
+    const t = getUser(req.params.id);
+    if (!t || t.id === req.user.id) throw notFound();
+    db.prepare('INSERT OR IGNORE INTO favorites (user_id, target_id) VALUES (?, ?)').run(req.user.id, t.id);
+    return { ok: true };
+  }));
+  api.delete('/favorites/:id', requireAuth, wrap((req) => {
+    db.prepare('DELETE FROM favorites WHERE user_id = ? AND target_id = ?').run(req.user.id, Number(req.params.id));
+    return { ok: true };
+  }));
+
+  // ---------- match requests ----------
+  api.post('/requests', requireRole('aupair', 'family'), wrap((req, res) => {
+    const to = getUser(req.body?.to_user);
+    if (!to || to.suspended || to.role === req.user.role || to.role === 'admin') throw bad('You can only contact the other side (au pair ↔ host family).');
+    if (blockedBetween(req.user.id, to.id)) throw notFound('Profile not found.');
+    mustBeVerified(req.user);
+    const open = db.prepare(`SELECT id FROM match_requests WHERE status IN ('pending','accepted')
+        AND ((from_user = ? AND to_user = ?) OR (from_user = ? AND to_user = ?))`).get(req.user.id, to.id, to.id, req.user.id);
+    if (open) throw new HttpError(409, 'You already have an open request with this person.');
+    const r = db.prepare('INSERT INTO match_requests (from_user, to_user, message) VALUES (?, ?, ?)')
+      .run(req.user.id, to.id, str(req.body?.message, 2000));
+    notify(to.id, 'request', `${req.user.name} is interested in matching with you.`, '#/requests');
+    res.status(201);
+    return { id: Number(r.lastInsertRowid) };
+  }));
+
+  api.get('/requests', requireAuth, wrap((req) => {
+    const rows = db.prepare(`SELECT r.*, fu.name from_name, fu.role from_role, fu.country from_country, fu.photo_url from_photo,
+          tu.name to_name, tu.role to_role, tu.country to_country, tu.photo_url to_photo
+        FROM match_requests r JOIN users fu ON fu.id = r.from_user JOIN users tu ON tu.id = r.to_user
+        WHERE r.from_user = ? OR r.to_user = ? ORDER BY r.created_at DESC`).all(req.user.id, req.user.id);
+    return {
+      incoming: rows.filter((r) => r.to_user === req.user.id),
+      outgoing: rows.filter((r) => r.from_user === req.user.id),
+    };
+  }));
+
+  api.post('/requests/:id/respond', requireAuth, wrap((req) => {
+    const r = db.prepare('SELECT * FROM match_requests WHERE id = ?').get(Number(req.params.id));
+    if (!r) throw notFound();
+    const action = req.body?.action;
+    const me = req.user.id;
+    if (r.status !== 'pending') throw bad('This request was already answered.');
+    if (action === 'withdraw') {
+      if (r.from_user !== me) throw forbidden();
+      db.prepare("UPDATE match_requests SET status = 'withdrawn', responded_at = datetime('now') WHERE id = ?").run(r.id);
+    } else if (action === 'accept' || action === 'decline') {
+      if (r.to_user !== me) throw forbidden();
+      const status = action === 'accept' ? 'accepted' : 'declined';
+      if (status === 'accepted') acceptRequest(r);
+      else db.prepare("UPDATE match_requests SET status = 'declined', responded_at = datetime('now') WHERE id = ?").run(r.id);
+      db.prepare('INSERT OR REPLACE INTO swipes (user_id, target_id, direction) VALUES (?,?,?)').run(me, r.from_user, status === 'accepted' ? 'like' : 'pass');
+      if (status === 'accepted') notify(r.from_user, 'match', `It's a match! ${req.user.name} liked you back.`, '#/matches');
+    } else throw bad('Unknown action.');
+    return { ok: true };
+  }));
+
+  // ---------- messaging ----------
+  api.get('/conversations', requireAuth, wrap((req) => {
+    const me = req.user.id;
+    return {
+      conversations: db.prepare(`SELECT c.id, CASE WHEN c.user_a = ? THEN c.user_b ELSE c.user_a END other_id,
+            (SELECT body FROM messages WHERE conversation_id = c.id ORDER BY id DESC LIMIT 1) last_body,
+            (SELECT created_at FROM messages WHERE conversation_id = c.id ORDER BY id DESC LIMIT 1) last_at,
+            (SELECT COUNT(*) FROM messages WHERE conversation_id = c.id AND sender_id != ? AND read_at IS NULL) unread
+          FROM conversations c WHERE c.user_a = ? OR c.user_b = ? ORDER BY COALESCE(last_at, c.created_at) DESC`)
+        .all(me, me, me, me).filter((c) => !blockedBetween(me, c.other_id)).map((c) => ({ ...c, other: publicUser(getUser(c.other_id)) })),
+    };
+  }));
+
+  api.post('/conversations', requireAuth, wrap((req) => {
+    const other = getUser(req.body?.user_id);
+    if (!other || other.id === req.user.id || blockedBetween(req.user.id, other.id)) throw notFound();
+    mustBeVerified(req.user);
+    // Safety: messaging opens only after a match request is accepted (admins can always reach users).
+    if (req.user.role !== 'admin' && other.role !== 'admin' && !acceptedRequestBetween(req.user.id, other.id)) {
+      throw forbidden('Send a match request first; messaging opens once it is accepted.');
+    }
+    return { id: conversationFor(req.user.id, other.id, true).id };
+  }));
+
+  const myConversation = (req) => {
+    const c = db.prepare('SELECT * FROM conversations WHERE id = ?').get(Number(req.params.id));
+    if (!c || (c.user_a !== req.user.id && c.user_b !== req.user.id)) throw notFound();
+    if (blockedBetween(c.user_a, c.user_b)) throw notFound();
+    return c;
+  };
+
+  api.get('/conversations/:id/messages', requireAuth, wrap((req) => {
+    const c = myConversation(req);
+    const after = Number(req.query.after) || 0;
+    db.prepare("UPDATE messages SET read_at = datetime('now') WHERE conversation_id = ? AND sender_id != ? AND read_at IS NULL").run(c.id, req.user.id);
+    const otherId = c.user_a === req.user.id ? c.user_b : c.user_a;
+    return {
+      other: publicUser(getUser(otherId)),
+      messages: db.prepare('SELECT id, sender_id, body, created_at, read_at FROM messages WHERE conversation_id = ? AND id > ? ORDER BY id').all(c.id, after),
+    };
+  }));
+
+  api.post('/conversations/:id/messages', requireAuth, wrap((req, res) => {
+    const c = myConversation(req);
+    mustBeVerified(req.user);
+    const body = str(req.body?.body, 4000);
+    if (!body) throw bad('Message is empty.');
+    const r = db.prepare('INSERT INTO messages (conversation_id, sender_id, body) VALUES (?,?,?)').run(c.id, req.user.id, body);
+    res.status(201);
+    return db.prepare('SELECT id, sender_id, body, created_at, read_at FROM messages WHERE id = ?').get(Number(r.lastInsertRowid));
+  }));
+
+  // ---------- programs & compliance ----------
+  api.get('/programs', wrap(() => ({
+    programs: db.prepare('SELECT * FROM country_programs ORDER BY name').all()
+      .map((p) => ({ ...p, family_obligations: json.parse(p.family_obligations) })),
+    review_criteria: REVIEW_CRITERIA,
+  })));
+  api.get('/programs/:code', wrap((req) => {
+    const p = getProgram(String(req.params.code).toUpperCase());
+    if (!p) throw notFound('No program on file for this country.');
+    return p;
+  }));
+  api.put('/programs/:code', requireRole('admin'), wrap((req) => {
+    const code = String(req.params.code).toUpperCase();
+    const b = req.body || {};
+    const fields = ['name', 'currency', 'visa', 'min_age', 'max_age', 'max_weekly_hours', 'max_daily_hours', 'min_pocket_money',
+      'pocket_money_note', 'min_months', 'max_months', 'agency_required', 'notes', 'official_source', 'status', 'status_note', 'eu_eea_only'];
+    if ('status' in b && !['open', 'paused', 'closed'].includes(b.status)) throw bad('Status must be open, paused or closed.');
+    if (!getProgram(code)) {
+      if (!b.name || !b.currency || !b.visa || b.min_age == null || b.max_age == null || b.max_weekly_hours == null) throw bad('New programs need name, currency, visa, ages and max weekly hours.');
+      db.prepare('INSERT INTO country_programs (code, name, currency, visa, min_age, max_age, max_weekly_hours) VALUES (?,?,?,?,?,?,?)')
+        .run(code, b.name, b.currency, b.visa, b.min_age, b.max_age, b.max_weekly_hours);
+    }
+    const sets = fields.filter((k) => k in b);
+    const vals = sets.map((k) => sql(b[k] === '' ? null : b[k]));
+    if ('family_obligations' in b) { sets.push('family_obligations'); vals.push(json.str(b.family_obligations)); }
+    sets.push('last_reviewed', 'admin_edited'); vals.push(new Date().toISOString().slice(0, 7), 1);
+    db.prepare(`UPDATE country_programs SET ${sets.map((k) => `${k} = ?`).join(', ')} WHERE code = ?`).run(...vals, code);
+    return getProgram(code);
+  }));
+
+  // ---------- placements ----------
+  const placementParties = (other, me) => {
+    if (!other || other.role === me.role || other.role === 'admin') throw bad('A placement is between one au pair and one host family.');
+    return me.role === 'aupair' ? { ap: me, fam: other } : { ap: other, fam: me };
+  };
+
+  api.post('/compliance/check', requireAuth, wrap((req) => {
+    const b = req.body || {};
+    const other = getUser(b.other_user_id);
+    const { ap, fam } = placementParties(other, req.user);
+    const apProfile = getProfile(ap);
+    return checkCompliance(getProgram(fam.country), { ...b, birth_date: apProfile?.birth_date, nationality: apProfile?.nationality });
+  }));
+
+  api.post('/placements', requireRole('aupair', 'family'), wrap((req, res) => {
+    const b = req.body || {};
+    const other = getUser(b.other_user_id);
+    const { ap, fam } = placementParties(other, req.user);
+    mustBeVerified(req.user);
+    if (blockedBetween(ap.id, fam.id)) throw notFound();
+    if (!acceptedRequestBetween(ap.id, fam.id)) throw forbidden('You need an accepted match request before proposing a placement.');
+    if (!isDate(b.start_date) || !isDate(b.end_date)) throw bad('Start and end dates are required (YYYY-MM-DD).');
+    const weekly = Number(b.weekly_hours); const money = Number(b.pocket_money);
+    if (!(weekly > 0) || !(money >= 0)) throw bad('Weekly hours and pocket money are required.');
+    const open = db.prepare(`SELECT 1 FROM placements WHERE aupair_id = ? AND family_id = ? AND status IN ('proposed','confirmed','active')`).get(ap.id, fam.id);
+    if (open) throw new HttpError(409, 'There is already an open placement between you.');
+    const program = getProgram(fam.country);
+    const compliance = checkCompliance(program, { birth_date: getProfile(ap)?.birth_date, nationality: getProfile(ap)?.nationality, start_date: b.start_date, end_date: b.end_date, weekly_hours: weekly, pocket_money: money });
+    if (!compliance.ok) { res.status(422); return { error: 'This placement breaks the country program rules.', compliance }; }
+    const id = tx(db, () => {
+      const r = db.prepare(`INSERT INTO placements (aupair_id, family_id, country, start_date, end_date, weekly_hours, pocket_money,
+          aupair_confirmed, family_confirmed, created_by) VALUES (?,?,?,?,?,?,?,?,?,?)`)
+        .run(ap.id, fam.id, fam.country || '', b.start_date, b.end_date, weekly, money,
+          req.user.role === 'aupair' ? 1 : 0, req.user.role === 'family' ? 1 : 0, req.user.id);
+      const pid = Number(r.lastInsertRowid);
+      const start = new Date(b.start_date).getTime(); const end = new Date(b.end_date).getTime();
+      const ins = db.prepare('INSERT INTO placement_tasks (placement_id, title, owner, due_date, sort) VALUES (?,?,?,?,?)');
+      PLACEMENT_TASKS.forEach((t, i) => {
+        const due = t.offset === 'mid' ? (start + end) / 2 : t.offset === 'end' ? end : start + t.offset * 86400000;
+        ins.run(pid, t.title, t.owner, new Date(due).toISOString().slice(0, 10), i);
+      });
+      return pid;
+    });
+    notify(other.id, 'placement', `${req.user.name} proposed a placement. Review and confirm it.`, `#/placements/${id}`);
+    res.status(201);
+    return { id, compliance };
+  }));
+
+  const loadPlacement = (req) => {
+    const p = db.prepare('SELECT * FROM placements WHERE id = ?').get(Number(req.params.id));
+    if (!p || (req.user.role !== 'admin' && p.aupair_id !== req.user.id && p.family_id !== req.user.id)) throw notFound();
+    return p;
+  };
+  const placementView = (p, me) => {
+    const ap = getUser(p.aupair_id); const fam = getUser(p.family_id);
+    const program = getProgram(p.country);
+    const myReview = db.prepare('SELECT * FROM reviews WHERE placement_id = ? AND reviewer_id = ?').get(p.id, me.id);
+    return {
+      ...p,
+      aupair: publicUser(ap), family: publicUser(fam),
+      program: program ? { code: program.code, name: program.name, currency: program.currency, visa: program.visa } : null,
+      compliance: checkCompliance(program, { ...p, birth_date: getProfile(ap)?.birth_date, nationality: getProfile(ap)?.nationality }),
+      tasks: db.prepare('SELECT * FROM placement_tasks WHERE placement_id = ? ORDER BY sort').all(p.id),
+      my_review: myReview ? { ...myReview, criteria: json.parse(myReview.criteria, {}) } : null,
+      can_review: me.role !== 'admin' && ['active', 'completed'].includes(p.status) && !myReview,
+      review_criteria: REVIEW_CRITERIA[me.id === p.aupair_id ? 'family' : 'aupair'],
+    };
+  };
+
+  api.get('/placements', requireAuth, wrap((req) => {
+    const rows = req.user.role === 'admin'
+      ? db.prepare('SELECT * FROM placements ORDER BY created_at DESC').all()
+      : db.prepare('SELECT * FROM placements WHERE aupair_id = ? OR family_id = ? ORDER BY created_at DESC').all(req.user.id, req.user.id);
+    return {
+      placements: rows.map((p) => ({ ...p, aupair: publicUser(getUser(p.aupair_id)), family: publicUser(getUser(p.family_id)),
+        tasks_done: db.prepare('SELECT COUNT(*) n FROM placement_tasks WHERE placement_id = ? AND done = 1').get(p.id).n,
+        tasks_total: db.prepare('SELECT COUNT(*) n FROM placement_tasks WHERE placement_id = ?').get(p.id).n })),
+    };
+  }));
+
+  api.get('/placements/:id', requireAuth, wrap((req) => placementView(loadPlacement(req), req.user)));
+
+  api.post('/placements/:id/confirm', requireRole('aupair', 'family'), wrap((req) => {
+    const p = loadPlacement(req);
+    if (p.status !== 'proposed') throw bad('Only proposed placements can be confirmed.');
+    const col = req.user.id === p.aupair_id ? 'aupair_confirmed' : 'family_confirmed';
+    db.prepare(`UPDATE placements SET ${col} = 1 WHERE id = ?`).run(p.id);
+    const fresh = db.prepare('SELECT * FROM placements WHERE id = ?').get(p.id);
+    if (fresh.aupair_confirmed && fresh.family_confirmed) {
+      db.prepare("UPDATE placements SET status = 'confirmed' WHERE id = ?").run(p.id);
+      for (const uid of [p.aupair_id, p.family_id]) notify(uid, 'placement', 'Your placement is confirmed. Work through the checklist together.', `#/placements/${p.id}`);
+    }
+    return placementView(db.prepare('SELECT * FROM placements WHERE id = ?').get(p.id), req.user);
+  }));
+
+  const TRANSITIONS = { proposed: ['cancelled'], confirmed: ['active', 'cancelled'], active: ['completed', 'cancelled'] };
+  api.post('/placements/:id/status', requireAuth, wrap((req) => {
+    const p = loadPlacement(req);
+    const next = req.body?.status;
+    if (!(TRANSITIONS[p.status] || []).includes(next)) throw bad(`Cannot move a ${p.status} placement to ${next}.`);
+    db.prepare('UPDATE placements SET status = ? WHERE id = ?').run(next, p.id);
+    const other = req.user.id === p.aupair_id ? p.family_id : p.aupair_id;
+    notify(other, 'placement', `Placement is now ${next}.`, `#/placements/${p.id}`);
+    if (next === 'completed') {
+      for (const uid of [p.aupair_id, p.family_id]) notify(uid, 'review', 'Your placement ended. Leave a review to help the community.', `#/placements/${p.id}`);
+    }
+    return placementView(db.prepare('SELECT * FROM placements WHERE id = ?').get(p.id), req.user);
+  }));
+
+  api.patch('/placements/:id/tasks/:taskId', requireAuth, wrap((req) => {
+    const p = loadPlacement(req);
+    const r = db.prepare('UPDATE placement_tasks SET done = ? WHERE id = ? AND placement_id = ?').run(req.body?.done ? 1 : 0, Number(req.params.taskId), p.id);
+    if (!r.changes) throw notFound();
+    return { ok: true };
+  }));
+
+  // ---------- reviews ----------
+  api.post('/placements/:id/review', requireRole('aupair', 'family'), wrap((req, res) => {
+    const p = loadPlacement(req);
+    if (!['active', 'completed'].includes(p.status)) throw bad('Reviews open once the placement has started.');
+    const b = req.body || {};
+    const overall = Number(b.overall);
+    if (!Number.isInteger(overall) || overall < 1 || overall > 5) throw bad('Overall rating must be 1 to 5 stars.');
+    const revieweeIsAupair = req.user.id === p.family_id;
+    const allowed = REVIEW_CRITERIA[revieweeIsAupair ? 'aupair' : 'family'];
+    const criteria = {};
+    for (const k of allowed) {
+      const v = Number(b.criteria?.[k]);
+      if (b.criteria?.[k] != null) {
+        if (!Number.isInteger(v) || v < 1 || v > 5) throw bad(`${k} must be 1 to 5.`);
+        criteria[k] = v;
+      }
+    }
+    if (db.prepare('SELECT 1 FROM reviews WHERE placement_id = ? AND reviewer_id = ?').get(p.id, req.user.id)) throw new HttpError(409, 'You already reviewed this placement.');
+    const reviewee = revieweeIsAupair ? p.aupair_id : p.family_id;
+    const r = db.prepare('INSERT INTO reviews (placement_id, reviewer_id, reviewee_id, overall, criteria, comment) VALUES (?,?,?,?,?,?)')
+      .run(p.id, req.user.id, reviewee, overall, JSON.stringify(criteria), str(b.comment, 3000));
+    notify(reviewee, 'review', `${req.user.name} left you a review. It appears once you review them too, or ${REVIEW_REVEAL_DAYS} days after the placement ends.`, `#/placements/${p.id}`);
+    res.status(201);
+    return { id: Number(r.lastInsertRowid) };
+  }));
+
+  api.post('/reviews/:id/response', requireAuth, wrap((req) => {
+    const r = db.prepare('SELECT * FROM reviews WHERE id = ?').get(Number(req.params.id));
+    if (!r || r.reviewee_id !== req.user.id) throw notFound();
+    if (r.response) throw bad('You already responded to this review.');
+    const text = str(req.body?.response, 1500);
+    if (!text) throw bad('Response is empty.');
+    db.prepare('UPDATE reviews SET response = ? WHERE id = ?').run(text, r.id);
+    return { ok: true };
+  }));
+
+  // ---------- reports & notifications ----------
+  api.post('/reports', requireAuth, wrap((req, res) => {
+    const b = req.body || {};
+    const reason = str(b.reason, 2000);
+    if (!reason) throw bad('Tell us what happened.');
+    if (!b.target_user_id && !b.review_id) throw bad('Nothing to report.');
+    db.prepare('INSERT INTO reports (reporter_id, target_user_id, review_id, reason) VALUES (?,?,?,?)')
+      .run(req.user.id, sql(b.target_user_id ? Number(b.target_user_id) : null), sql(b.review_id ? Number(b.review_id) : null), reason);
+    res.status(201);
+    return { ok: true };
+  }));
+
+  api.get('/notifications', requireAuth, wrap((req) => ({
+    notifications: db.prepare('SELECT * FROM notifications WHERE user_id = ? ORDER BY id DESC LIMIT 50').all(req.user.id),
+  })));
+  api.post('/notifications/read', requireAuth, wrap((req) => {
+    db.prepare('UPDATE notifications SET read = 1 WHERE user_id = ?').run(req.user.id);
+    return { ok: true };
+  }));
+
+  // ---------- admin ----------
+  api.get('/admin/stats', requireRole('admin'), wrap(() => {
+    const n = (q, ...a) => db.prepare(q).get(...a).n;
+    return {
+      aupairs: n("SELECT COUNT(*) n FROM users WHERE role = 'aupair'"),
+      families: n("SELECT COUNT(*) n FROM users WHERE role = 'family'"),
+      pending_verification: n("SELECT COUNT(*) n FROM users WHERE role != 'admin' AND id_verified = 0"),
+      open_requests: n("SELECT COUNT(*) n FROM match_requests WHERE status = 'pending'"),
+      matches: n("SELECT COUNT(*) n FROM match_requests WHERE status = 'accepted'"),
+      placements_active: n("SELECT COUNT(*) n FROM placements WHERE status IN ('confirmed','active')"),
+      placements_completed: n("SELECT COUNT(*) n FROM placements WHERE status = 'completed'"),
+      reviews: n('SELECT COUNT(*) n FROM reviews'),
+      open_reports: n("SELECT COUNT(*) n FROM reports WHERE status = 'open'"),
+      by_country: db.prepare("SELECT country, role, COUNT(*) n FROM users WHERE role != 'admin' GROUP BY country, role ORDER BY n DESC").all(),
+    };
+  }));
+  api.get('/admin/users', requireRole('admin'), wrap((req) => {
+    const like = `%${req.query.q || ''}%`;
+    return {
+      users: db.prepare("SELECT * FROM users WHERE role != 'admin' AND (name LIKE ? OR email LIKE ?) ORDER BY created_at DESC LIMIT 200").all(like, like)
+        .map((u) => ({ ...publicUser(u), email: u.email, suspended: !!u.suspended, rating: ratingSummary(u.id) })),
+    };
+  }));
+  api.post('/admin/users/:id', requireRole('admin'), wrap((req) => {
+    const u = getUser(req.params.id);
+    if (!u || u.role === 'admin') throw notFound();
+    const map = { id_verified: 'id_verified', references_checked: 'references_checked', background_checked: 'background_checked', suspended: 'suspended' };
+    const sets = Object.keys(map).filter((k) => k in (req.body || {}));
+    if (!sets.length) throw bad('Nothing to change.');
+    db.prepare(`UPDATE users SET ${sets.map((k) => `${map[k]} = ?`).join(', ')} WHERE id = ?`).run(...sets.map((k) => (req.body[k] ? 1 : 0)), u.id);
+    if (req.body.suspended) db.prepare('DELETE FROM sessions WHERE user_id = ?').run(u.id);
+    if (sets.some((k) => k !== 'suspended' && req.body[k])) notify(u.id, 'verification', 'Your profile has a new verification badge.', '#/profile');
+    return { ...publicUser(getUser(u.id)), suspended: !!getUser(u.id).suspended };
+  }));
+  api.get('/admin/reports', requireRole('admin'), wrap(() => ({
+    reports: db.prepare(`SELECT rp.*, ru.name reporter_name, tu.name target_name, rv.comment review_comment, rv.hidden review_hidden
+        FROM reports rp JOIN users ru ON ru.id = rp.reporter_id LEFT JOIN users tu ON tu.id = rp.target_user_id
+        LEFT JOIN reviews rv ON rv.id = rp.review_id ORDER BY rp.status = 'open' DESC, rp.created_at DESC`).all(),
+  })));
+  api.post('/admin/reports/:id', requireRole('admin'), wrap((req) => {
+    const rp = db.prepare('SELECT * FROM reports WHERE id = ?').get(Number(req.params.id));
+    if (!rp) throw notFound();
+    const status = req.body?.status;
+    if (!['open', 'resolved', 'dismissed'].includes(status)) throw bad('Unknown status.');
+    tx(db, () => {
+      db.prepare('UPDATE reports SET status = ? WHERE id = ?').run(status, rp.id);
+      if (rp.review_id && 'hide_review' in req.body) db.prepare('UPDATE reviews SET hidden = ? WHERE id = ?').run(req.body.hide_review ? 1 : 0, rp.review_id);
+    });
+    return { ok: true };
+  }));
+
+  app.use('/api', api);
+  app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found.' }));
+  app.use('/uploads', (_req, res, next) => { res.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'"); next(); },
+    express.static(UPLOAD_DIR, { maxAge: '7d', fallthrough: false }));
+  app.use(express.static(PUBLIC_DIR));
+  app.get(/^\/(?!api).*/, (_req, res) => res.sendFile(join(PUBLIC_DIR, 'index.html')));
+
+  app.use((err, _req, res, _next) => {
+    if (err.status && err.status < 500) return res.status(err.status).json({ error: err.message, ...(err.code ? { code: err.code } : {}) });
+    if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'Invalid JSON.' });
+    console.error(err);
+    res.status(500).json({ error: 'Something went wrong.' });
+  });
+
+  return app;
+}
+
+function setCookie(res, token) {
+  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+  res.set('Set-Cookie', `sid=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 86400}${secure}`);
+}

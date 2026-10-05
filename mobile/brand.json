@@ -1,0 +1,9 @@
+{
+  "name": "PairMundo",
+  "slug": "pairmundo",
+  "scheme": "pairmundo",
+  "bundleId": "com.pairmundo.app",
+  "tagline": "Swipe. Match. Welcome your au pair.",
+  "primary": "#fd3a73",
+  "primaryDark": "#ff6036"
+}
