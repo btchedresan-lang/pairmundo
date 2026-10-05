@@ -56,7 +56,7 @@ New matches, likes, messages and placement updates arrive as push notifications.
 npx eas-cli init
 ```
 
-Copy the project ID it prints into `easProjectId` in `brand.json`. Until then the app works normally, just without notifications. On Android, push notifications need a store build (Expo Go on Android doesn't support them); on iPhone they also work in Expo Go.
+Copy the project ID it prints into `easProjectId` in `brand.json` (done: the project is `@b.tchedresan/pairmundo`). On Android, push notifications need a store build (Expo Go on Android doesn't support them); on iPhone they also work in Expo Go.
 
 ## Publishing to the App Store and Google Play
 

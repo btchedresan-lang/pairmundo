@@ -5,6 +5,7 @@ module.exports = {
   expo: {
     name: brand.name,
     slug: brand.slug,
+    ...(brand.expoOwner ? { owner: brand.expoOwner } : {}),
     scheme: brand.scheme,
     version: '1.0.0',
     orientation: 'portrait',
