@@ -3,7 +3,7 @@ import { KeyboardAvoidingView, Platform, Pressable, Text, View } from 'react-nat
 import { Link } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../auth';
-import { getBase, setBase } from '../api';
+import { getBase, isLocalServer, setBase } from '../api';
 import { Alert, Button, Field, Screen, T } from '../components/ui';
 import { brand, C } from '../theme';
 
@@ -42,10 +42,12 @@ export default function Login() {
           <Button title="Sign in" onPress={() => go()} loading={busy} />
           <Link href={{ pathname: '/forgot', params: { email: email.trim() } }} asChild><Pressable><T small style={{ color: C.primary, textAlign: 'center' }}>Forgot password?</T></Pressable></Link>
           <Link href="/register" asChild><Button title="Create an account" kind="secondary" /></Link>
-          <T small muted style={{ textAlign: 'center', marginTop: 6 }}>Try a demo account (password password123):</T>
-          <View style={{ flexDirection: 'row', gap: 10, justifyContent: 'center' }}>
-            {DEMO.map(([label, e]) => <Button key={e} small kind="ghost" title={label} onPress={() => { setEmail(e); setPassword('password123'); go(e, 'password123'); }} />)}
-          </View>
+          {isLocalServer(server) ? <>
+            <T small muted style={{ textAlign: 'center', marginTop: 6 }}>Try a demo account (password password123):</T>
+            <View style={{ flexDirection: 'row', gap: 10, justifyContent: 'center' }}>
+              {DEMO.map(([label, e]) => <Button key={e} small kind="ghost" title={label} onPress={() => { setEmail(e); setPassword('password123'); go(e, 'password123'); }} />)}
+            </View>
+          </> : null}
           <Pressable onPress={() => setShowServer(!showServer)}><T small muted style={{ textAlign: 'center' }}>⚙ Server: {server}</T></Pressable>
           {showServer ? <Field label="Server address" value={server} onChangeText={setServer} autoCapitalize="none" keyboardType="url" placeholder="http://192.168.1.20:3000" /> : null}
         </View>

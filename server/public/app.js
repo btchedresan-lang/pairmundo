@@ -355,7 +355,7 @@ views.login = () => {
     <div class="field"><label>Password</label><input name="password" type="password" required autocomplete="current-password"></div>
     <div id="err"></div><button class="btn" style="width:100%">Sign in</button></form>
     <p class="small"><a href="#/forgot">Forgot password?</a></p>
-    <p class="muted small">New here? <a href="#/register">Create an account</a>.<br>Demo: maria@aupair.test, millers@aupair.test or admin@aupair.test, password <code>password123</code>.</p></div>`);
+    <p class="muted small">New here? <a href="#/register">Create an account</a>.${['localhost', '127.0.0.1'].includes(location.hostname) ? '<br>Demo: maria@aupair.test, millers@aupair.test or admin@aupair.test, password <code>password123</code>.' : ''}</p></div>`);
   document.getElementById('f').onsubmit = async (e) => {
     e.preventDefault();
     try { await api('/auth/login', { method: 'POST', body: formData(e.target) }); await refreshMe(); go('#/'); }
