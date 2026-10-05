@@ -25,12 +25,15 @@ module.exports = {
       'expo-router',
       'expo-image',
       'expo-secure-store',
+      ['expo-notifications', { color: brand.primary }],
       ['expo-image-picker', { photosPermission: `${brand.name} needs your photos so you can add them to your profile.` }],
     ],
     extra: {
       // Leave empty to use the computer running `expo start` (port 3000). Set it to your hosted API for real users.
       // The live server by default; set EXPO_PUBLIC_API_URL (or use ⚙ Server on the sign-in screen) to point at another one.
       apiUrl: process.env.EXPO_PUBLIC_API_URL ?? brand.apiUrl ?? '',
+      // The Expo project ID (from `npx eas-cli init`), needed for push notifications and store builds.
+      ...((process.env.EAS_PROJECT_ID || brand.easProjectId) ? { eas: { projectId: process.env.EAS_PROJECT_ID || brand.easProjectId } } : {}),
     },
   },
 };

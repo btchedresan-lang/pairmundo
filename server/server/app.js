@@ -8,6 +8,7 @@ import { hashPassword, verifyPassword, createSession, sessionMiddleware, require
 import { scoreMatch, checkCompliance, ageOn } from './matching.js';
 import { PROGRAMS, REVIEW_CRITERIA, PLACEMENT_TASKS } from './programs.js';
 import { createMailer, codeEmail } from './mailer.js';
+import { createPusher, isPushToken } from './push.js';
 
 const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
 const MAX_PHOTOS = 6;
@@ -49,7 +50,7 @@ export function seedPrograms(db) {
   }
 }
 
-export function createApp(db, { mailer = createMailer() } = {}) {
+export function createApp(db, { mailer = createMailer(), pusher = createPusher() } = {}) {
   const UPLOAD_DIR = process.env.UPLOAD_DIR || 'data/uploads';
   seedPrograms(db);
   const app = express();
@@ -127,8 +128,22 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     };
   };
 
-  const notify = (userId, kind, text, link = null) =>
+  /** Sends a push notification to every phone the user is signed in on. Never blocks or fails the request. */
+  const push = (userId, body, link = null, title = 'PairMundo') => {
+    const tokens = db.prepare('SELECT token FROM push_tokens WHERE user_id = ?').all(userId).map((r) => r.token);
+    if (!tokens.length) return;
+    const messages = tokens.map((to) => ({ to, title, body, sound: 'default', data: { link } }));
+    Promise.resolve().then(() => pusher(messages)).then((tickets) => {
+      // Forget phones that uninstalled the app or turned notifications off.
+      (tickets || []).forEach((t, i) => {
+        if (t?.details?.error === 'DeviceNotRegistered') db.prepare('DELETE FROM push_tokens WHERE token = ?').run(tokens[i]);
+      });
+    }).catch((e) => console.error('Push failed:', e.message));
+  };
+  const notify = (userId, kind, text, link = null) => {
     db.prepare('INSERT INTO notifications (user_id, kind, text, link) VALUES (?,?,?,?)').run(userId, kind, text, link);
+    push(userId, text, link);
+  };
 
   const getUser = (id) => db.prepare('SELECT * FROM users WHERE id = ?').get(Number(id));
 
@@ -265,6 +280,8 @@ export function createApp(db, { mailer = createMailer() } = {}) {
   }));
 
   api.post('/auth/logout', wrap((req, res) => {
+    // The app sends its push token so this phone stops getting notifications for the account.
+    if (req.user && isPushToken(req.body?.push_token)) db.prepare('DELETE FROM push_tokens WHERE token = ? AND user_id = ?').run(req.body.push_token, req.user.id);
     if (req.sessionToken) db.prepare('DELETE FROM sessions WHERE token = ?').run(req.sessionToken);
     res.set('Set-Cookie', 'sid=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
     return { ok: true };
@@ -511,6 +528,15 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     };
   }));
 
+  // ---------- push notifications ----------
+  api.post('/me/push-token', requireAuth, wrap((req) => {
+    const token = String(req.body?.token || '');
+    if (!isPushToken(token)) throw bad('That is not a push token.');
+    // A phone belongs to whoever signed in last on it.
+    db.prepare('INSERT INTO push_tokens (token, user_id) VALUES (?, ?) ON CONFLICT(token) DO UPDATE SET user_id = excluded.user_id').run(token, req.user.id);
+    return { ok: true };
+  }));
+
   // ---------- photos ----------
   const setPhotos = (userId, photos) => db.prepare('UPDATE users SET photos = ?, photo_url = ? WHERE id = ?').run(JSON.stringify(photos), photos[0] || null, userId);
 
@@ -659,6 +685,7 @@ export function createApp(db, { mailer = createMailer() } = {}) {
     const body = str(req.body?.body, 4000);
     if (!body) throw bad('Message is empty.');
     const r = db.prepare('INSERT INTO messages (conversation_id, sender_id, body) VALUES (?,?,?)').run(c.id, req.user.id, body);
+    push(c.user_a === req.user.id ? c.user_b : c.user_a, body.length > 140 ? `${body.slice(0, 139)}…` : body, `#/messages/${c.id}`, req.user.name);
     res.status(201);
     return db.prepare('SELECT id, sender_id, body, created_at, read_at FROM messages WHERE id = ?').get(Number(r.lastInsertRowid));
   }));
