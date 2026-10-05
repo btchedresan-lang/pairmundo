@@ -292,3 +292,11 @@ test('deleting an account removes the user, their photos and shared placements',
   const { readdirSync } = await import('node:fs');
   assert.ok(!readdirSync(process.env.UPLOAD_DIR).some((f) => f.startsWith(`${ap.id}-`)));
 });
+
+test('sign-in ignores capital letters and spaces in the email', async () => {
+  await register('casey@test.io', 'aupair', 'PE');
+  const login = await call(null, 'POST', '/auth/login', { email: ' Casey@Test.io ', password: 'password123' });
+  assert.equal(login.status, 200, JSON.stringify(login.body));
+  const again = await call(null, 'POST', '/auth/register', { email: 'CASEY@test.io', password: 'password123', role: 'aupair', name: 'Dup', country: 'PE' });
+  assert.equal(again.status, 409);
+});
