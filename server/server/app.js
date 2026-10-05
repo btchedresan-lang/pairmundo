@@ -1,7 +1,6 @@
 import express from 'express';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { mkdirSync, writeFileSync, unlinkSync } from 'node:fs';
 import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import { json, tx } from './db.js';
 import { hashPassword, verifyPassword, createSession, sessionMiddleware, requireAuth, requireRole, rateLimit } from './auth.js';
@@ -9,6 +8,7 @@ import { scoreMatch, checkCompliance, ageOn } from './matching.js';
 import { PROGRAMS, REVIEW_CRITERIA, PLACEMENT_TASKS } from './programs.js';
 import { createMailer, codeEmail } from './mailer.js';
 import { createPusher, isPushToken } from './push.js';
+import { createStorage } from './storage.js';
 
 const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
 const MAX_PHOTOS = 6;
@@ -52,8 +52,9 @@ export function seedPrograms(db) {
   }
 }
 
-export function createApp(db, { mailer = createMailer(), pusher = createPusher() } = {}) {
+export function createApp(db, { mailer = createMailer(), pusher = createPusher(), storage } = {}) {
   const UPLOAD_DIR = process.env.UPLOAD_DIR || 'data/uploads';
+  storage ??= createStorage({ dir: UPLOAD_DIR });
   seedPrograms(db);
   const app = express();
   app.disable('x-powered-by');
@@ -206,7 +207,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   const wrap = (fn) => (req, res, next) => {
     try {
       const out = fn(req, res);
-      if (out !== undefined && !res.headersSent) res.json(out);
+      const send = (v) => { if (v !== undefined && !res.headersSent) res.json(v); };
+      if (typeof out?.then === 'function') out.then(send, next); else send(out);
     } catch (e) { next(e); }
   };
 
@@ -339,7 +341,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const u = req.user;
     if (u.role === 'admin') throw forbidden('Admin accounts cannot be deleted here.');
     if (!verifyPassword(String(req.body?.password || ''), u.password_hash)) throw new HttpError(401, 'Wrong password.');
-    const photos = photosOf(u).filter((p) => p.startsWith('/uploads/'));
+    const photos = photosOf(u).filter(storage.owns);
     tx(db, () => {
       const mine = 'SELECT id FROM placements WHERE aupair_id = ? OR family_id = ?';
       const reviews = `SELECT id FROM reviews WHERE reviewer_id = ? OR reviewee_id = ? OR placement_id IN (${mine})`;
@@ -348,7 +350,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       db.prepare('DELETE FROM placements WHERE aupair_id = ? OR family_id = ? OR created_by = ?').run(u.id, u.id, u.id);
       db.prepare('DELETE FROM users WHERE id = ?').run(u.id);
     });
-    for (const p of photos) { try { unlinkSync(join(UPLOAD_DIR, p.slice('/uploads/'.length))); } catch { /* already gone */ } }
+    for (const p of photos) storage.remove(p);
     res.set('Set-Cookie', 'sid=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
     return { ok: true };
   }));
@@ -543,7 +545,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   // ---------- photos ----------
   const setPhotos = (userId, photos) => db.prepare('UPDATE users SET photos = ?, photo_url = ? WHERE id = ?').run(JSON.stringify(photos), photos[0] || null, userId);
 
-  api.post('/me/photos', requireAuth, wrap((req, res) => {
+  api.post('/me/photos', requireAuth, wrap(async (req, res) => {
     const m = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body?.data_url || ''));
     if (!m) throw bad('Upload a JPEG, PNG or WebP image.');
     const buf = Buffer.from(m[2], 'base64');
@@ -553,12 +555,11 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const real = sig.startsWith('ffd8ff') ? 'image/jpeg' : sig.startsWith('89504e47') ? 'image/png'
       : sig.startsWith('52494646') && sig.slice(16, 24) === '57454250' ? 'image/webp' : null;
     if (!real) throw bad('That file is not a valid image.');
-    const photos = photosOf(getUser(req.user.id)).filter((p) => p.startsWith('/uploads/') || p.startsWith('http'));
-    if (photos.length >= MAX_PHOTOS) throw bad(`You can have up to ${MAX_PHOTOS} photos.`);
-    mkdirSync(UPLOAD_DIR, { recursive: true });
-    const name = `${req.user.id}-${randomBytes(8).toString('hex')}.${PHOTO_TYPES[real]}`;
-    writeFileSync(join(UPLOAD_DIR, name), buf);
-    photos.push(`/uploads/${name}`);
+    const keep = (list) => list.filter((p) => storage.owns(p) || p.startsWith('http'));
+    if (keep(photosOf(getUser(req.user.id))).length >= MAX_PHOTOS) throw bad(`You can have up to ${MAX_PHOTOS} photos.`);
+    const url = await storage.save(`${req.user.id}-${randomBytes(8).toString('hex')}.${PHOTO_TYPES[real]}`, buf, real);
+    // Read the list again after the upload, in case another upload finished meanwhile.
+    const photos = [...keep(photosOf(getUser(req.user.id))), url];
     setPhotos(req.user.id, photos);
     res.status(201);
     return { photos };
@@ -569,9 +570,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const current = photosOf(getUser(req.user.id));
     const next = Array.isArray(req.body?.photos) ? req.body.photos.filter((p, i, a) => current.includes(p) && a.indexOf(p) === i) : null;
     if (!next) throw bad('Send the photo list.');
-    for (const p of current.filter((x) => !next.includes(x) && x.startsWith('/uploads/'))) {
-      try { unlinkSync(join(UPLOAD_DIR, p.slice('/uploads/'.length))); } catch { /* already gone */ }
-    }
+    for (const p of current.filter((x) => !next.includes(x))) storage.remove(p);
     setPhotos(req.user.id, next);
     return { photos: next };
   }));
