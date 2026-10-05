@@ -375,7 +375,8 @@ views.register = (_, query) => {
       <div class="field"><label>City</label><input name="city"></div></div>
       <div class="field"><label>Email</label><input name="email" type="email" required autocomplete="email"></div>
       <div class="field"><label>Password</label><input name="password" type="password" minlength="8" required autocomplete="new-password"></div>
-      <div id="err"></div><button class="btn" style="width:100%">Create account</button></form></div>`);
+      <div id="err"></div><button class="btn" style="width:100%">Create account</button>
+      <p class="muted small" style="text-align:center">By creating an account you agree to the <a href="/terms" target="_blank">Terms of Use</a> and <a href="/privacy" target="_blank">Privacy Policy</a>.</p></form></div>`);
   document.getElementById('f').onsubmit = async (e) => {
     e.preventDefault();
     try { await api('/auth/register', { method: 'POST', body: formData(e.target) }); await refreshMe(); toast('Welcome! Check your email for your code.'); go('#/verify'); }
@@ -436,7 +437,8 @@ views.account = async () => {
       <button class="btn ghost sm" data-unblock="${u.id}">Unblock</button></div>`).join('') : '<p class="muted">You haven\'t blocked anyone.</p>'}</div>
     <div class="card"><h2>Delete account</h2><p class="muted small">This permanently deletes your profile, photos, matches, messages, placements and reviews.</p>
       <form id="del"><div class="field"><label>Your password</label><input name="password" type="password" required autocomplete="current-password"></div>
-      <div id="err"></div><button class="btn danger">Delete my account</button></form></div>`);
+      <div id="err"></div><button class="btn danger">Delete my account</button></form></div>
+    <p class="muted small"><a href="/privacy" target="_blank">Privacy Policy</a> · <a href="/terms" target="_blank">Terms of Use</a></p>`);
   document.querySelectorAll('[data-unblock]').forEach((b) => { b.onclick = async () => {
     if (!confirm('Unblock this person? You will be able to see each other again.')) return;
     await api(`/users/${b.dataset.unblock}/block`, { method: 'DELETE' }); views.account();

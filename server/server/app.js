@@ -949,7 +949,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found.' }));
   app.use('/uploads', (_req, res, next) => { res.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'"); next(); },
     express.static(UPLOAD_DIR, { maxAge: '7d', fallthrough: false }));
-  app.use(express.static(PUBLIC_DIR));
+  app.use(express.static(PUBLIC_DIR, { extensions: ['html'] })); // /privacy and /terms
   app.get(/^\/(?!api).*/, (_req, res) => res.sendFile(join(PUBLIC_DIR, 'index.html')));
 
   app.use((err, _req, res, _next) => {

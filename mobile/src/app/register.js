@@ -1,7 +1,10 @@
 import { useState } from 'react';
+import { Linking } from 'react-native';
+import { getBase } from '../api';
 import { useAuth } from '../auth';
 import { Alert, Button, ChoiceChips, Field, Screen, T } from '../components/ui';
 import { CountryPicker } from '../components/pickers';
+import { C } from '../theme';
 
 export default function Register() {
   const { signIn } = useAuth();
@@ -24,6 +27,12 @@ export default function Register() {
       <Field label="Password" value={f.password} onChangeText={set('password')} secureTextEntry placeholder="At least 8 characters" />
       {err ? <Alert level="error" text={err} /> : null}
       <Button title="Create account" onPress={submit} loading={busy} />
+      <T small muted style={{ textAlign: 'center' }}>
+        {'By creating an account you agree to the '}
+        <T small style={{ color: C.primary }} onPress={() => Linking.openURL(`${getBase()}/terms`)}>Terms of Use</T>
+        {' and '}
+        <T small style={{ color: C.primary }} onPress={() => Linking.openURL(`${getBase()}/privacy`)}>Privacy Policy</T>.
+      </T>
       <T small muted style={{ textAlign: 'center' }}>{"We'll email you a code to confirm your address. Then add photos: profiles with photos get far more matches."}</T>
     </Screen>
   );

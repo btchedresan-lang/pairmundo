@@ -1,8 +1,8 @@
 import { useCallback, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { Linking, Pressable, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useAuth } from '../auth';
-import { api, setToken } from '../api';
+import { api, getBase, setToken } from '../api';
 import { Alert, Button, Card, Field, Photo, Screen, T } from '../components/ui';
 import { confirmAsync } from '../components/dialogs';
 import { C } from '../theme';
@@ -54,6 +54,12 @@ export default function Account() {
             <Button small kind="ghost" title="Unblock" onPress={() => unblock(u)} />
           </View>
         )) : <T muted>You haven&apos;t blocked anyone.</T>}
+      </Card>
+
+      <Card>
+        <T h2>Legal</T>
+        <Pressable onPress={() => Linking.openURL(`${getBase()}/privacy`)}><T style={{ color: C.primary }}>Privacy Policy ↗</T></Pressable>
+        <Pressable onPress={() => Linking.openURL(`${getBase()}/terms`)}><T style={{ color: C.primary }}>Terms of Use ↗</T></Pressable>
       </Card>
 
       <Card>
