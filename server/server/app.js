@@ -14,6 +14,8 @@ const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'public')
 const MAX_PHOTOS = 6;
 const PHOTO_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
+/** Emails are matched without case or spaces, so "Me@x.com " and "me@x.com" are the same account. */
+export const normEmail = (e) => String(e || '').trim().toLowerCase();
 
 const AP_JSON = ['languages', 'preferred_countries', 'age_groups', 'skills'];
 const FAM_JSON = ['children', 'languages', 'required_languages', 'preferred_nationalities'];
@@ -214,12 +216,13 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   const authLimit = rateLimit({ windowMs: 60000, max: Number(process.env.AUTH_RATE_LIMIT || 30) });
 
   api.post('/auth/register', authLimit, wrap((req, res) => {
-    const { email, password, role, name, country, city } = req.body || {};
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email || '')) throw bad('Enter a valid email.');
+    const { password, role, name, country, city } = req.body || {};
+    const email = normEmail(req.body?.email);
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw bad('Enter a valid email.');
     if (!password || String(password).length < 8) throw bad('Password must be at least 8 characters.');
     if (!['aupair', 'family'].includes(role)) throw bad('Choose au pair or host family.');
     if (!str(name)) throw bad('Name is required.');
-    if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(email)) throw new HttpError(409, 'An account with this email already exists.');
+    if (db.prepare('SELECT 1 FROM users WHERE lower(trim(email)) = ?').get(email)) throw new HttpError(409, 'An account with this email already exists.');
     const user = tx(db, () => {
       const r = db.prepare('INSERT INTO users (email, password_hash, role, name, country, city) VALUES (?,?,?,?,?,?)')
         .run(email, hashPassword(String(password)), role, str(name, 120), str(country, 2)?.toUpperCase() ?? null, str(city, 120));
@@ -236,7 +239,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
 
   api.post('/auth/login', authLimit, wrap((req, res) => {
     const { email, password } = req.body || {};
-    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(String(email || ''));
+    const user = db.prepare('SELECT * FROM users WHERE lower(trim(email)) = ?').get(normEmail(email));
     if (!user || !verifyPassword(String(password || ''), user.password_hash)) throw new HttpError(401, 'Wrong email or password.');
     if (user.suspended) throw forbidden('This account is suspended. Contact support.');
     const s = createSession(db, user.id);
@@ -258,7 +261,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
 
   // Always answers the same way, so nobody can use it to find out which emails have accounts.
   api.post('/auth/forgot', authLimit, wrap((req) => {
-    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(String(req.body?.email || '').trim());
+    const user = db.prepare('SELECT * FROM users WHERE lower(trim(email)) = ?').get(normEmail(req.body?.email));
     if (user && !user.suspended) issueCode(user, 'reset');
     return { ok: true };
   }));
@@ -266,7 +269,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   api.post('/auth/reset', authLimit, wrap((req, res) => {
     const { email, code, password } = req.body || {};
     if (!password || String(password).length < 8) throw bad('Password must be at least 8 characters.');
-    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(String(email || '').trim());
+    const user = db.prepare('SELECT * FROM users WHERE lower(trim(email)) = ?').get(normEmail(email));
     if (!user || user.suspended) throw bad('That code has expired. Ask for a new one.');
     useCode(user.id, 'reset', code);
     tx(db, () => {

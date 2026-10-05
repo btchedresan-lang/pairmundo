@@ -332,4 +332,11 @@ test('push notifications: matches and messages reach the phone; logout and unins
   await call(login.body.token, 'POST', `/conversations/${m.body.conversation_id}/messages`, { body: 'Two' });
   await wait();
   assert.equal(pushed.length, n);
+
+test('sign-in ignores capital letters and spaces in the email', async () => {
+  await register('casey@test.io', 'aupair', 'PE');
+  const login = await call(null, 'POST', '/auth/login', { email: ' Casey@Test.io ', password: 'password123' });
+  assert.equal(login.status, 200, JSON.stringify(login.body));
+  const again = await call(null, 'POST', '/auth/register', { email: 'CASEY@test.io', password: 'password123', role: 'aupair', name: 'Dup', country: 'PE' });
+  assert.equal(again.status, 409);
 });
