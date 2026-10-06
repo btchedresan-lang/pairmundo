@@ -124,7 +124,7 @@ th { color: var(--muted); font-weight: 600; font-size: .8rem; text-transform: up
 .empty { text-align: center; color: var(--muted); padding: 32px 12px; }
 
 /* ---------- swipe experience ---------- */
-:root { --like: #2fb380; --nope: #ff5864; --super: #3fa9f5; --hot: linear-gradient(135deg, #fd267a, #ff6036); }
+:root { --like: #2fb380; --nope: #ff5864; --super: #3fa9f5; --hot: linear-gradient(135deg, #3b5bdb, #5c7cfa); }
 .center { text-align: center; } .center-row { justify-content: center; margin: 12px 0; }
 .ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nav-icon { margin-right: 4px; }
