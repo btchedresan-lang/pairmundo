@@ -8,6 +8,7 @@ import { scoreMatch, checkCompliance, ageOn } from './matching.js';
 import { PROGRAMS, REVIEW_CRITERIA, PLACEMENT_TASKS } from './programs.js';
 import { createMailer, codeEmail } from './mailer.js';
 import { pickLang, t as translate } from './i18n.js';
+import { createIdentity, verifyWebhook } from './identity.js';
 import { createPusher, isPushToken } from './push.js';
 import { createStorage } from './storage.js';
 
@@ -53,7 +54,7 @@ export function seedPrograms(db) {
   }
 }
 
-export function createApp(db, { mailer = createMailer(), pusher = createPusher(), storage } = {}) {
+export function createApp(db, { mailer = createMailer(), pusher = createPusher(), storage, identity = createIdentity() } = {}) {
   const UPLOAD_DIR = process.env.UPLOAD_DIR || 'data/uploads';
   storage ??= createStorage({ dir: UPLOAD_DIR });
   seedPrograms(db);
@@ -61,6 +62,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   app.disable('x-powered-by');
   // Behind a hosting proxy (Render, Railway, ...) this makes req.ip the visitor's address, so rate limits apply per person.
   if (process.env.NODE_ENV === 'production' || process.env.TRUST_PROXY) app.set('trust proxy', 1);
+  // Stripe signs the exact bytes it sends, so this route reads the raw body before the JSON parser below.
+  app.post('/api/stripe/webhook', express.raw({ type: '*/*', limit: '200kb' }), (req, res) => stripeWebhook(req, res));
   app.use('/api/me/photos', express.json({ limit: '8mb' }));
   app.use(express.json({ limit: '200kb' }));
   // The mobile app talks to this API with a Bearer token. Native apps ignore CORS; this lets its web preview work too.
@@ -543,6 +546,49 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   }));
 
   // ---------- push notifications ----------
+  // ID check (Stripe Identity). Each check costs money, so a person can start only a few a day.
+  const ID_CHECKS_PER_DAY = 3;
+  const idCheckDone = (userId, sessionId, status, error = null) => {
+    db.prepare("UPDATE id_checks SET status = ?, error = ?, updated_at = datetime('now') WHERE session_id = ? AND user_id = ?").run(status, error, sessionId, userId);
+    const u = getUser(userId);
+    if (status === 'verified' && u && !u.id_verified) {
+      db.prepare('UPDATE users SET id_verified = 1 WHERE id = ?').run(userId);
+      notify(userId, 'verification', 'Your ID is verified. Your profile now shows the ID verified badge.', {}, '#/profile');
+    }
+  };
+  const latestIdCheck = (userId) => db.prepare('SELECT * FROM id_checks WHERE user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1').get(userId);
+  const idCheckView = (u, c) => ({ available: !!identity, verified: !!u.id_verified, status: u.id_verified ? 'verified' : c?.status || 'none', error: c?.error || null });
+
+  api.get('/me/id-check', requireAuth, wrap(async (req) => {
+    let c = latestIdCheck(req.user.id);
+    // Ask Stripe for news in case its webhook hasn't arrived (or isn't set up).
+    if (identity && c && ['requires_input', 'processing'].includes(c.status) && !req.user.id_verified) {
+      try { const s = await identity.status(c.session_id); if (s.status !== c.status || s.error !== c.error) idCheckDone(req.user.id, c.session_id, s.status, s.error); } catch (e) { console.error('ID check status failed:', e.message); }
+      c = latestIdCheck(req.user.id);
+    }
+    return idCheckView(getUser(req.user.id), c);
+  }));
+  api.post('/me/id-check', requireAuth, wrap(async (req) => {
+    if (!identity) throw new HttpError(503, "ID check isn't available yet.");
+    if (req.user.id_verified) throw new HttpError(409, 'Your ID is already verified.');
+    const today = db.prepare("SELECT COUNT(*) n FROM id_checks WHERE user_id = ? AND created_at > datetime('now', '-1 day')").get(req.user.id).n;
+    if (today >= ID_CHECKS_PER_DAY) throw new HttpError(429, 'You have started several ID checks today. Try again tomorrow.');
+    const base = (process.env.PUBLIC_URL || 'https://pairmundo.com').replace(/\/$/, '');
+    const s = await identity.start(req.user, `${base}/id-check-done`);
+    db.prepare('INSERT INTO id_checks (session_id, user_id, status) VALUES (?,?,?)').run(s.id, req.user.id, s.status || 'requires_input');
+    return { url: s.url };
+  }));
+  const stripeWebhook = (req, res) => {
+    const event = verifyWebhook(Buffer.isBuffer(req.body) ? req.body.toString('utf8') : '', req.get('stripe-signature'), process.env.STRIPE_WEBHOOK_SECRET);
+    if (!event) return res.status(400).json({ error: 'Bad signature.' });
+    const s = event.data?.object;
+    if (String(event.type).startsWith('identity.verification_session.') && s?.id) {
+      const row = db.prepare('SELECT user_id FROM id_checks WHERE session_id = ?').get(s.id);
+      if (row) idCheckDone(row.user_id, s.id, s.status, s.last_error?.code || null);
+    }
+    res.json({ received: true });
+  };
+
   api.post('/me/push-token', requireAuth, wrap((req) => {
     const token = String(req.body?.token || '');
     if (!isPushToken(token)) throw bad('That is not a push token.');
@@ -962,7 +1008,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   app.get(/^\/(?!api).*/, (_req, res) => res.sendFile(join(PUBLIC_DIR, 'index.html')));
 
   app.use((err, _req, res, _next) => {
-    if (err.status && err.status < 500) return res.status(err.status).json({ error: err.message, ...(err.code ? { code: err.code } : {}) });
+    if (err instanceof HttpError || (err.status && err.status < 500)) return res.status(err.status).json({ error: err.message, ...(err.code ? { code: err.code } : {}) });
     if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'Invalid JSON.' });
     console.error(err);
     res.status(500).json({ error: 'Something went wrong.' });

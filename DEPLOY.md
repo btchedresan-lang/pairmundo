@@ -38,6 +38,15 @@ Until it is set up, photos are kept on the Render disk, which is fine for a star
 
 New photos then go to R2. Photos uploaded before stay on the disk and keep working.
 
+## ID check
+
+People can verify their passport or ID card with a selfie through Stripe Identity (about $1.50 per check). It stays off until these are set in Render → Environment:
+
+- `STRIPE_SECRET_KEY`: from Stripe → Developers → API keys (the secret key, `sk_live_...`; use `sk_test_...` to try it without real checks).
+- `STRIPE_WEBHOOK_SECRET`: in Stripe → Developers → Webhooks, add the endpoint `https://pairmundo.com/api/stripe/webhook` with the events `identity.verification_session.verified`, `identity.verification_session.requires_input` and `identity.verification_session.canceled`, then copy its signing secret (`whsec_...`). Without it, the app still picks up the result when the person reopens Account and safety.
+
+Stripe asks you to activate Identity once (Stripe → Identity) before live checks work.
+
 ## Pointing the phone app at the live server
 
 Build the app with `EXPO_PUBLIC_API_URL=https://your-render-address` (or `https://api.pairmundo.com` once the domain is set up). See `mobile/README.md`.

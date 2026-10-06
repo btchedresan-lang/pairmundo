@@ -374,3 +374,61 @@ test('emails and notifications use the language of each person’s app', async (
   await call(es.token, 'POST', '/swipe', { target_id: en.id, direction: 'like' });
   assert.ok((await texts(en.token)).includes("It's a match! Lucía liked you back."));
 });
+
+test('ID check: off without Stripe; with Stripe it gives a link and the badge once verified', async () => {
+  // The shared test app has no Stripe key.
+  const plain = await register('noid@test.io', 'aupair', 'PH');
+  assert.equal((await call(plain.token, 'GET', '/me/id-check')).body.available, false);
+  assert.equal((await call(plain.token, 'POST', '/me/id-check')).status, 503);
+
+  // A second app with a stand-in for Stripe.
+  const sessions = new Map();
+  const identity = {
+    async start(user, returnUrl) { const id = `vs_${sessions.size + 1}`; sessions.set(id, 'requires_input'); return { id, url: `https://verify.stripe.test/${id}?return=${encodeURIComponent(returnUrl)}`, status: 'requires_input' }; },
+    async status(id) { return { status: sessions.get(id), error: null }; },
+  };
+  const { createHmac } = await import('node:crypto');
+  process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test';
+  const app2 = createApp(openDb(':memory:'), { mailer: async (m) => { outbox.push(m); }, pusher: async (m) => m.map(() => ({ status: 'ok' })), identity });
+  const srv = await new Promise((r) => { const s = app2.listen(0, () => r(s)); });
+  const b2 = `http://127.0.0.1:${srv.address().port}/api`;
+  const call2 = async (token, method, path) => {
+    const res = await fetch(b2 + path, { method, headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    return { status: res.status, body: await res.json() };
+  };
+  try {
+    const reg = await (await fetch(`${b2}/auth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'id@test.io', password: 'password123', role: 'aupair', name: 'Ida', country: 'PH' }) })).json();
+    let r = await call2(reg.token, 'GET', '/me/id-check');
+    assert.deepEqual(r.body, { available: true, verified: false, status: 'none', error: null });
+    r = await call2(reg.token, 'POST', '/me/id-check');
+    assert.equal(r.status, 200);
+    assert.match(r.body.url, /^https:\/\/verify\.stripe\.test\/vs_1\?return=https%3A%2F%2Fpairmundo\.com%2Fid-check-done$/);
+    assert.equal((await call2(reg.token, 'GET', '/me/id-check')).body.status, 'requires_input');
+
+    // Stripe finishes; the app asks again and the badge appears without waiting for the webhook.
+    sessions.set('vs_1', 'verified');
+    r = await call2(reg.token, 'GET', '/me/id-check');
+    assert.equal(r.body.verified, true);
+    assert.equal((await call2(reg.token, 'GET', `/users/${reg.user.id}`)).body.user.verification.id, true);
+    assert.equal((await call2(reg.token, 'POST', '/me/id-check')).status, 409);
+
+    // Webhooks need Stripe's signature; a signed one updates the check.
+    const reg2 = await (await fetch(`${b2}/auth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'id2@test.io', password: 'password123', role: 'family', name: 'Fam', country: 'US' }) })).json();
+    await call2(reg2.token, 'POST', '/me/id-check');
+    const payload = JSON.stringify({ type: 'identity.verification_session.verified', data: { object: { id: 'vs_2', status: 'verified' } } });
+    const hook = (sig) => fetch(`${b2}/stripe/webhook`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Stripe-Signature': sig }, body: payload });
+    const t = Math.floor(Date.now() / 1000);
+    assert.equal((await hook(`t=${t},v1=${'0'.repeat(64)}`)).status, 400);
+    assert.equal((await hook(`t=${t},v1=${createHmac('sha256', 'whsec_test').update(`${t}.${payload}`).digest('hex')}`)).status, 200);
+    const me2 = await (await fetch(`${b2}/me`, { headers: { Authorization: `Bearer ${reg2.token}` } })).json();
+    assert.equal(me2.user.verification.id, true);
+
+    // Each check costs money, so only a few a day.
+    const reg3 = await (await fetch(`${b2}/auth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'id3@test.io', password: 'password123', role: 'aupair', name: 'Tri', country: 'PH' }) })).json();
+    for (let i = 0; i < 3; i++) assert.equal((await call2(reg3.token, 'POST', '/me/id-check')).status, 200);
+    assert.equal((await call2(reg3.token, 'POST', '/me/id-check')).status, 429);
+  } finally { srv.close(); delete process.env.STRIPE_WEBHOOK_SECRET; }
+});

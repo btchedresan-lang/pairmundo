@@ -165,6 +165,7 @@ export default function MyProfile() {
       {msg ? <Alert level={msg.level} text={msg.text} /> : null}
       <Button title={tr('Save profile')} onPress={save} loading={busy} />
       <Button title={`🛂 ${tr('Country au pair rules')}`} kind="ghost" onPress={() => router.push('/programs')} />
+      {!me.user.verification?.id ? <Button title={`🪪 ${tr('Verify my ID')}`} kind="secondary" onPress={() => router.push('/account')} /> : null}
       <Button title={`🔒 ${tr('Account and safety')}`} kind="ghost" onPress={() => router.push('/account')} />
       <Button title={tr('Sign out')} kind="ghost" onPress={signOut} />
       <T small muted style={{ textAlign: 'center' }}>{brand.name} · {tr('connected to {server}', { server: getBase() })}</T>

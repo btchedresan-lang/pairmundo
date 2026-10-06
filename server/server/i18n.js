@@ -64,6 +64,9 @@ const DICT = {
     de: 'Dein Code zum Zurücksetzen des Passworts ist {code}. Gib ihn in der App zusammen mit deinem neuen Passwort ein. Er läuft in 30 Minuten ab.\n\nWenn du das nicht angefordert hast, kannst du diese E-Mail ignorieren; dein Passwort bleibt unverändert.',
     pt: 'Seu código para redefinir a senha é {code}. Digite-o no app com sua nova senha. Ele expira em 30 minutos.\n\nSe você não pediu para redefinir a senha, pode ignorar este e-mail; sua senha continua a mesma.' },
 
+  'Your ID is verified. Your profile now shows the ID verified badge.': {
+    es: 'Tu identidad está verificada. Tu perfil ya muestra la insignia de ID verificado.', fr: "Votre identité est vérifiée. Votre profil affiche maintenant le badge Identité vérifiée.",
+    de: 'Deine Identität ist bestätigt. Dein Profil zeigt jetzt das Abzeichen „Identität verifiziert“.', pt: 'Sua identidade foi verificada. Seu perfil agora mostra o selo de identidade verificada.' },
   // Match reasons and warnings (matching.js)
   'Wants to go to {country}': { es: 'Quiere ir a {country}', fr: 'Destination souhaitée : {country}', de: 'Möchte nach {country}', pt: 'Quer ir para {country}' },
   "Destination is not in the au pair's preferred countries": {

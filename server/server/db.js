@@ -184,6 +184,17 @@ CREATE TABLE IF NOT EXISTS reports (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Stripe Identity sessions for the ID check. Stripe keeps the documents; we keep the outcome.
+CREATE TABLE IF NOT EXISTS id_checks (
+  session_id TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status TEXT NOT NULL,                           -- requires_input | processing | verified | canceled
+  error TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS id_checks_user ON id_checks(user_id, created_at);
+
 CREATE TABLE IF NOT EXISTS push_tokens (
   token TEXT PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

@@ -43,3 +43,10 @@ services:
         sync: false
       - key: S3_PUBLIC_URL
         sync: false
+      # Optional ID check (Stripe Identity). Leave empty to keep it switched off.
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: PUBLIC_URL
+        value: https://pairmundo.com

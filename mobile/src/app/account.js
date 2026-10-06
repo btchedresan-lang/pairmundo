@@ -1,5 +1,5 @@
-import { useCallback, useState } from 'react';
-import { Linking, Pressable, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { AppState, Linking, Pressable, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useAuth } from '../auth';
 import { api, getBase, setToken } from '../api';
@@ -9,16 +9,36 @@ import { confirmAsync } from '../components/dialogs';
 import { C } from '../theme';
 
 export default function Account() {
-  const { me, setMe } = useAuth();
+  const { me, setMe, refresh } = useAuth();
   const { choice, setLanguage } = useLanguage();
   const [blocked, setBlocked] = useState(null);
   const [password, setPassword] = useState('');
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
 
+  const [idCheck, setIdCheck] = useState(null);
+  const [idBusy, setIdBusy] = useState(false);
+  const [idErr, setIdErr] = useState(null);
+
+  const loadIdCheck = useCallback(() => api('/me/id-check').then((d) => {
+    setIdCheck(d);
+    if (d.verified) refresh().catch(() => {});
+  }).catch(() => setIdCheck({ available: false })), [refresh]);
   useFocusEffect(useCallback(() => {
     api('/blocks').then((d) => setBlocked(d.blocked)).catch(() => setBlocked([]));
-  }, []));
+    loadIdCheck();
+  }, [loadIdCheck]));
+  // Coming back from Stripe's page in the browser: ask for the result.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (s) => { if (s === 'active') loadIdCheck(); });
+    return () => sub.remove();
+  }, [loadIdCheck]);
+
+  const startIdCheck = async () => {
+    setIdErr(null); setIdBusy(true);
+    try { const { url } = await api('/me/id-check', { method: 'POST' }); await Linking.openURL(url); }
+    catch (e) { setIdErr(e.message); } finally { setIdBusy(false); }
+  };
 
   const unblock = async (u) => {
     if (!(await confirmAsync(tr('Unblock {name}?', { name: u.name }), tr('You will be able to see each other again.'), tr('Unblock')))) return;
@@ -53,6 +73,20 @@ export default function Account() {
         {me.user.email_verified ? <T small style={{ color: C.ok }}>✓ {tr('Confirmed')}</T> : (
           <Pressable onPress={() => router.push('/verify-email')}><Alert level="warning" text={tr('Not confirmed yet. Tap to enter your code.')} /></Pressable>
         )}
+      </Card>
+
+      <Card>
+        <T h2>{tr('ID check')}</T>
+        {idCheck == null ? <T muted>{tr('Loading…')}</T>
+          : idCheck.verified ? <T style={{ color: C.ok }}>✔ {tr('ID verified')}</T>
+            : !idCheck.available ? <T small muted>{tr('ID checks are coming soon.')}</T> : <>
+              <T small muted>{tr('Scan your passport or ID card and take a selfie. Your profile then shows the ID verified badge, which helps families and au pairs trust you.')}</T>
+              {idCheck.status === 'processing' ? <Alert level="info" text={tr("We're checking your ID. This usually takes a few minutes.")} /> : null}
+              {idCheck.status === 'requires_input' && idCheck.error ? <Alert level="warning" text={tr("Your last check didn't go through. Try again with a clear, well-lit photo of your document.")} /> : null}
+              {idErr ? <Alert level="error" text={idErr} /> : null}
+              {idCheck.status !== 'processing' ? <Button title={`🪪 ${tr('Verify my ID')}`} onPress={startIdCheck} loading={idBusy} /> : null}
+              <T small muted>{tr('Stripe runs the check and keeps your document. PairMundo only learns whether it passed.')}</T>
+            </>}
       </Card>
 
       <Card>
