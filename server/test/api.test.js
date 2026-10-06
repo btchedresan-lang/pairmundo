@@ -5,14 +5,15 @@ import { createApp } from '../server/app.js';
 import { scoreMatch, checkCompliance } from '../server/matching.js';
 import { PROGRAMS } from '../server/programs.js';
 
-let server; let base;
+let server; let base; let testDb;
 const outbox = [];
 const pushed = []; let pushReply = null;
 const lastCode = (to) => [...outbox].reverse().find((m) => m.to === to)?.text.match(/\b(\d{6})\b/)[1];
 before(async () => {
   process.env.AUTH_RATE_LIMIT = '1000';
   process.env.UPLOAD_DIR = (await import('node:fs')).mkdtempSync((await import('node:os')).tmpdir() + '/aupair-test-');
-  const app = createApp(openDb(':memory:'), { mailer: async (m) => { outbox.push(m); }, pusher: async (msgs) => { pushed.push(...msgs); return pushReply ? msgs.map(pushReply) : msgs.map(() => ({ status: 'ok' })); } });
+  testDb = openDb(':memory:');
+  const app = createApp(testDb, { mailer: async (m) => { outbox.push(m); }, pusher: async (msgs) => { pushed.push(...msgs); return pushReply ? msgs.map(pushReply) : msgs.map(() => ({ status: 'ok' })); } });
   await new Promise((r) => { server = app.listen(0, r); });
   base = `http://127.0.0.1:${server.address().port}/api`;
 });
@@ -431,4 +432,49 @@ test('ID check: off without Stripe; with Stripe it gives a link and the badge on
     for (let i = 0; i < 3; i++) assert.equal((await call2(reg3.token, 'POST', '/me/id-check')).status, 200);
     assert.equal((await call2(reg3.token, 'POST', '/me/id-check')).status, 429);
   } finally { srv.close(); delete process.env.STRIPE_WEBHOOK_SECRET; }
+});
+
+test('Family Pass: when switched on, families need it to message and to see who liked them', async () => {
+  const fam = await register('passfam@test.io', 'family', 'DE', 'Familie Pass');
+  const ap = await register('passap@test.io', 'aupair', 'BR', 'Bia');
+  const { hashPassword } = await import('../server/auth.js');
+  testDb.prepare("INSERT INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
+  await call(ap.token, 'POST', '/swipe', { target_id: fam.id, direction: 'like' });
+
+  // Off by default: nothing changes.
+  assert.equal((await call(fam.token, 'GET', '/me')).body.pass.required, false);
+  assert.equal((await call(fam.token, 'GET', '/likes')).body.likes.length, 1);
+
+  process.env.FAMILY_PASS = 'on';
+  try {
+    let r = await call(fam.token, 'GET', '/likes');
+    assert.deepEqual(r.body, { likes: [], locked: true, count: 1 });
+    assert.equal((await call(fam.token, 'GET', `/users/${ap.id}`)).body.request, null, 'who liked you stays hidden');
+    assert.equal((await call(fam.token, 'GET', '/requests')).body.incoming.length, 0);
+    // Au pairs are free.
+    assert.equal((await call(ap.token, 'GET', '/me')).body.pass.required, false);
+
+    // Matching still works; messaging needs the pass, for the family only.
+    const m = (await call(fam.token, 'POST', '/swipe', { target_id: ap.id, direction: 'like' })).body;
+    assert.ok(m.matched);
+    assert.equal((await call(ap.token, 'POST', `/conversations/${m.conversation_id}/messages`, { body: 'Olá!' })).status, 201);
+    r = await call(fam.token, 'POST', `/conversations/${m.conversation_id}/messages`, { body: 'Hallo!' });
+    assert.equal(r.status, 402);
+    assert.equal(r.body.code, 'pass_required');
+
+    // A pass (here from an admin) unlocks it for 90 days, and a second one adds on.
+    {
+      r = await call(admin, 'POST', `/admin/users/${fam.id}`, { grant_pass_days: 90 });
+      assert.equal(r.status, 200, JSON.stringify(r.body));
+      let pass = (await call(fam.token, 'GET', '/family-pass')).body;
+      assert.equal(pass.active, true);
+      const end1 = new Date(pass.ends_at.replace(' ', 'T') + 'Z');
+      assert.ok(Math.abs(end1 - Date.now() - 90 * 86400000) < 120000);
+      assert.equal((await call(fam.token, 'POST', `/conversations/${m.conversation_id}/messages`, { body: 'Hallo!' })).status, 201);
+      await call(admin, 'POST', `/admin/users/${fam.id}`, { grant_pass_days: 90 });
+      pass = (await call(fam.token, 'GET', '/family-pass')).body;
+      assert.ok(new Date(pass.ends_at.replace(' ', 'T') + 'Z') - end1 > 89 * 86400000);
+    }
+  } finally { delete process.env.FAMILY_PASS; }
 });

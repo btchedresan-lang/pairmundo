@@ -6,7 +6,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { api, getBase } from '../../api';
 import { useAuth } from '../../auth';
-import { AGE_GROUPS, cname, langName, SKILLS } from '../../data';
+import { AGE_GROUPS, cname, fmtDate, langName, SKILLS } from '../../data';
 import { tr, trMap } from '../../i18n';
 import { Alert, Button, Card, ChoiceChips, Field, Photo, Screen, T } from '../../components/ui';
 import { CountryPicker } from '../../components/pickers';
@@ -161,6 +161,19 @@ export default function MyProfile() {
           <ChoiceChips label={tr('Au pair must speak')} options={labels(TOP_LANGS, langName)} value={f.required_languages} onChange={set('required_languages')} multi />
         </Card>
       )}
+
+      {me.pass?.required || me.pass?.active ? (
+        <Pressable onPress={() => router.push('/family-pass')}>
+          <Card style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <Text style={{ fontSize: 28 }}>🏡</Text>
+            <View style={{ flex: 1 }}>
+              <T bold>Family Pass</T>
+              <T small muted>{me.pass.active ? tr('Active until {date}', { date: fmtDate(me.pass.ends_at) }) : tr('Message au pairs and see who liked you')}</T>
+            </View>
+            <T style={{ color: C.primary }}>→</T>
+          </Card>
+        </Pressable>
+      ) : null}
 
       {msg ? <Alert level={msg.level} text={msg.text} /> : null}
       <Button title={tr('Save profile')} onPress={save} loading={busy} />

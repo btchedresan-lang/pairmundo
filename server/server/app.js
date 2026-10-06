@@ -29,6 +29,9 @@ const REVIEW_REVEAL_DAYS = 14;
 const CODE_MINUTES = 30;
 const CODE_MAX_ATTEMPTS = 5;
 
+/** The Family Pass: what families buy to message au pairs. The price is shown in the app; the stores charge their own listed price. */
+export const FAMILY_PASS = { days: 90, price: '€79' };
+
 class HttpError extends Error {
   constructor(status, message, code) { super(message); this.status = status; this.code = code; }
 }
@@ -310,6 +313,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     return {
       user: { ...publicUser(u), email: u.email, email_verified: !!u.email_verified },
       profile: getProfile(u),
+      pass: passView(u),
       rating: ratingSummary(u.id),
       counts: {
         notifications: db.prepare('SELECT COUNT(*) n FROM notifications WHERE user_id = ? AND read = 0').get(u.id).n,
@@ -393,7 +397,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       reviews,
       placements_completed: db.prepare(`SELECT COUNT(*) n FROM placements WHERE status = 'completed' AND (aupair_id = ? OR family_id = ?)`).get(u.id, u.id).n,
       match,
-      request: req_ || null,
+      // Who liked you is part of the Family Pass.
+      request: req_ && !(req_.status === 'pending' && req_.from_user === u.id && needsPass(me)) ? req_ : null,
       favorite: !!db.prepare('SELECT 1 FROM favorites WHERE user_id = ? AND target_id = ?').get(me.id, u.id),
       blocked: iBlocked,
     };
@@ -428,6 +433,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   // ---------- search & matching ----------
   const findCandidates = (me, q, discover = false) => {
     const myProfile = getProfile(me);
+    const lockLikes = needsPass(me);
     const targetRole = me.role === 'family' ? 'aupair' : 'family';
     const table = targetRole === 'aupair' ? 'aupair_profiles' : 'family_profiles';
     const where = ['u.role = ?', 'u.suspended = 0', 'p.visible = 1', notBlocked('u.id')];
@@ -453,7 +459,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
         : [{ user: u, profile }, { user: me, profile: myProfile }];
       const match = scoreMatch(ap, fam, getProgram(fam.user.country), ratingSummary(ap.user.id), me.lang);
       const likesYou = !!db.prepare("SELECT 1 FROM match_requests WHERE from_user = ? AND to_user = ? AND status = 'pending'").get(u.id, me.id);
-      return { user: publicUser(u), profile, rating, match, likes_you: likesYou };
+      return { user: publicUser(u), profile, rating, match, likes_you: likesYou && !lockLikes };
     });
 
     if (q.language) {
@@ -533,6 +539,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const me = req.user;
     const rows = db.prepare(`SELECT r.id request_id, r.message, r.created_at, u.* FROM match_requests r JOIN users u ON u.id = r.from_user
         WHERE r.to_user = ? AND r.status = 'pending' AND u.suspended = 0 AND ${notBlocked('u.id')} ORDER BY r.created_at DESC`).all(me.id, me.id, me.id);
+    // Without the Family Pass, a family sees how many people liked them, but not who.
+    if (needsPass(me)) return { likes: [], locked: true, count: rows.length };
     const myProfile = getProfile(me);
     return {
       likes: rows.map((u) => {
@@ -546,6 +554,28 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   }));
 
   // ---------- push notifications ----------
+  // Family Pass: families pay to message au pairs and to see who liked them; au pairs are always free.
+  // It only applies with FAMILY_PASS=on, so nobody is locked out before payments are set up.
+  const passRequired = () => process.env.FAMILY_PASS === 'on';
+  const activePass = (userId) => db.prepare("SELECT * FROM passes WHERE user_id = ? AND ends_at > datetime('now') ORDER BY ends_at DESC LIMIT 1").get(userId);
+  const needsPass = (u) => passRequired() && u.role === 'family' && !activePass(u.id);
+  const passView = (u) => {
+    const p = activePass(u.id);
+    return { required: passRequired() && u.role === 'family', active: !!p, ends_at: p?.ends_at ?? null, days: FAMILY_PASS.days, price: FAMILY_PASS.price };
+  };
+  /** Adds a pass, starting when the current one ends. A purchase already counted (same source and ref) is ignored. */
+  const grantPass = (userId, source, ref = null, days = FAMILY_PASS.days) => {
+    if (ref && db.prepare('SELECT 1 FROM passes WHERE source = ? AND ref = ?').get(source, ref)) return false;
+    const start = activePass(userId)?.ends_at ?? db.prepare("SELECT datetime('now') d").get().d;
+    db.prepare("INSERT INTO passes (user_id, source, ref, starts_at, ends_at) VALUES (?,?,?,?, datetime(?, ?))").run(userId, source, ref, start, start, `+${Number(days)} days`);
+    notify(userId, 'pass', 'Your Family Pass is active. You can now message au pairs and see who liked you.', {}, '#/likes');
+    return true;
+  };
+  const mustHavePass = (u) => {
+    if (needsPass(u)) throw new HttpError(402, 'Get the Family Pass to message au pairs.', 'pass_required');
+  };
+  api.get('/family-pass', requireAuth, wrap((req) => passView(req.user)));
+
   // ID check (Stripe Identity). Each check costs money, so a person can start only a few a day.
   const ID_CHECKS_PER_DAY = 3;
   const idCheckDone = (userId, sessionId, status, error = null) => {
@@ -669,7 +699,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
         FROM match_requests r JOIN users fu ON fu.id = r.from_user JOIN users tu ON tu.id = r.to_user
         WHERE r.from_user = ? OR r.to_user = ? ORDER BY r.created_at DESC`).all(req.user.id, req.user.id);
     return {
-      incoming: rows.filter((r) => r.to_user === req.user.id),
+      // Pending likes stay hidden without the Family Pass, as on the Likes screen.
+      incoming: rows.filter((r) => r.to_user === req.user.id && !(r.status === 'pending' && needsPass(req.user))),
       outgoing: rows.filter((r) => r.from_user === req.user.id),
     };
   }));
@@ -739,6 +770,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   api.post('/conversations/:id/messages', requireAuth, wrap((req, res) => {
     const c = myConversation(req);
     mustBeVerified(req.user);
+    mustHavePass(req.user);
     const body = str(req.body?.body, 4000);
     if (!body) throw bad('Message is empty.');
     const r = db.prepare('INSERT INTO messages (conversation_id, sender_id, body) VALUES (?,?,?)').run(c.id, req.user.id, body);
@@ -977,6 +1009,9 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (!u || u.role === 'admin') throw notFound();
     const map = { id_verified: 'id_verified', references_checked: 'references_checked', background_checked: 'background_checked', suspended: 'suspended' };
     const sets = Object.keys(map).filter((k) => k in (req.body || {}));
+    // An admin can give a family a free pass (for example to test, or as a goodwill gesture).
+    const passDays = Number(req.body?.grant_pass_days);
+    if (passDays > 0 && passDays <= 400 && u.role === 'family') { grantPass(u.id, 'admin', null, passDays); if (!sets.length) return { ...publicUser(getUser(u.id)), pass: passView(u) }; }
     if (!sets.length) throw bad('Nothing to change.');
     db.prepare(`UPDATE users SET ${sets.map((k) => `${map[k]} = ?`).join(', ')} WHERE id = ?`).run(...sets.map((k) => (req.body[k] ? 1 : 0)), u.id);
     if (req.body.suspended) db.prepare('DELETE FROM sessions WHERE user_id = ?').run(u.id);

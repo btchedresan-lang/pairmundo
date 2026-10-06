@@ -48,6 +48,7 @@ function RootStack() {
         <Stack.Screen name="placement/[id]" options={{ title: tr('Placement') }} />
         <Stack.Screen name="new-placement/[id]" options={{ title: tr('Propose placement'), presentation: 'modal' }} />
         <Stack.Screen name="verify-email" options={{ title: tr('Confirm email') }} />
+        <Stack.Screen name="family-pass" options={{ title: 'Family Pass', presentation: 'modal' }} />
         <Stack.Screen name="account" options={{ title: tr('Account and safety') }} />
       </Stack.Protected>
       <Stack.Screen name="programs/index" options={{ title: tr('Country programs') }} />

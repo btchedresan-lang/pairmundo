@@ -67,6 +67,9 @@ const DICT = {
   'Your ID is verified. Your profile now shows the ID verified badge.': {
     es: 'Tu identidad está verificada. Tu perfil ya muestra la insignia de ID verificado.', fr: "Votre identité est vérifiée. Votre profil affiche maintenant le badge Identité vérifiée.",
     de: 'Deine Identität ist bestätigt. Dein Profil zeigt jetzt das Abzeichen „Identität verifiziert“.', pt: 'Sua identidade foi verificada. Seu perfil agora mostra o selo de identidade verificada.' },
+  'Your Family Pass is active. You can now message au pairs and see who liked you.': {
+    es: 'Tu Family Pass está activo. Ya puedes escribir a au pairs y ver a quién le gustas.', fr: 'Votre Family Pass est actif. Vous pouvez maintenant écrire aux au pairs et voir qui vous a liké.',
+    de: 'Dein Family Pass ist aktiv. Du kannst jetzt Au-pairs schreiben und sehen, wer dich mag.', pt: 'Seu Family Pass está ativo. Agora você pode mandar mensagens para au pairs e ver quem curtiu você.' },
   // Match reasons and warnings (matching.js)
   'Wants to go to {country}': { es: 'Quiere ir a {country}', fr: 'Destination souhaitée : {country}', de: 'Möchte nach {country}', pt: 'Quer ir para {country}' },
   "Destination is not in the au pair's preferred countries": {

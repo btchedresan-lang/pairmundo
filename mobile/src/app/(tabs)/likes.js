@@ -5,17 +5,35 @@ import { router, useFocusEffect } from 'expo-router';
 import { api } from '../../api';
 import { country, flag } from '../../data';
 import { tr, trn } from '../../i18n';
-import { Alert, Button, Empty, Loading, Photo, T } from '../../components/ui';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Alert, Button, Empty, Loading, Photo, Screen, T } from '../../components/ui';
 import { Shade } from '../../components/SwipeDeck';
 import { C, useTheme } from '../../theme';
 
 export default function Likes() {
   const t = useTheme();
   const [likes, setLikes] = useState(null);
+  const [locked, setLocked] = useState(null); // { count } when the Family Pass is needed to see who
   const [error, setError] = useState(null);
-  const load = useCallback(() => api('/likes').then((d) => { setLikes(d.likes); setError(null); }).catch((e) => { setError(e.message); setLikes([]); }), []);
+  const load = useCallback(() => api('/likes').then((d) => { setLikes(d.likes); setLocked(d.locked ? { count: d.count } : null); setError(null); }).catch((e) => { setError(e.message); setLikes([]); }), []);
   useFocusEffect(useCallback(() => { load(); }, [load]));
   if (!likes) return <Loading />;
+  if (locked) {
+    return (
+      <Screen>
+        <T h2>{trn(locked.count, '{n} person likes you', '{n} people like you')}</T>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+          {Array.from({ length: Math.min(Math.max(locked.count, 2), 4) }, (_, i) => (
+            <LinearGradient key={i} colors={['#ffd6e2', '#ffe7d6']} style={{ width: '47%', aspectRatio: 3 / 4, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ fontSize: 40, opacity: 0.6 }}>{i < locked.count ? '💛' : '🔒'}</Text>
+            </LinearGradient>
+          ))}
+        </View>
+        <T muted>{tr('Get the Family Pass to see who they are and match with one tap.')}</T>
+        <Button title={tr('See who likes you')} onPress={() => router.push('/family-pass')} />
+      </Screen>
+    );
+  }
   return (
     <FlatList style={{ backgroundColor: t.bg }} data={likes} numColumns={2} keyExtractor={(l) => String(l.request_id)}
       columnWrapperStyle={{ gap: 12 }} contentContainerStyle={{ padding: 16, gap: 12 }}
