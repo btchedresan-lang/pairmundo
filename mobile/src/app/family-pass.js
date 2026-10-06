@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { View } from 'react-native';
-import { Text } from '../components/Text';
+import { HEADING_BOLD, Text } from '../components/Text';
 import { router, useFocusEffect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { api } from '../api';
@@ -52,7 +52,7 @@ export default function FamilyPass() {
     <Screen padded={false}>
       <LinearGradient colors={[C.primary, C.primary2]} style={{ padding: 28, paddingTop: 36, alignItems: 'center', gap: 6 }}>
         <Text style={{ fontSize: 46 }}>🏡</Text>
-        <Text style={{ color: '#fff', fontSize: 28, fontWeight: '800' }}>Family Pass</Text>
+        <Text style={{ color: '#fff', fontSize: 32, fontFamily: HEADING_BOLD }}>Family Pass</Text>
         <Text style={{ color: '#fff', fontSize: 16, textAlign: 'center', opacity: 0.95 }}>{tr('Find your au pair faster')}</Text>
       </LinearGradient>
       <View style={{ padding: 16, gap: 12 }}>

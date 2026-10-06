@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, View } from 'react-native';
-import { Text } from '../../components/Text';
+import { HEADING_BOLD, Text } from '../../components/Text';
 import { router } from 'expo-router';
 import { useAuth } from '../../auth';
 import { api } from '../../api';
@@ -61,7 +61,7 @@ export default function Discover() {
   return (
     <View style={{ flex: 1, backgroundColor: t.bg, paddingTop: insets.top + 6 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 8 }}>
-        <Text style={{ fontSize: 24, fontWeight: '900', color: C.primary }}>{brand.name}</Text>
+        <Text style={{ fontSize: 27, fontFamily: HEADING_BOLD, color: C.primary }}>{brand.name}</Text>
         <Button small kind="ghost" title={`⚙ ${tr('Filters')}${nFilters ? ` (${nFilters})` : ''}`} onPress={() => setShowFilters(true)} />
       </View>
       {!me.user.email_verified ? (

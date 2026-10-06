@@ -1,4 +1,8 @@
+/* Headings use Fraunces Soft: Fraunces (SIL Open Font License, see fonts/Fraunces-OFL.txt) with its softness axis at 100. */
+@font-face { font-family: "Fraunces Soft"; src: url(/fonts/FrauncesSoft-Medium.woff2) format("woff2"); font-weight: 400 500; font-display: swap; }
+@font-face { font-family: "Fraunces Soft"; src: url(/fonts/FrauncesSoft-SemiBold.woff2) format("woff2"); font-weight: 600 900; font-display: swap; }
 :root {
+  --heading: "Fraunces Soft", Georgia, serif;
   --bg: #f6f7fb; --card: #fff; --ink: #1d2433; --muted: #667085; --line: #e4e7ec;
   --brand: #3b5bdb; --brand-ink: #fff; --brand-soft: #edf2ff;
   --ok: #2b8a3e; --ok-soft: #ebfbee; --warn: #b26b00; --warn-soft: #fff4e6; --err: #c92a2a; --err-soft: #fff5f5;
@@ -17,13 +21,13 @@
 body { margin: 0; background: var(--bg); color: var(--ink); line-height: 1.5; }
 a { color: var(--brand); text-decoration: none; }
 a:hover { text-decoration: underline; }
-h1, h2, h3 { line-height: 1.2; margin: 0 0 .5em; }
-h1 { font-size: 1.7rem; } h2 { font-size: 1.25rem; } h3 { font-size: 1.05rem; }
+h1, h2, h3 { line-height: 1.2; margin: 0 0 .5em; font-family: var(--heading); font-weight: 500; }
+h1 { font-size: 1.95rem; } h2 { font-size: 1.4rem; } h3 { font-size: 1.15rem; }
 .muted { color: var(--muted); } .small { font-size: .85rem; }
 
 .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
   padding: 12px 24px; background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 10; }
-.brand { font-weight: 700; font-size: 1.15rem; color: var(--ink); }
+.brand { font-family: var(--heading); font-weight: 600; font-size: 1.3rem; color: var(--ink); }
 .logo { font-size: 1.3rem; }
 #nav { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
 #nav a { padding: 6px 10px; border-radius: 8px; color: var(--ink); position: relative; }
@@ -169,7 +173,7 @@ th { color: var(--muted); font-weight: 600; font-size: .8rem; text-transform: up
 
 .match-overlay { position: fixed; inset: 0; z-index: 200; background: rgba(10,10,20,.82); display: flex; align-items: center; justify-content: center; padding: 16px; animation: fade .25s; }
 .match-box { text-align: center; color: #fff; max-width: 420px; display: flex; flex-direction: column; gap: 12px; }
-.match-title { font-size: 2.8rem; font-weight: 900; font-style: italic; background: var(--hot); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.match-title { font-family: var(--heading); font-size: 3rem; font-weight: 600; background: var(--hot); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .match-photos { display: flex; justify-content: center; margin: 8px 0 12px; }
 .match-photo { width: 130px; height: 130px; border-radius: 50%; object-fit: cover; border: 4px solid #fff; font-size: 2.2rem; }
 .match-photos > :first-child { transform: rotate(-8deg) translateX(12px); } .match-photos > :last-child { transform: rotate(8deg) translateX(-12px); }

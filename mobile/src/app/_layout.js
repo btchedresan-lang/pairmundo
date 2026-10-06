@@ -9,7 +9,7 @@ import { AuthProvider, useAuth } from '../auth';
 import { Loading } from '../components/ui';
 import { C, useTheme } from '../theme';
 import { screenForLink } from '../push';
-import { font, FONTS } from '../components/Text';
+import { FONTS, HEADING } from '../components/Text';
 import { LanguageProvider, tr, useLanguage } from '../i18n';
 
 /** Tapping a notification opens the chat, placement or tab it is about. */
@@ -34,7 +34,7 @@ function RootStack() {
     <>
     {signedIn && Platform.OS !== 'web' ? <NotificationOpener /> : null}
     {/* Keyed by language so every screen redraws in the new one. */}
-    <Stack key={lang} screenOptions={{ headerTintColor: C.primary, headerStyle: { backgroundColor: t.card }, headerTitleStyle: { color: t.ink, fontFamily: font('700') }, contentStyle: { backgroundColor: t.bg }, headerBackButtonDisplayMode: 'minimal' }}>
+    <Stack key={lang} screenOptions={{ headerTintColor: C.primary, headerStyle: { backgroundColor: t.card }, headerTitleStyle: { color: t.ink, fontFamily: HEADING, fontSize: 19 }, contentStyle: { backgroundColor: t.bg }, headerBackButtonDisplayMode: 'minimal' }}>
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Protected guard={!signedIn}>
         <Stack.Screen name="login" options={{ headerShown: false }} />

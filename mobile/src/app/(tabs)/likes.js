@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, View } from 'react-native';
-import { Text } from '../../components/Text';
+import { HEADING, Text } from '../../components/Text';
 import { router, useFocusEffect } from 'expo-router';
 import { api } from '../../api';
 import { country, flag } from '../../data';
@@ -53,7 +53,7 @@ export default function Likes() {
             {l.super ? <Text style={{ position: 'absolute', top: 8, left: 8, backgroundColor: C.super, color: '#fff', fontWeight: '700', fontSize: 11, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, overflow: 'hidden' }}>★ {tr('Super like')}</Text> : null}
             {l.match ? <Text style={{ position: 'absolute', top: 8, right: 8, backgroundColor: 'rgba(0,0,0,0.55)', color: '#fff', fontWeight: '700', fontSize: 11, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, overflow: 'hidden' }}>{l.match.score}%</Text> : null}
             <View style={{ position: 'absolute', left: 10, right: 10, bottom: 10 }}>
-              <Text style={{ color: '#fff', fontWeight: '800', fontSize: 16 }} numberOfLines={2}>{l.user.name}{age ? `, ${age}` : ''}</Text>
+              <Text style={{ color: '#fff', fontFamily: HEADING, fontSize: 18 }} numberOfLines={2}>{l.user.name}{age ? `, ${age}` : ''}</Text>
               <Text style={{ color: '#fff', fontSize: 13 }}>{flag(l.user.country)} {country(l.user.country)}</Text>
               {l.message ? <Text style={{ color: '#fff', fontSize: 12, fontStyle: 'italic', opacity: 0.9, marginTop: 2 }} numberOfLines={2}>“{l.message}”</Text> : null}
             </View>
