@@ -227,3 +227,9 @@ th { color: var(--muted); font-weight: 600; font-size: .8rem; text-transform: up
   .card-info h2 { font-size: 1.5rem; }
   .hint { display: none; }
 }
+
+/* Footer with legal links and the language switch */
+.foot { text-align: center; color: var(--muted); font-size: .85rem; padding: 24px 16px 32px; }
+.foot a { color: var(--muted); }
+.foot select { width: auto; padding: 4px 8px; font-size: .85rem; display: inline-block; }
+@media (max-width: 720px) { body.has-tabs .foot { padding-bottom: 110px; } }

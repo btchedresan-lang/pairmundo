@@ -18,30 +18,68 @@ const LANGS = { en: 'English', es: 'Spanish', fr: 'French', de: 'German', it: 'I
   da: 'Danish', no: 'Norwegian', pl: 'Polish', zh: 'Chinese', ja: 'Japanese', ko: 'Korean', vi: 'Vietnamese', th: 'Thai', ar: 'Arabic',
   ru: 'Russian', uk: 'Ukrainian', tr: 'Turkish', af: 'Afrikaans', sw: 'Swahili', hi: 'Hindi', tl: 'Tagalog', ro: 'Romanian', cs: 'Czech', el: 'Greek' };
 const LEVELS = ['native', 'C2', 'C1', 'B2', 'B1', 'A2', 'A1'];
+const STATUSES = { proposed: 'Proposed', confirmed: 'Confirmed', active: 'Active', completed: 'Completed', cancelled: 'Cancelled' };
+const statusLabel = (s) => (STATUSES[s] ? tr(STATUSES[s]) : s);
 const AGE_GROUPS = { infant: 'Infants (0-2)', toddler: 'Toddlers (2-5)', school: 'School age (5-12)', teen: 'Teens (13+)' };
 const SKILLS = { first_aid: 'First aid', swimming: 'Swimming', cooking: 'Cooking', tutoring: 'Homework help', music: 'Music', art: 'Arts & crafts',
   sports: 'Sports', special_needs: 'Special needs care', housekeeping: 'Light housekeeping' };
 const CRIT_LABEL = { reliability: 'Reliability', childcare: 'Childcare', communication: 'Communication', household: 'Household help',
   adaptability: 'Adaptability', respect: 'Respect', accommodation: 'Accommodation', fair_hours: 'Fair hours', support: 'Support & inclusion' };
 
+// ---------- languages ----------
+// Text is written in English and wrapped in tr(); /locales/<lang>.json maps it to a translation.
+// Missing text shows in English. `npm run i18n` (in server/) lists what's missing.
+const LANGUAGES = { en: 'English', es: 'Español', fr: 'Français', de: 'Deutsch', pt: 'Português' };
+const browserLang = () => (navigator.languages || [navigator.language]).map((l) => String(l).slice(0, 2).toLowerCase()).find((c) => c in LANGUAGES) || 'en';
+const savedLang = () => { try { return localStorage.getItem('lang'); } catch { return null; } };
+let LANG = LANGUAGES[savedLang()] ? savedLang() : browserLang();
+let DICT = {};
+async function loadLang() {
+  DICT = LANG === 'en' ? {} : await fetch(`/locales/${LANG}.json`).then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
+  document.documentElement.lang = LANG;
+}
+/** Translate English text. `{name}` placeholders are filled from vars: tr('Block {name}?', { name }). */
+function tr(text, vars) {
+  const s = DICT[text] || text;
+  return vars ? s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m)) : s;
+}
+/** Pick the singular or plural text by count; the count is available as {n}. */
+const trn = (n, one, other, vars) => tr(n === 1 ? one : other, { n, ...vars });
+const trMap = (map) => Object.fromEntries(Object.entries(map).map(([k, v]) => [k, tr(v)]));
+async function setLanguage(code) {
+  try { if (code) localStorage.setItem('lang', code); else localStorage.removeItem('lang'); } catch { /* private mode */ }
+  LANG = code || browserLang();
+  await loadLang();
+  renderFooter(); route();
+}
+function renderFooter() {
+  const $foot = document.getElementById('foot'); if (!$foot) return;
+  $foot.innerHTML = `<a href="/privacy" target="_blank">${tr('Privacy Policy')}</a> · <a href="/terms" target="_blank">${tr('Terms of Use')}</a>
+    <label style="margin-left:12px">🌐 <select id="langPick" aria-label="${tr('Language')}">${Object.entries(LANGUAGES).map(([k, v]) => `<option value="${k}" ${k === LANG ? 'selected' : ''}>${v}</option>`).join('')}</select></label>`;
+  document.getElementById('langPick').onchange = (e) => setLanguage(e.target.value);
+}
+
 // ---------- utils ----------
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const flag = (cc) => (cc && cc.length === 2 ? String.fromCodePoint(...[...cc.toUpperCase()].map((c) => 127397 + c.charCodeAt(0))) : '');
-const cname = (cc) => (cc ? `${flag(cc)} ${COUNTRIES[cc] || cc}` : '');
-const stars = (n) => (n == null ? '<span class="muted small">No reviews yet</span>'
-  : `<span class="stars" aria-label="${n} out of 5">${'★'.repeat(Math.round(n))}${'☆'.repeat(5 - Math.round(n))}</span> <strong>${n}</strong>`);
+const country = (cc) => (COUNTRIES[cc] ? tr(COUNTRIES[cc]) : cc || '');
+const langName = (code) => (LANGS[code] ? tr(LANGS[code]) : code);
+const cname = (cc) => (cc ? `${flag(cc)} ${country(cc)}` : '');
+const stars = (n) => (n == null ? `<span class="muted small">${tr('No reviews yet')}</span>`
+  : `<span class="stars" aria-label="${tr('{n} out of 5', { n })}">${'★'.repeat(Math.round(n))}${'☆'.repeat(5 - Math.round(n))}</span> <strong>${n}</strong>`);
 const fmtDate = (d) => (d ? new Date(d.length === 10 ? `${d}T00:00:00` : d.replace(' ', 'T') + (d.includes('Z') || d.length === 10 ? '' : 'Z'))
-  .toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '');
-const fmtTime = (d) => new Date(d.replace(' ', 'T') + 'Z').toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  .toLocaleDateString(LANG, { year: 'numeric', month: 'short', day: 'numeric' }) : '');
+const fmtTime = (d) => new Date(d.replace(' ', 'T') + 'Z').toLocaleString(LANG, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 const initials = (name) => esc(String(name || '?').split(/\s+/).filter((w) => !/^(the|family|familie|famille|familia|familien)$/i.test(w)).map((w) => w[0]).slice(0, 2).join('').toUpperCase());
 const avatar = (u, size = '') => (u?.photo_url
   ? `<img class="avatar ${size}" src="${esc(u.photos?.[0] || u.photo_url)}" alt="" onerror="this.outerHTML='<span class=&quot;avatar ${size}&quot;>${initials(u.name)}</span>'">`
   : `<span class="avatar ${size}">${initials(u?.name)}</span>`);
-const verifyBadges = (v) => [v?.id && '✔ ID verified', v?.references && '✔ References', v?.background && '✔ Background check']
+const verifyBadges = (v) => [v?.id && `✔ ${tr('ID verified')}`, v?.references && `✔ ${tr('References')}`, v?.background && `✔ ${tr('Background check')}`]
   .filter(Boolean).map((t) => `<span class="verify">${t}</span>`).join(' ');
-const scoreBadge = (s) => `<span class="score ${s >= 75 ? 'high' : s < 50 ? 'low' : ''}" title="Match score">${s}%</span>`;
-const options = (obj, selected, blank = '') => (blank !== null ? `<option value="">${blank}</option>` : '')
-  + Object.entries(obj).map(([k, v]) => `<option value="${k}" ${k === selected ? 'selected' : ''}>${esc(v)}</option>`).join('');
+const scoreBadge = (s) => `<span class="score ${s >= 75 ? 'high' : s < 50 ? 'low' : ''}" title="${tr('Match score')}">${s}%</span>`;
+/** <option>s for a { value: 'English label' } map, translated and sorted by label. */
+const options = (obj, selected, blank = '', sort = true) => (blank !== null ? `<option value="">${blank}</option>` : '')
+  + Object.entries(trMap(obj)).sort(sort ? (a, b) => a[1].localeCompare(b[1], LANG) : () => 0).map(([k, v]) => `<option value="${k}" ${k === selected ? 'selected' : ''}>${esc(v)}</option>`).join('');
 
 function toast(msg) {
   const t = document.getElementById('toast');
@@ -52,11 +90,11 @@ function toast(msg) {
 async function api(path, { method = 'GET', body } = {}) {
   const res = await fetch(`/api${path}`, {
     method, credentials: 'same-origin',
-    headers: body ? { 'Content-Type': 'application/json' } : {},
+    headers: { 'Accept-Language': LANG, ...(body ? { 'Content-Type': 'application/json' } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) { const e = new Error(data.error || `Request failed (${res.status})`); e.status = res.status; e.data = data; throw e; }
+  if (!res.ok) { const e = new Error(data.error ? tr(data.error) : tr('Request failed ({status})', { status: res.status })); e.status = res.status; e.data = data; throw e; }
   return data;
 }
 
@@ -73,20 +111,20 @@ function renderNav() {
   const route = location.hash.split('/')[1] || '';
   const link = (href, label, count, icon) => `<a href="${href}" class="${href.split('/')[1] === route || (route === '' && href === '#/discover') ? 'active' : ''}">${icon ? `<span class="nav-icon">${icon}</span>` : ''}<span class="nav-label">${label}</span>${count ? `<span class="badge">${count}</span>` : ''}</a>`;
   document.body.classList.toggle('has-tabs', !!me && me.user.role !== 'admin');
-  if (!me) { $nav.innerHTML = link('#/programs', 'Country programs') + link('#/login', 'Sign in') + '<a class="btn sm" href="#/register">Join free</a>'; return; }
+  if (!me) { $nav.innerHTML = link('#/programs', tr('Country programs')) + link('#/login', tr('Sign in')) + `<a class="btn sm" href="#/register">${tr('Join free')}</a>`; return; }
   const c = me.counts;
   if (me.user.role === 'admin') {
-    $nav.innerHTML = [link('#/admin', 'Admin'), link('#/placements', 'Placements'), link('#/programs', 'Programs'), link('#/notifications', '🔔', c.notifications), '<a href="#/logout">Sign out</a>'].join('');
+    $nav.innerHTML = [link('#/admin', 'Admin'), link('#/placements', 'Placements'), link('#/programs', 'Programs'), link('#/notifications', '🔔', c.notifications), `<a href="#/logout">${tr('Sign out')}</a>`].join('');
     return;
   }
   $nav.innerHTML = [
-    link('#/discover', 'Discover', 0, '🔥'),
-    link('#/likes', 'Likes', c.requests, '💛'),
-    link('#/matches', 'Matches', c.messages, '💬'),
-    link('#/placements', 'Placements', 0, '🧳'),
-    link('#/profile', 'Profile', 0, '👤'),
+    link('#/discover', tr('Discover'), 0, '🔥'),
+    link('#/likes', tr('Likes'), c.requests, '💛'),
+    link('#/matches', tr('Matches'), c.messages, '💬'),
+    link('#/placements', tr('Placements'), 0, '🧳'),
+    link('#/profile', tr('Profile'), 0, '👤'),
     `<a href="#/notifications" class="nav-bell ${route === 'notifications' ? 'active' : ''}">🔔${c.notifications ? `<span class="badge">${c.notifications}</span>` : ''}</a>`,
-    '<a href="#/logout" class="nav-signout">Sign out</a>',
+    `<a href="#/logout" class="nav-signout">${tr('Sign out')}</a>`,
   ].join('');
 }
 
@@ -128,12 +166,12 @@ function gallery(u, { cls = '' } = {}) {
 const ageOf = (r) => (r.user.role === 'aupair' ? r.profile?.age : null);
 function cardCaption(r) {
   const u = r.user; const p = r.profile || {};
-  const kids = p.children?.length ? `${p.children.length} ${p.children.length === 1 ? 'child' : 'kids'} (${p.children.map((c) => c.age).join(', ')})` : '';
-  const langs = u.role === 'aupair' ? (p.languages || []).map((l) => LANGS[l.code] || l.code) : (p.languages || []).map((l) => LANGS[l] || l);
+  const kids = p.children?.length ? `${trn(p.children.length, '{n} child', '{n} children')} (${p.children.map((c) => c.age).join(', ')})` : '';
+  const langs = u.role === 'aupair' ? (p.languages || []).map((l) => langName(l.code)) : (p.languages || []).map((l) => langName(l));
   return `<div class="card-info">
-    <h2>${esc(u.name)}${ageOf(r) ? ` <span class="age">${ageOf(r)}</span>` : ''} ${u.verification?.id ? '<span class="tick" title="ID verified">✔</span>' : ''}</h2>
-    <div class="sub">${flag(u.country)} ${esc([u.city, COUNTRIES[u.country]].filter(Boolean).join(', '))}${u.role === 'aupair' && p.nationality && p.nationality !== u.country ? ` · ${flag(p.nationality)} ${esc(COUNTRIES[p.nationality] || '')}` : ''}</div>
-    <div class="sub">${u.role === 'aupair' ? [p.childcare_years ? `${p.childcare_years} yrs childcare` : '', p.available_from ? `from ${fmtDate(p.available_from)}` : ''].filter(Boolean).join(' · ') : [kids, p.start_date ? `starts ${fmtDate(p.start_date)}` : ''].filter(Boolean).join(' · ')}</div>
+    <h2>${esc(u.name)}${ageOf(r) ? ` <span class="age">${ageOf(r)}</span>` : ''} ${u.verification?.id ? `<span class="tick" title="${tr('ID verified')}">✔</span>` : ''}</h2>
+    <div class="sub">${flag(u.country)} ${esc([u.city, country(u.country)].filter(Boolean).join(', '))}${u.role === 'aupair' && p.nationality && p.nationality !== u.country ? ` · ${flag(p.nationality)} ${esc(country(p.nationality))}` : ''}</div>
+    <div class="sub">${u.role === 'aupair' ? [p.childcare_years ? trn(p.childcare_years, '{n} year of childcare', '{n} years of childcare') : '', p.available_from ? tr('From {date}', { date: fmtDate(p.available_from) }) : ''].filter(Boolean).join(' · ') : [kids, p.start_date ? tr('Starts {date}', { date: fmtDate(p.start_date) }) : ''].filter(Boolean).join(' · ')}</div>
     <div class="chips">${langs.slice(0, 3).map((l) => `<span class="chip glass">${esc(l)}</span>`).join('')}${r.rating?.avg ? `<span class="chip glass">★ ${r.rating.avg}</span>` : ''}${u.role === 'aupair' && p.drivers_license ? '<span class="chip glass">🚗</span>' : ''}</div>
     ${r.match?.reasons?.length ? `<div class="reason">✓ ${esc(r.match.reasons[0])}</div>` : ''}
   </div>`;
@@ -149,32 +187,32 @@ views.discover = async (_, query) => {
   const nFilters = Object.values(q).filter(Boolean).length;
   const completeness = profileCompleteness();
   render(`<div class="discover">
-    ${!me.user.email_verified ? '<a class="alert warning nudge" href="#/verify">📧 Confirm your email to start liking. Click to enter your code.</a>' : ''}
-    ${!(me.user.photos?.length) ? `<a class="alert warning nudge" href="#/profile">📸 Add a photo so ${isFamily ? 'au pairs' : 'families'} can see you. Profiles with photos get far more matches.</a>`
-    : completeness < 70 ? `<a class="alert info nudge" href="#/profile">Your profile is ${completeness}% complete. Finish it to improve your matches →</a>` : ''}
-    <div class="disc-head"><button class="btn ghost sm" id="toggleFilters">⚙ Filters${nFilters ? ` (${nFilters})` : ''}</button>
-      <a class="btn ghost sm" href="#/search${deckQuery ? `?${deckQuery}` : ''}">☰ List view</a></div>
+    ${!me.user.email_verified ? `<a class="alert warning nudge" href="#/verify">📧 ${tr('Confirm your email to start liking. Click to enter your code.')}</a>` : ''}
+    ${!(me.user.photos?.length) ? `<a class="alert warning nudge" href="#/profile">📸 ${isFamily ? tr('Add a photo so au pairs can see you. Profiles with photos get far more matches.') : tr('Add a photo so families can see you. Profiles with photos get far more matches.')}</a>`
+    : completeness < 70 ? `<a class="alert info nudge" href="#/profile">${tr('Your profile is {n}% complete. Finish it to improve your matches →', { n: completeness })}</a>` : ''}
+    <div class="disc-head"><button class="btn ghost sm" id="toggleFilters">⚙ ${tr('Filters')}${nFilters ? ` (${nFilters})` : ''}</button>
+      <a class="btn ghost sm" href="#/search${deckQuery ? `?${deckQuery}` : ''}">☰ ${tr('List view')}</a></div>
     <form class="card filters" id="filters" hidden>
       <div class="form-grid">
-      <div class="field"><label>${isFamily ? 'Lives in' : 'Family country'}</label><select name="country">${options(COUNTRIES, q.country, 'Anywhere')}</select></div>
-      ${isFamily ? `<div class="field"><label>Nationality</label><select name="nationality">${options(COUNTRIES, q.nationality, 'Any')}</select></div>` : ''}
-      <div class="field"><label>Language</label><select name="language">${options(LANGS, q.language, 'Any')}</select></div>
-      ${isFamily ? `<div class="field"><label>Age</label><div class="row" style="flex-wrap:nowrap"><input type="number" name="min_age" min="17" max="35" placeholder="min" value="${esc(q.min_age)}"><input type="number" name="max_age" min="17" max="35" placeholder="max" value="${esc(q.max_age)}"></div></div>
-      <div class="field"><label>Available by</label><input type="date" name="available_by" value="${esc(q.available_by)}"></div>` : ''}
+      <div class="field"><label>${isFamily ? tr('Lives in') : tr('Family country')}</label><select name="country">${options(COUNTRIES, q.country, tr('Anywhere'))}</select></div>
+      ${isFamily ? `<div class="field"><label>${tr('Nationality')}</label><select name="nationality">${options(COUNTRIES, q.nationality, tr('Any'))}</select></div>` : ''}
+      <div class="field"><label>${tr('Language')}</label><select name="language">${options(LANGS, q.language, tr('Any'))}</select></div>
+      ${isFamily ? `<div class="field"><label>${tr('Age')}</label><div class="row" style="flex-wrap:nowrap"><input type="number" name="min_age" min="17" max="35" placeholder="${tr('min')}" value="${esc(q.min_age)}"><input type="number" name="max_age" min="17" max="35" placeholder="${tr('max')}" value="${esc(q.max_age)}"></div></div>
+      <div class="field"><label>${tr('Available by')}</label><input type="date" name="available_by" value="${esc(q.available_by)}"></div>` : ''}
       </div>
-      <div class="row">${isFamily ? `<label class="check"><input type="checkbox" name="driver" value="1" ${q.driver ? 'checked' : ''}> Driver</label>` : ''}
-        <label class="check"><input type="checkbox" name="verified" value="1" ${q.verified ? 'checked' : ''}> ID verified only</label>
-        <span style="flex:1"></span><a class="btn ghost sm" href="#/discover">Clear</a><button class="btn sm">Apply</button></div>
+      <div class="row">${isFamily ? `<label class="check"><input type="checkbox" name="driver" value="1" ${q.driver ? 'checked' : ''}> ${tr('Driver')}</label>` : ''}
+        <label class="check"><input type="checkbox" name="verified" value="1" ${q.verified ? 'checked' : ''}> ${tr('ID verified only')}</label>
+        <span style="flex:1"></span><a class="btn ghost sm" href="#/discover">${tr('Clear')}</a><button class="btn sm">${tr('Apply')}</button></div>
     </form>
-    <div class="deck" id="deck"><div class="deck-empty">Finding people for you…</div></div>
+    <div class="deck" id="deck"><div class="deck-empty">${tr('Finding people for you…')}</div></div>
     <div class="deck-actions" id="deckActions">
-      <button class="round sm undo" id="undo" title="Undo last swipe">↺</button>
-      <button class="round lg nope" id="nope" title="Pass (←)">✕</button>
-      <button class="round sm super" id="super" title="Super like (↑)">★</button>
-      <button class="round lg like" id="like" title="Like (→)">♥</button>
-      <button class="round sm info" id="info" title="Full profile">ⓘ</button>
+      <button class="round sm undo" id="undo" title="${tr('Undo last swipe')}">↺</button>
+      <button class="round lg nope" id="nope" title="${tr('Pass')} (←)">✕</button>
+      <button class="round sm super" id="super" title="${tr('Super like')} (↑)">★</button>
+      <button class="round lg like" id="like" title="${tr('Like')} (→)">♥</button>
+      <button class="round sm info" id="info" title="${tr('Full profile')}">ⓘ</button>
     </div>
-    <p class="muted small center hint">Drag the card, or use ← → ↑ on your keyboard.</p></div>`);
+    <p class="muted small center hint">${tr('Drag the card, or use ← → ↑ on your keyboard.')}</p></div>`);
   document.getElementById('toggleFilters').onclick = () => { const f = document.getElementById('filters'); f.hidden = !f.hidden; };
   document.getElementById('filters').onsubmit = (e) => {
     e.preventDefault();
@@ -199,17 +237,17 @@ function renderDeck() {
   const $deck = document.getElementById('deck'); if (!$deck) return;
   document.getElementById('deckActions').classList.toggle('disabled', !deck.length);
   if (!deck.length) {
-    $deck.innerHTML = `<div class="deck-empty"><div style="font-size:3rem">🌍</div><h2>You've seen everyone for now</h2>
-      <p class="muted">New ${me.user.role === 'family' ? 'au pairs' : 'families'} join every day. Try wider filters, or take another look at people you passed.</p>
-      <div class="row" style="justify-content:center"><button class="btn secondary" id="resetPasses">Show passed profiles again</button><a class="btn ghost" href="#/discover">Clear filters</a></div></div>`;
+    $deck.innerHTML = `<div class="deck-empty"><div style="font-size:3rem">🌍</div><h2>${tr("You've seen everyone for now")}</h2>
+      <p class="muted">${me.user.role === 'family' ? tr('New au pairs join every day. Try wider filters, or take another look at people you passed.') : tr('New families join every day. Try wider filters, or take another look at people you passed.')}</p>
+      <div class="row" style="justify-content:center"><button class="btn secondary" id="resetPasses">${tr('Show passed profiles again')}</button><a class="btn ghost" href="#/discover">${tr('Clear filters')}</a></div></div>`;
     document.getElementById('resetPasses').onclick = async () => { await api('/swipes/passes', { method: 'DELETE' }); loadDeck(); };
     return;
   }
   $deck.innerHTML = deck.slice(0, 3).map((r, i) => `<div class="swipe-card" data-i="${i}" style="z-index:${10 - i};transform:scale(${1 - i * 0.04}) translateY(${i * 14}px)">
       ${gallery(r.user, { cls: 'card-gallery' })}
-      <div class="stamp like">LIKE</div><div class="stamp nope">NOPE</div><div class="stamp super">SUPER</div>
-      ${r.match ? `<div class="card-score ${r.match.score >= 75 ? 'high' : ''}">${r.match.score}% match</div>` : ''}
-      ${r.likes_you ? '<div class="likes-you">💛 Likes you</div>' : ''}
+      <div class="stamp like">${tr('LIKE')}</div><div class="stamp nope">${tr('NOPE')}</div><div class="stamp super">${tr('SUPER')}</div>
+      ${r.match ? `<div class="card-score ${r.match.score >= 75 ? 'high' : ''}">${tr('{n}% match', { n: r.match.score })}</div>` : ''}
+      ${r.likes_you ? `<div class="likes-you">💛 ${tr('Likes you')}</div>` : ''}
       <div class="card-shade"></div>${cardCaption(r)}</div>`).join('');
   const top = $deck.querySelector('.swipe-card[data-i="0"]');
   const gal = top.querySelector('.gallery');
@@ -266,18 +304,18 @@ async function swipeTop(direction) {
 }
 
 async function undoSwipe() {
-  try { const { user } = await api('/swipe/undo', { method: 'POST' }); await loadDeck(user.id); toast(`Brought back ${user.name}`); }
+  try { const { user } = await api('/swipe/undo', { method: 'POST' }); await loadDeck(user.id); toast(tr('Brought back {name}', { name: user.name })); }
   catch (e) { toast(e.message); }
 }
 
 function showMatch(other, convId) {
   const el = document.createElement('div');
   el.className = 'match-overlay';
-  el.innerHTML = `<div class="match-box"><div class="match-title">It's a match!</div>
-    <p>You and ${esc(other.name)} liked each other.</p>
+  el.innerHTML = `<div class="match-box"><div class="match-title">${tr("It's a match!")}</div>
+    <p>${tr('You and {name} liked each other.', { name: esc(other.name) })}</p>
     <div class="match-photos">${photoOrPlaceholder(me.user, 'match-photo')}${photoOrPlaceholder(other, 'match-photo')}</div>
-    <a class="btn" href="#/messages/${convId}">💬 Send a message</a>
-    <button class="btn ghost" id="keep">Keep swiping</button></div>`;
+    <a class="btn" href="#/messages/${convId}">💬 ${tr('Send a message')}</a>
+    <button class="btn ghost" id="keep">${tr('Keep swiping')}</button></div>`;
   document.body.appendChild(el);
   const close = () => el.remove();
   el.querySelector('#keep').onclick = close;
@@ -294,35 +332,35 @@ document.addEventListener('keydown', (e) => {
 
 // ---------- likes ----------
 const tile = (r, extra = '') => `<a class="tile" href="#/u/${r.user.id}">${photoOrPlaceholder(r.user, 'tile-img')}<div class="card-shade"></div>
-  ${r.super ? '<span class="tile-super">★ Super like</span>' : ''}${r.match ? `<span class="tile-score">${r.match.score}%</span>` : ''}
-  <div class="tile-info"><strong>${esc(r.user.name)}${ageOf(r) ? `, ${ageOf(r)}` : ''}</strong><span>${flag(r.user.country)} ${esc(COUNTRIES[r.user.country] || '')}</span>${extra}</div></a>`;
+  ${r.super ? `<span class="tile-super">★ ${tr('Super like')}</span>` : ''}${r.match ? `<span class="tile-score">${r.match.score}%</span>` : ''}
+  <div class="tile-info"><strong>${esc(r.user.name)}${ageOf(r) ? `, ${ageOf(r)}` : ''}</strong><span>${flag(r.user.country)} ${esc(country(r.user.country))}</span>${extra}</div></a>`;
 
 views.likes = async () => {
   const { likes, locked, count } = await api('/likes');
   if (locked) {
-    return render(`<h1>${count} ${count === 1 ? 'person likes' : 'people like'} you</h1>
+    return render(`<h1>${trn(count, '{n} person likes you', '{n} people like you')}</h1>
       <div class="card" style="text-align:center"><p style="font-size:40px;margin:0">💛</p>
-      <p>Get the Family Pass to see who liked you and to message au pairs.</p><a class="btn" href="#/family-pass">See the Family Pass</a></div>`);
+      <p>${tr('Get the Family Pass to see who liked you and to message au pairs.')}</p><a class="btn" href="#/family-pass">${tr('See the Family Pass')}</a></div>`);
   }
-  render(`<h1>${likes.length} ${likes.length === 1 ? 'person likes' : 'people like'} you</h1>
-    <p class="muted">Like them back to match and start chatting.</p>
+  render(`<h1>${trn(likes.length, '{n} person likes you', '{n} people like you')}</h1>
+    <p class="muted">${tr('Like them back to match and start chatting.')}</p>
     <div class="tiles">${likes.map((l) => tile(l, l.message ? `<em>“${esc(l.message.slice(0, 60))}${l.message.length > 60 ? '…' : ''}”</em>` : '')).join('')
-    || '<div class="empty" style="grid-column:1/-1">No new likes yet. Keep your profile fresh and keep swiping!<br><br><a class="btn" href="#/discover">Discover</a></div>'}</div>`);
+    || `<div class="empty" style="grid-column:1/-1">${tr('No new likes yet. Keep your profile fresh and keep swiping!')}<br><br><a class="btn" href="#/discover">${tr('Discover')}</a></div>`}</div>`);
 };
 
 // ---------- matches ----------
 views.matches = async () => {
   const { conversations } = await api('/conversations');
   const fresh = conversations.filter((c) => !c.last_body);
-  render(`<h1>Matches</h1>
+  render(`<h1>${tr('Matches')}</h1>
     <div class="match-row">${conversations.map((c) => `<a href="#/messages/${c.id}" class="match-bubble">${photoOrPlaceholder(c.other, 'bubble-img')}
       ${c.unread ? '<span class="dot"></span>' : ''}<span>${esc(c.other.name.split(' ')[0] === 'The' ? c.other.name.split(' ')[1] : c.other.name.split(' ')[0])}</span></a>`).join('')
-      || '<div class="muted">No matches yet. <a href="#/discover">Start swiping</a>.</div>'}</div>
-    <h2 style="margin-top:20px">Messages</h2>
+      || `<div class="muted">${tr('No matches yet.')} <a href="#/discover">${tr('Start swiping')}</a></div>`}</div>
+    <h2 style="margin-top:20px">${tr('Messages')}</h2>
     <div class="card" style="padding:0">${conversations.filter((c) => c.last_body).map((c) => `<a href="#/messages/${c.id}" class="convo">
       ${photoOrPlaceholder(c.other, 'avatar')}<div style="flex:1;min-width:0"><div class="spread"><strong>${esc(c.other.name)}</strong><span class="muted small">${c.last_at ? fmtTime(c.last_at) : ''}</span></div>
       <div class="${c.unread ? '' : 'muted'} small ellipsis">${c.unread ? '<strong>' : ''}${esc(c.last_body)}${c.unread ? '</strong>' : ''}</div></div>${c.unread ? `<span class="badge">${c.unread}</span>` : ''}</a>`).join('')
-      || `<div class="empty">${fresh.length ? 'Say hi to your new matches above!' : 'Your conversations will show up here.'}</div>`}</div>`);
+      || `<div class="empty">${fresh.length ? tr('Say hi to your new matches above!') : tr('Your conversations will show up here.')}</div>`}</div>`);
 };
 
 
@@ -337,30 +375,30 @@ function profileCompleteness() {
 function landing() {
   render(`
     <section class="hero">
-      <h1>Swipe. Match. Welcome your au pair.</h1>
-      <p>Photo-first profiles from families and au pairs worldwide. Swipe right on the ones you like; when it's mutual, you're matched and can chat. Program rules, verification and two-way reviews are built in.</p>
-      <div class="row" style="justify-content:center"><a class="btn" href="#/register?role=family">I'm a host family</a>
-      <a class="btn secondary" href="#/register?role=aupair">I want to be an au pair</a></div>
+      <h1>${tr('Swipe. Match. Welcome your au pair.')}</h1>
+      <p>${tr("Photo-first profiles from families and au pairs worldwide. Swipe right on the ones you like; when it's mutual, you're matched and can chat. Program rules, verification and two-way reviews are built in.")}</p>
+      <div class="row" style="justify-content:center"><a class="btn" href="#/register?role=family">${tr("I'm a host family")}</a>
+      <a class="btn secondary" href="#/register?role=aupair">${tr('I want to be an au pair')}</a></div>
     </section>
     <div class="grid">
-      ${[['🔥', 'Swipe to match', 'Swipe right to like, left to pass, up to super like. When you both like each other it\'s a match.'],
-    ['🎯', 'Smart matching', 'A match score that weighs languages, dates, childcare experience, destination wishes and program eligibility, with the reasons shown.'],
-    ['⭐', 'Two-way reviews', 'Families and au pairs rate each other after a real placement. Reviews stay hidden until both sides submit, so they are honest.'],
-    ['🛂', 'Program rules built in', 'Age limits, maximum hours and minimum pocket money for each country are checked before a placement can be agreed.'],
-    ['💬', 'Safe messaging', 'Chat opens only when you match, so nobody can message you out of the blue. Report anything suspicious in one click.'],
-    ['✅', 'Placement checklist', 'Contract, visa, insurance, travel, language course and check-ins tracked for both sides.'],
-    ['🛡️', 'Verified profiles', 'Program staff verify ID, references and background checks, and the badges show on every profile.']]
+      ${[['🔥', tr('Swipe to match'), tr("Swipe right to like, left to pass, up to super like. When you both like each other it's a match.")],
+    ['🎯', tr('Smart matching'), tr('A match score that weighs languages, dates, childcare experience, destination wishes and program eligibility, with the reasons shown.')],
+    ['⭐', tr('Two-way reviews'), tr('Families and au pairs rate each other after a real placement. Reviews stay hidden until both sides submit, so they are honest.')],
+    ['🛂', tr('Program rules built in'), tr('Age limits, maximum hours and minimum pocket money for each country are checked before a placement can be agreed.')],
+    ['💬', tr('Safe messaging'), tr('Chat opens only when you match, so nobody can message you out of the blue. Report anything suspicious in one click.')],
+    ['✅', tr('Placement checklist'), tr('Contract, visa, insurance, travel, language course and check-ins tracked for both sides.')],
+    ['🛡️', tr('Verified profiles'), tr('Members can verify their ID with a passport or ID card and a selfie, and program staff check references and backgrounds. The badges show on every profile.')]]
     .map(([i, t, d]) => `<div class="card feature"><div class="icon">${i}</div><h3>${t}</h3><p class="muted">${d}</p></div>`).join('')}
     </div>`);
 }
 
 views.login = () => {
-  render(`<div class="card" style="max-width:420px;margin:32px auto"><h1>Sign in</h1>
-    <form id="f"><div class="field"><label>Email</label><input name="email" type="email" required autocomplete="email"></div>
-    <div class="field"><label>Password</label><input name="password" type="password" required autocomplete="current-password"></div>
-    <div id="err"></div><button class="btn" style="width:100%">Sign in</button></form>
-    <p class="small"><a href="#/forgot">Forgot password?</a></p>
-    <p class="muted small">New here? <a href="#/register">Create an account</a>.${['localhost', '127.0.0.1'].includes(location.hostname) ? '<br>Demo: maria@aupair.test, millers@aupair.test or admin@aupair.test, password <code>password123</code>.' : ''}</p></div>`);
+  render(`<div class="card" style="max-width:420px;margin:32px auto"><h1>${tr('Sign in')}</h1>
+    <form id="f"><div class="field"><label>${tr('Email')}</label><input name="email" type="email" required autocomplete="email"></div>
+    <div class="field"><label>${tr('Password')}</label><input name="password" type="password" required autocomplete="current-password"></div>
+    <div id="err"></div><button class="btn" style="width:100%">${tr('Sign in')}</button></form>
+    <p class="small"><a href="#/forgot">${tr('Forgot password?')}</a></p>
+    <p class="muted small">${tr('New here?')} <a href="#/register">${tr('Create an account')}</a>${['localhost', '127.0.0.1'].includes(location.hostname) ? '<br>Demo: maria@aupair.test, millers@aupair.test or admin@aupair.test, password <code>password123</code>.' : ''}</p></div>`);
   document.getElementById('f').onsubmit = async (e) => {
     e.preventDefault();
     try { await api('/auth/login', { method: 'POST', body: formData(e.target) }); await refreshMe(); go('#/'); }
@@ -370,21 +408,21 @@ views.login = () => {
 
 views.register = (_, query) => {
   const role = query.get('role') || 'family';
-  render(`<div class="card" style="max-width:480px;margin:32px auto"><h1>Create your account</h1>
+  render(`<div class="card" style="max-width:480px;margin:32px auto"><h1>${tr('Create your account')}</h1>
     <form id="f">
-      <div class="field"><label>I am</label><select name="role">
-        <option value="family" ${role === 'family' ? 'selected' : ''}>A host family</option>
-        <option value="aupair" ${role === 'aupair' ? 'selected' : ''}>An au pair</option></select></div>
-      <div class="field"><label>Name</label><input name="name" required placeholder="e.g. Maria Lopez or The Smith Family"></div>
-      <div class="form-grid"><div class="field"><label>Country you live in</label><select name="country" required>${options(COUNTRIES, '', 'Choose…')}</select></div>
-      <div class="field"><label>City</label><input name="city"></div></div>
-      <div class="field"><label>Email</label><input name="email" type="email" required autocomplete="email"></div>
-      <div class="field"><label>Password</label><input name="password" type="password" minlength="8" required autocomplete="new-password"></div>
-      <div id="err"></div><button class="btn" style="width:100%">Create account</button>
-      <p class="muted small" style="text-align:center">By creating an account you agree to the <a href="/terms" target="_blank">Terms of Use</a> and <a href="/privacy" target="_blank">Privacy Policy</a>.</p></form></div>`);
+      <div class="field"><label>${tr('I am')}</label><select name="role">
+        <option value="family" ${role === 'family' ? 'selected' : ''}>${tr('A host family')}</option>
+        <option value="aupair" ${role === 'aupair' ? 'selected' : ''}>${tr('An au pair')}</option></select></div>
+      <div class="field"><label>${tr('Name')}</label><input name="name" required placeholder="${tr('e.g. Maria Lopez or The Smith Family')}"></div>
+      <div class="form-grid"><div class="field"><label>${tr('Country you live in')}</label><select name="country" required>${options(COUNTRIES, '', tr('Choose…'))}</select></div>
+      <div class="field"><label>${tr('City')}</label><input name="city"></div></div>
+      <div class="field"><label>${tr('Email')}</label><input name="email" type="email" required autocomplete="email"></div>
+      <div class="field"><label>${tr('Password')}</label><input name="password" type="password" minlength="8" required autocomplete="new-password"></div>
+      <div id="err"></div><button class="btn" style="width:100%">${tr('Create account')}</button>
+      <p class="muted small" style="text-align:center">${tr('By creating an account you agree to the {terms} and the {privacy}.', { terms: `<a href="/terms" target="_blank">${tr('Terms of Use')}</a>`, privacy: `<a href="/privacy" target="_blank">${tr('Privacy Policy')}</a>` })}</p></form></div>`);
   document.getElementById('f').onsubmit = async (e) => {
     e.preventDefault();
-    try { await api('/auth/register', { method: 'POST', body: formData(e.target) }); await refreshMe(); toast('Welcome! Check your email for your code.'); go('#/verify'); }
+    try { await api('/auth/register', { method: 'POST', body: formData(e.target) }); await refreshMe(); toast(tr('Welcome! Check your email for your code.')); go('#/verify'); }
     catch (err) { document.getElementById('err').innerHTML = `<div class="alert error">${esc(err.message)}</div>`; }
   };
 };
@@ -392,14 +430,14 @@ views.register = (_, query) => {
 const errBox = (err) => { document.getElementById('err').innerHTML = `<div class="alert error">${esc(err.message)}</div>`; };
 
 views.forgot = () => {
-  render(`<div class="card" style="max-width:420px;margin:32px auto"><h1>Forgot password</h1>
-    <form id="f1"><p class="muted">Enter the email you signed up with. We'll send you a 6-digit code to set a new password.</p>
-      <div class="field"><label>Email</label><input name="email" type="email" required autocomplete="email"></div>
-      <button class="btn" style="width:100%">Send code</button></form>
+  render(`<div class="card" style="max-width:420px;margin:32px auto"><h1>${tr('Forgot password')}</h1>
+    <form id="f1"><p class="muted">${tr("Enter the email you signed up with. We'll send you a 6-digit code to set a new password.")}</p>
+      <div class="field"><label>${tr('Email')}</label><input name="email" type="email" required autocomplete="email"></div>
+      <button class="btn" style="width:100%">${tr('Send code')}</button></form>
     <form id="f2" hidden><div class="alert ok" id="sentNote"></div>
-      <div class="field"><label>6-digit code</label><input name="code" inputmode="numeric" autocomplete="one-time-code" required></div>
-      <div class="field"><label>New password</label><input name="password" type="password" minlength="8" required autocomplete="new-password"></div>
-      <button class="btn" style="width:100%">Set new password</button></form>
+      <div class="field"><label>${tr('6-digit code')}</label><input name="code" inputmode="numeric" autocomplete="one-time-code" required></div>
+      <div class="field"><label>${tr('New password')}</label><input name="password" type="password" minlength="8" required autocomplete="new-password"></div>
+      <button class="btn" style="width:100%">${tr('Set new password')}</button></form>
     <div id="err"></div></div>`);
   let email = '';
   document.getElementById('f1').onsubmit = async (e) => {
@@ -407,51 +445,65 @@ views.forgot = () => {
     try {
       await api('/auth/forgot', { method: 'POST', body: { email } });
       e.target.hidden = true; document.getElementById('f2').hidden = false;
-      document.getElementById('sentNote').textContent = `If ${email} has an account, a code is on its way. Check your inbox and spam folder.`;
+      document.getElementById('sentNote').textContent = tr('If {email} has an account, a code is on its way. Check your inbox and spam folder.', { email });
     } catch (err) { errBox(err); }
   };
   document.getElementById('f2').onsubmit = async (e) => {
     e.preventDefault();
-    try { await api('/auth/reset', { method: 'POST', body: { email, ...formData(e.target) } }); await refreshMe(); toast('Password changed'); go('#/'); }
+    try { await api('/auth/reset', { method: 'POST', body: { email, ...formData(e.target) } }); await refreshMe(); toast(tr('Password changed')); go('#/'); }
     catch (err) { errBox(err); }
   };
 };
 
 views.verify = async () => {
   await refreshMe();
-  if (me.user.email_verified) { render('<div class="card" style="max-width:420px;margin:32px auto"><div class="alert ok">Your email is confirmed.</div><a class="btn" href="#/">Continue</a></div>'); return; }
-  render(`<div class="card" style="max-width:420px;margin:32px auto"><h1>Confirm your email</h1>
-    <p>We sent a 6-digit code to <strong>${esc(me.user.email)}</strong>. Enter it so you can like people and send messages.</p>
-    <form id="f"><div class="field"><label>6-digit code</label><input name="code" inputmode="numeric" autocomplete="one-time-code" required></div>
-    <div id="err"></div><button class="btn" style="width:100%">Confirm</button></form>
-    <p class="small"><button class="btn ghost sm" id="resend">Send a new code</button> <span class="muted">Can't find it? Check your spam folder.</span></p></div>`);
+  if (me.user.email_verified) { render(`<div class="card" style="max-width:420px;margin:32px auto"><div class="alert ok">${tr('Your email is confirmed.')}</div><a class="btn" href="#/">${tr('Continue')}</a></div>`); return; }
+  render(`<div class="card" style="max-width:420px;margin:32px auto"><h1>${tr('Confirm your email')}</h1>
+    <p>${tr('We sent a 6-digit code to {email}. Enter it so you can like people and send messages.', { email: `<strong>${esc(me.user.email)}</strong>` })}</p>
+    <form id="f"><div class="field"><label>${tr('6-digit code')}</label><input name="code" inputmode="numeric" autocomplete="one-time-code" required></div>
+    <div id="err"></div><button class="btn" style="width:100%">${tr('Confirm')}</button></form>
+    <p class="small"><button class="btn ghost sm" id="resend">${tr('Send a new code')}</button> <span class="muted">${tr("Can't find it? Check your spam folder.")}</span></p></div>`);
   document.getElementById('f').onsubmit = async (e) => {
     e.preventDefault();
-    try { await api('/auth/verify-email', { method: 'POST', body: formData(e.target) }); await refreshMe(); toast('Email confirmed'); go('#/'); }
+    try { await api('/auth/verify-email', { method: 'POST', body: formData(e.target) }); await refreshMe(); toast(tr('Email confirmed')); go('#/'); }
     catch (err) { errBox(err); }
   };
-  document.getElementById('resend').onclick = async () => { await api('/auth/resend-verification', { method: 'POST' }); toast('A new code is on its way'); };
+  document.getElementById('resend').onclick = async () => { await api('/auth/resend-verification', { method: 'POST' }); toast(tr('A new code is on its way')); };
 };
 
 views.account = async () => {
   await refreshMe();
-  const { blocked } = await api('/blocks');
-  render(`<h1>Account and safety</h1>
-    <div class="card"><h2>Email</h2><p>${esc(me.user.email)} ${me.user.email_verified ? '<span class="chip ok">✓ Confirmed</span>' : '<a class="chip warn" href="#/verify">Not confirmed: enter your code</a>'}</p></div>
-    <div class="card"><h2>Blocked people</h2>${blocked.length ? blocked.map((u) => `<div class="row" style="padding:6px 0">${avatar(u, 'sm')}<strong style="flex:1">${esc(u.name)}</strong>
-      <button class="btn ghost sm" data-unblock="${u.id}">Unblock</button></div>`).join('') : '<p class="muted">You haven\'t blocked anyone.</p>'}</div>
-    <div class="card"><h2>Delete account</h2><p class="muted small">This permanently deletes your profile, photos, matches, messages, placements and reviews.</p>
-      <form id="del"><div class="field"><label>Your password</label><input name="password" type="password" required autocomplete="current-password"></div>
-      <div id="err"></div><button class="btn danger">Delete my account</button></form></div>
-    <p class="muted small"><a href="/privacy" target="_blank">Privacy Policy</a> · <a href="/terms" target="_blank">Terms of Use</a></p>`);
+  const [{ blocked }, idc] = await Promise.all([api('/blocks'), api('/me/id-check').catch(() => ({ available: false }))]);
+  if (idc.verified && !me.user.verification?.id) await refreshMe();
+  const idCard = idc.verified ? `<p style="color:var(--ok)">✔ ${tr('ID verified')}</p>`
+    : !idc.available ? `<p class="muted small">${tr('ID checks are coming soon.')}</p>`
+    : `<p class="muted small">${tr('Scan your passport or ID card and take a selfie. Your profile then shows the ID verified badge, which helps families and au pairs trust you.')}</p>
+      ${idc.status === 'processing' ? `<div class="alert info">${tr("We're checking your ID. This usually takes a few minutes.")}</div>` : ''}
+      ${idc.status === 'requires_input' && idc.error ? `<div class="alert warning">${tr("Your last check didn't go through. Try again with a clear, well-lit photo of your document.")}</div>` : ''}
+      <div id="idErr"></div>${idc.status !== 'processing' ? `<button class="btn" id="idCheck">🪪 ${tr('Verify my ID')}</button>` : ''}
+      <p class="muted small">${tr('Stripe runs the check and keeps your document. PairMundo only learns whether it passed.')}</p>`;
+  render(`<h1>${tr('Account and safety')}</h1>
+    <div class="card"><h2>${tr('Email')}</h2><p>${esc(me.user.email)} ${me.user.email_verified ? `<span class="chip ok">✓ ${tr('Confirmed')}</span>` : `<a class="chip warn" href="#/verify">${tr('Not confirmed yet. Click to enter your code.')}</a>`}</p></div>
+    <div class="card"><h2>${tr('ID check')}</h2>${idCard}</div>
+    <div class="card"><h2>${tr('Blocked people')}</h2>${blocked.length ? blocked.map((u) => `<div class="row" style="padding:6px 0">${avatar(u, 'sm')}<strong style="flex:1">${esc(u.name)}</strong>
+      <button class="btn ghost sm" data-unblock="${u.id}">${tr('Unblock')}</button></div>`).join('') : `<p class="muted">${tr("You haven't blocked anyone.")}</p>`}</div>
+    <div class="card"><h2>${tr('Delete account')}</h2><p class="muted small">${tr('This permanently deletes your profile, photos, matches, messages, placements and reviews.')}</p>
+      <form id="del"><div class="field"><label>${tr('Your password')}</label><input name="password" type="password" required autocomplete="current-password"></div>
+      <div id="err"></div><button class="btn danger">${tr('Delete my account')}</button></form></div>`);
+  const $id = document.getElementById('idCheck');
+  if ($id) $id.onclick = async () => {
+    $id.disabled = true;
+    try { location.href = (await api('/me/id-check', { method: 'POST', body: { from: 'web' } })).url; }
+    catch (e) { $id.disabled = false; document.getElementById('idErr').innerHTML = `<div class="alert error">${esc(e.message)}</div>`; }
+  };
   document.querySelectorAll('[data-unblock]').forEach((b) => { b.onclick = async () => {
-    if (!confirm('Unblock this person? You will be able to see each other again.')) return;
+    if (!confirm(tr('Unblock this person? You will be able to see each other again.'))) return;
     await api(`/users/${b.dataset.unblock}/block`, { method: 'DELETE' }); views.account();
   }; });
   document.getElementById('del').onsubmit = async (e) => {
     e.preventDefault();
-    if (!confirm('Delete your account? This cannot be undone.')) return;
-    try { await api('/me', { method: 'DELETE', body: formData(e.target) }); me = null; toast('Your account was deleted'); go('#/'); }
+    if (!confirm(tr('Delete your account? This cannot be undone.'))) return;
+    try { await api('/me', { method: 'DELETE', body: formData(e.target) }); me = null; toast(tr('Your account was deleted')); go('#/'); }
     catch (err) { errBox(err); }
   };
 };
@@ -460,9 +512,9 @@ views.account = async () => {
 const needsCode = (e) => { if (e.data?.code !== 'email_unverified') return false; toast(e.message); go('#/verify'); return true; };
 
 const blockUser = async (u, reason) => {
-  if (!confirm(`Block ${u.name}? You won't see each other anywhere, and your chat closes. They aren't told.`)) return false;
+  if (!confirm(tr("Block {name}? You won't see each other anywhere, and your chat closes. They aren't told.", { name: u.name }))) return false;
   await api(`/users/${u.id}/block`, { method: 'POST', body: reason ? { reason } : {} });
-  await refreshMe(); toast(`${u.name} is blocked`);
+  await refreshMe(); toast(tr('{name} is blocked', { name: u.name }));
   return true;
 };
 
@@ -472,17 +524,17 @@ views.logout = async () => { await api('/auth/logout', { method: 'POST' }); me =
 function resultCard(r) {
   const u = r.user; const p = r.profile || {};
   const sub = u.role === 'aupair'
-    ? [p.age && `${p.age} yrs`, p.nationality && cname(p.nationality), p.childcare_years && `${p.childcare_years} yrs childcare`].filter(Boolean).join(' · ')
-    : [cname(u.country), u.city, p.children?.length && `${p.children.length} ${p.children.length === 1 ? 'child' : 'children'} (${p.children.map((c) => c.age).join(', ')})`].filter(Boolean).join(' · ');
-  const langs = u.role === 'aupair' ? (p.languages || []).map((l) => LANGS[l.code] || l.code) : (p.languages || []).map((l) => LANGS[l] || l);
+    ? [p.age && trn(p.age, '{n} year old', '{n} years old'), p.nationality && cname(p.nationality), p.childcare_years && trn(p.childcare_years, '{n} year of childcare', '{n} years of childcare')].filter(Boolean).join(' · ')
+    : [cname(u.country), u.city, p.children?.length && `${trn(p.children.length, '{n} child', '{n} children')} (${p.children.map((c) => c.age).join(', ')})`].filter(Boolean).join(' · ');
+  const langs = u.role === 'aupair' ? (p.languages || []).map((l) => langName(l.code)) : (p.languages || []).map((l) => langName(l));
   return `<a class="card" href="#/u/${u.id}" style="display:block;color:inherit;text-decoration:none">
     <div class="row" style="align-items:flex-start">${avatar(u)}<div style="flex:1;min-width:0">
       <div class="spread"><strong>${esc(u.name)}</strong>${r.match ? scoreBadge(r.match.score) : ''}</div>
       <div class="muted small">${sub}</div><div class="small">${stars(r.rating?.avg)} ${r.rating?.count ? `<span class="muted">(${r.rating.count})</span>` : ''}</div></div></div>
     <div class="chips" style="margin-top:10px">${langs.slice(0, 4).map((l) => `<span class="chip">${esc(l)}</span>`).join('')}
-      ${u.role === 'aupair' && p.drivers_license ? '<span class="chip">🚗 Driver</span>' : ''}
-      ${u.role === 'aupair' && p.available_from ? `<span class="chip">From ${fmtDate(p.available_from)}</span>` : ''}
-      ${u.role === 'family' && p.start_date ? `<span class="chip">Starts ${fmtDate(p.start_date)}</span>` : ''}</div>
+      ${u.role === 'aupair' && p.drivers_license ? `<span class="chip">🚗 ${tr('Driver')}</span>` : ''}
+      ${u.role === 'aupair' && p.available_from ? `<span class="chip">${tr('From {date}', { date: fmtDate(p.available_from) })}</span>` : ''}
+      ${u.role === 'family' && p.start_date ? `<span class="chip">${tr('Starts {date}', { date: fmtDate(p.start_date) })}</span>` : ''}</div>
     ${r.match?.reasons?.length ? `<div class="small" style="margin-top:8px;color:var(--ok)">✓ ${esc(r.match.reasons.slice(0, 2).join(' · '))}</div>` : ''}
     ${r.match?.warnings?.length ? `<div class="small" style="color:var(--warn)">⚠ ${esc(r.match.warnings[0])}</div>` : ''}
     <div class="small" style="margin-top:6px">${verifyBadges(u.verification)}</div></a>`;
@@ -491,29 +543,29 @@ function resultCard(r) {
 views.search = async (_, query) => {
   const isFamily = me.user.role === 'family';
   const q = Object.fromEntries(query.entries());
-  render(`<h1>${isFamily ? 'Find your au pair' : 'Find your host family'}</h1>
+  render(`<h1>${isFamily ? tr('Find your au pair') : tr('Find your host family')}</h1>
     <div class="cols"><form class="card" id="filters">
-      <div class="field"><label>Keyword</label><input name="q" value="${esc(q.q)}" placeholder="name, city, interests"></div>
-      <div class="field"><label>${isFamily ? 'Lives in' : 'Family country'}</label><select name="country">${options(COUNTRIES, q.country, 'Anywhere')}</select></div>
-      ${isFamily ? `<div class="field"><label>Nationality</label><select name="nationality">${options(COUNTRIES, q.nationality, 'Any')}</select></div>` : ''}
-      <div class="field"><label>Language</label><select name="language">${options(LANGS, q.language, 'Any')}</select></div>
-      ${isFamily ? `<div class="form-grid" style="grid-template-columns:1fr 1fr"><div class="field"><label>Min age</label><input type="number" name="min_age" min="17" max="35" value="${esc(q.min_age)}"></div>
-        <div class="field"><label>Max age</label><input type="number" name="max_age" min="17" max="35" value="${esc(q.max_age)}"></div></div>
-        <div class="field"><label>Available by</label><input type="date" name="available_by" value="${esc(q.available_by)}"></div>
-        <div class="field"><label class="check"><input type="checkbox" name="driver" value="1" ${q.driver ? 'checked' : ''}> Has driver's license</label></div>` : ''}
-      <div class="field"><label>Minimum rating</label><select name="min_rating">${options({ 3: '3★ and up', 4: '4★ and up', 4.5: '4.5★ and up' }, q.min_rating, 'Any')}</select></div>
-      <div class="field"><label class="check"><input type="checkbox" name="verified" value="1" ${q.verified ? 'checked' : ''}> ID verified only</label></div>
-      <div class="field"><label>Sort by</label><select name="sort">${options({ match: 'Best match', rating: 'Highest rated', recent: 'Recently active' }, q.sort || 'match', null)}</select></div>
-      <button class="btn" style="width:100%">Search</button></form>
-    <div id="results"><div class="empty">Searching…</div></div></div>`);
+      <div class="field"><label>${tr('Keyword')}</label><input name="q" value="${esc(q.q)}" placeholder="${tr('name, city, interests')}"></div>
+      <div class="field"><label>${isFamily ? tr('Lives in') : tr('Family country')}</label><select name="country">${options(COUNTRIES, q.country, tr('Anywhere'))}</select></div>
+      ${isFamily ? `<div class="field"><label>${tr('Nationality')}</label><select name="nationality">${options(COUNTRIES, q.nationality, tr('Any'))}</select></div>` : ''}
+      <div class="field"><label>${tr('Language')}</label><select name="language">${options(LANGS, q.language, tr('Any'))}</select></div>
+      ${isFamily ? `<div class="form-grid" style="grid-template-columns:1fr 1fr"><div class="field"><label>${tr('Min age')}</label><input type="number" name="min_age" min="17" max="35" value="${esc(q.min_age)}"></div>
+        <div class="field"><label>${tr('Max age')}</label><input type="number" name="max_age" min="17" max="35" value="${esc(q.max_age)}"></div></div>
+        <div class="field"><label>${tr('Available by')}</label><input type="date" name="available_by" value="${esc(q.available_by)}"></div>
+        <div class="field"><label class="check"><input type="checkbox" name="driver" value="1" ${q.driver ? 'checked' : ''}> ${tr("Has driver's license")}</label></div>` : ''}
+      <div class="field"><label>${tr('Minimum rating')}</label><select name="min_rating">${options({ 3: '3★ and up', 4: '4★ and up', 4.5: '4.5★ and up' }, q.min_rating, tr('Any'), false)}</select></div>
+      <div class="field"><label class="check"><input type="checkbox" name="verified" value="1" ${q.verified ? 'checked' : ''}> ${tr('ID verified only')}</label></div>
+      <div class="field"><label>${tr('Sort by')}</label><select name="sort">${options({ match: 'Best match', rating: 'Highest rated', recent: 'Recently active' }, q.sort || 'match', null, false)}</select></div>
+      <button class="btn" style="width:100%">${tr('Search')}</button></form>
+    <div id="results"><div class="empty">${tr('Searching…')}</div></div></div>`);
   document.getElementById('filters').onsubmit = (e) => {
     e.preventDefault();
     const params = new URLSearchParams(Object.entries(formData(e.target)).filter(([, v]) => v));
     go(`#/search?${params}`);
   };
   const { total, results } = await api(`/search?${new URLSearchParams(Object.entries(q).filter(([, v]) => v))}`);
-  document.getElementById('results').innerHTML = `<p class="muted">${total} ${total === 1 ? 'result' : 'results'}</p>
-    <div class="grid">${results.map(resultCard).join('') || '<div class="empty">No one matches these filters yet. Try widening them.</div>'}</div>`;
+  document.getElementById('results').innerHTML = `<p class="muted">${trn(total, '{n} result', '{n} results')}</p>
+    <div class="grid">${results.map(resultCard).join('') || `<div class="empty">${tr('No one matches these filters yet. Try widening them.')}</div>`}</div>`;
 };
 
 // ---------- public profile ----------
@@ -527,48 +579,50 @@ views.u = async ([id]) => {
   const likesMe = req?.status === 'pending' && req.from_user === u.id;
   const iLiked = req?.status === 'pending' && req.from_user === me.user.id;
   let action = '';
-  if (d.blocked) action = '<div class="alert warning">You blocked this person. They can\'t see you or message you. <button class="btn secondary sm" id="unblock">Unblock</button></div>';
+  if (d.blocked) action = `<div class="alert warning">${tr("You blocked this person. They can't see you or message you.")} <button class="btn secondary sm" id="unblock">${tr('Unblock')}</button></div>`;
   else if (canAct) {
-    if (matched) action = '<div class="row center-row"><button class="btn" id="msg">💬 Message</button><button class="btn secondary" id="place">🧳 Propose placement</button></div>';
-    else if (iLiked) action = '<div class="liked-note">♥ You liked them. You\'ll match if they like you back.</div>';
-    else action = `${likesMe ? '<div class="liked-note">💛 They like you! Like them back to match.</div>' : ''}
-      <div class="deck-actions"><button class="round lg nope" data-swipe="pass" title="Pass">✕</button>
-      <button class="round sm super" data-swipe="super" title="Super like">★</button><button class="round lg like" data-swipe="like" title="Like">♥</button></div>`;
+    if (matched) action = `<div class="row center-row"><button class="btn" id="msg">💬 ${tr('Message')}</button><button class="btn secondary" id="place">🧳 ${tr('Propose placement')}</button></div>`;
+    else if (iLiked) action = `<div class="liked-note">♥ ${tr("You liked them. You'll match if they like you back.")}</div>`;
+    else action = `${likesMe ? `<div class="liked-note">💛 ${tr('They like you! Like them back to match.')}</div>` : ''}
+      <div class="deck-actions"><button class="round lg nope" data-swipe="pass" title="${tr('Pass')}">✕</button>
+      <button class="round sm super" data-swipe="super" title="${tr('Super like')}">★</button><button class="round lg like" data-swipe="like" title="${tr('Like')}">♥</button></div>`;
   }
+  const yes = (v) => (v ? tr('Yes') : tr('No'));
+  const months = p.duration_months && trn(p.duration_months, '{n} month', '{n} months');
   const facts = u.role === 'aupair' ? [
-    ['🎂', 'Age', p.age], ['🛂', 'Nationality', cname(p.nationality)], ['🧸', 'Childcare experience', p.childcare_years != null && `${p.childcare_years} years`],
-    ['📅', 'Available from', fmtDate(p.available_from)], ['⏳', 'Stay length', p.duration_months && `${p.duration_months} months`],
-    ['🚗', 'Driver\'s license', p.drivers_license ? 'Yes' : 'No'], ['🚭', 'Non-smoker', p.non_smoker ? 'Yes' : 'No'], ['🐾', 'OK with pets', p.ok_with_pets ? 'Yes' : 'No'],
-    ['🎓', 'Education', p.education],
+    ['🎂', tr('Age'), p.age], ['🛂', tr('Nationality'), cname(p.nationality)], ['🧸', tr('Childcare experience'), p.childcare_years != null && trn(p.childcare_years, '{n} year', '{n} years')],
+    ['📅', tr('Available from'), fmtDate(p.available_from)], ['⏳', tr('Stay length'), months],
+    ['🚗', tr("Driver's license"), yes(p.drivers_license)], ['🚭', tr('Non-smoker'), yes(p.non_smoker)], ['🐾', tr('OK with pets'), yes(p.ok_with_pets)],
+    ['🎓', tr('Education'), p.education],
   ] : [
-    ['📍', 'Location', [u.city, cname(u.country)].filter(Boolean).join(', ')], ['👶', 'Children', p.children?.length ? p.children.map((c) => `${c.age} yrs`).join(', ') : '—'],
-    ['📅', 'Start date', fmtDate(p.start_date)], ['⏳', 'Stay length', p.duration_months && `${p.duration_months} months`], ['⏰', 'Hours / week', p.weekly_hours],
-    ['💶', 'Pocket money / month', p.pocket_money], ['🚗', 'Needs a driver', p.needs_driver ? 'Yes' : 'No'], ['🐾', 'Pets', p.has_pets ? 'Yes' : 'No'], ['🛏️', 'Private room', p.private_room ? 'Yes' : 'No'],
+    ['📍', tr('Location'), [u.city, cname(u.country)].filter(Boolean).join(', ')], ['👶', tr('Children'), p.children?.length ? p.children.map((c) => trn(c.age, '{n} year', '{n} years')).join(', ') : '—'],
+    ['📅', tr('Start date'), fmtDate(p.start_date)], ['⏳', tr('Stay length'), months], ['⏰', tr('Hours / week'), p.weekly_hours],
+    ['💶', tr('Pocket money / month'), p.pocket_money], ['🚗', tr('Needs a driver'), yes(p.needs_driver)], ['🐾', tr('Pets'), yes(p.has_pets)], ['🛏️', tr('Private room'), yes(p.private_room)],
   ];
   render(`<div class="profile-layout"><div class="profile-left">
       <div class="profile-hero">${gallery(u, { cls: 'hero-gallery' })}<div class="card-shade"></div>
-        ${d.match ? `<div class="card-score ${d.match.score >= 75 ? 'high' : ''}">${d.match.score}% match</div>` : ''}
-        <div class="card-info static"><h2>${esc(u.name)}${p.age && u.role === 'aupair' ? ` <span class="age">${p.age}</span>` : ''} ${u.verification.id ? '<span class="tick" title="ID verified">✔</span>' : ''}</h2>
-          <div class="sub">${u.role === 'aupair' ? 'Au pair' : 'Host family'} · ${flag(u.country)} ${esc([u.city, COUNTRIES[u.country]].filter(Boolean).join(', '))}</div>
-          <div class="sub">${d.rating.count ? `★ ${d.rating.avg} (${d.rating.count} reviews) · ` : ''}${d.placements_completed} completed placements</div></div></div>
+        ${d.match ? `<div class="card-score ${d.match.score >= 75 ? 'high' : ''}">${tr('{n}% match', { n: d.match.score })}</div>` : ''}
+        <div class="card-info static"><h2>${esc(u.name)}${p.age && u.role === 'aupair' ? ` <span class="age">${p.age}</span>` : ''} ${u.verification.id ? `<span class="tick" title="${tr('ID verified')}">✔</span>` : ''}</h2>
+          <div class="sub">${u.role === 'aupair' ? tr('Au pair') : tr('Host family')} · ${flag(u.country)} ${esc([u.city, country(u.country)].filter(Boolean).join(', '))}</div>
+          <div class="sub">${d.rating.count ? `★ ${d.rating.avg} (${trn(d.rating.count, '{n} review', '{n} reviews')}) · ` : ''}${trn(d.placements_completed, '{n} completed placement', '{n} completed placements')}</div></div></div>
       ${action}
-      <div class="row center-row small">${!mine ? `<button class="btn ghost sm" id="fav">${d.favorite ? '♥ Saved' : '♡ Save'}</button><button class="btn ghost sm" id="report">⚑ Report</button>${d.blocked ? '' : '<button class="btn ghost sm" id="block">🚫 Block</button>'}` : '<a class="btn secondary" href="#/profile">Edit profile</a>'}
-        <button class="btn ghost sm" onclick="history.back()">← Back</button></div>
+      <div class="row center-row small">${!mine ? `<button class="btn ghost sm" id="fav">${d.favorite ? `♥ ${tr('Saved')}` : `♡ ${tr('Save')}`}</button><button class="btn ghost sm" id="report">⚑ ${tr('Report')}</button>${d.blocked ? '' : `<button class="btn ghost sm" id="block">🚫 ${tr('Block')}</button>`}` : `<a class="btn secondary" href="#/profile">${tr('Edit profile')}</a>`}
+        <button class="btn ghost sm" onclick="history.back()">← ${tr('Back')}</button></div>
     </div><div class="profile-right">
-      ${d.match ? `<div class="card"><h3>Why you match</h3>
+      ${d.match ? `<div class="card"><h3>${tr('Why you match')}</h3>
         ${d.match.reasons.map((r) => `<div class="small" style="color:var(--ok)">✓ ${esc(r)}</div>`).join('')}
         ${d.match.warnings.map((r) => `<div class="small" style="color:var(--warn)">⚠ ${esc(r)}</div>`).join('')}</div>` : ''}
-      <div class="card"><h3>${u.role === 'aupair' ? 'About me' : 'About us'}</h3><p style="white-space:pre-wrap;margin-top:0">${esc(p.bio) || '<span class="muted">No description yet.</span>'}</p>
-        <div>${verifyBadges(u.verification) || '<span class="muted small">Not yet verified</span>'}</div></div>
-      <div class="card"><h3>Basics</h3><div class="facts">${facts.filter(([, , v]) => v != null && v !== '').map(([i, k, v]) => `<div class="fact"><span>${i}</span><div><div class="muted small">${k}</div>${esc(v)}</div></div>`).join('')}</div></div>
-      <div class="card">${u.role === 'aupair' ? `<h3>Languages</h3><div class="chips">${(p.languages || []).map((l) => `<span class="chip">${esc(LANGS[l.code] || l.code)} · ${esc(l.level)}</span>`).join('')}</div>
-          <h3 style="margin-top:12px">Experience with</h3><div class="chips">${(p.age_groups || []).map((g) => `<span class="chip">${AGE_GROUPS[g] || esc(g)}</span>`).join('')}</div>
-          <h3 style="margin-top:12px">Skills</h3><div class="chips">${(p.skills || []).map((x) => `<span class="chip">${SKILLS[x] || esc(x)}</span>`).join('')}</div>
-          <h3 style="margin-top:12px">Wants to go to</h3><div class="chips">${(p.preferred_countries || []).map((c) => `<span class="chip">${cname(c)}</span>`).join('') || '<span class="muted">Open to anywhere</span>'}</div>`
-    : `<h3>Languages at home</h3><div class="chips">${(p.languages || []).map((l) => `<span class="chip">${esc(LANGS[l] || l)}</span>`).join('')}</div>
-          <h3 style="margin-top:12px">Au pair must speak</h3><div class="chips">${(p.required_languages || []).map((l) => `<span class="chip">${esc(LANGS[l] || l)}</span>`).join('') || '<span class="muted">No requirement</span>'}</div>`}</div>
-      <div class="card"><h3>Reviews</h3>${ratingBreakdown(d.rating)}
-        ${d.reviews.map((r) => reviewItem(r, mine)).join('') || '<div class="empty">No reviews yet. Reviews come only from real placements.</div>'}</div>
+      <div class="card"><h3>${u.role === 'aupair' ? tr('About me') : tr('About us')}</h3><p style="white-space:pre-wrap;margin-top:0">${esc(p.bio) || `<span class="muted">${tr('No description yet.')}</span>`}</p>
+        <div>${verifyBadges(u.verification) || `<span class="muted small">${tr('Not yet verified')}</span>`}</div></div>
+      <div class="card"><h3>${tr('Basics')}</h3><div class="facts">${facts.filter(([, , v]) => v != null && v !== '').map(([i, k, v]) => `<div class="fact"><span>${i}</span><div><div class="muted small">${k}</div>${esc(v)}</div></div>`).join('')}</div></div>
+      <div class="card">${u.role === 'aupair' ? `<h3>${tr('Languages')}</h3><div class="chips">${(p.languages || []).map((l) => `<span class="chip">${esc(langName(l.code))} · ${esc(l.level)}</span>`).join('')}</div>
+          <h3 style="margin-top:12px">${tr('Experience with')}</h3><div class="chips">${(p.age_groups || []).map((g) => `<span class="chip">${AGE_GROUPS[g] ? tr(AGE_GROUPS[g]) : esc(g)}</span>`).join('')}</div>
+          <h3 style="margin-top:12px">${tr('Skills')}</h3><div class="chips">${(p.skills || []).map((x) => `<span class="chip">${SKILLS[x] ? tr(SKILLS[x]) : esc(x)}</span>`).join('')}</div>
+          <h3 style="margin-top:12px">${tr('Wants to go to')}</h3><div class="chips">${(p.preferred_countries || []).map((c) => `<span class="chip">${cname(c)}</span>`).join('') || `<span class="muted">${tr('Open to anywhere')}</span>`}</div>`
+    : `<h3>${tr('Languages at home')}</h3><div class="chips">${(p.languages || []).map((l) => `<span class="chip">${esc(langName(l))}</span>`).join('')}</div>
+          <h3 style="margin-top:12px">${tr('Au pair must speak')}</h3><div class="chips">${(p.required_languages || []).map((l) => `<span class="chip">${esc(langName(l))}</span>`).join('') || `<span class="muted">${tr('No requirement')}</span>`}</div>`}</div>
+      <div class="card"><h3>${tr('Reviews')}</h3>${ratingBreakdown(d.rating)}
+        ${d.reviews.map((r) => reviewItem(r, mine)).join('') || `<div class="empty">${tr('No reviews yet. Reviews come only from real placements.')}</div>`}</div>
     </div></div>`);
 
   const on = (sel, fn) => { const el = document.getElementById(sel); if (el) el.onclick = fn; };
@@ -577,8 +631,8 @@ views.u = async ([id]) => {
       const res = await api('/swipe', { method: 'POST', body: { target_id: u.id, direction: b.dataset.swipe } });
       await refreshMe();
       if (res.matched) { showMatch(u, res.conversation_id); views.u([id]); }
-      else if (b.dataset.swipe === 'pass') { toast('Passed'); history.back(); }
-      else { toast(b.dataset.swipe === 'super' ? '★ Super like sent' : '♥ Liked'); views.u([id]); }
+      else if (b.dataset.swipe === 'pass') { toast(tr('Passed')); history.back(); }
+      else { toast(b.dataset.swipe === 'super' ? `★ ${tr('Super like sent')}` : `♥ ${tr('Liked')}`); views.u([id]); }
     } catch (e) { if (!needsCode(e)) toast(e.message); }
   }; });
   on('block', async () => { if (await blockUser(u)) history.back(); });
@@ -590,8 +644,8 @@ views.u = async ([id]) => {
   on('place', () => go(`#/new-placement/${u.id}`));
   on('fav', async () => { await api(`/favorites/${u.id}`, { method: d.favorite ? 'DELETE' : 'POST' }); views.u([id]); });
   on('report', async () => {
-    const reason = prompt('What is wrong with this profile? Our team reviews every report.');
-    if (reason) { await api('/reports', { method: 'POST', body: { target_user_id: u.id, reason } }); toast('Thanks, our team will look into it.'); }
+    const reason = prompt(tr('What is wrong with this profile? Our team reviews every report.'));
+    if (reason) { await api('/reports', { method: 'POST', body: { target_user_id: u.id, reason } }); toast(tr('Thanks, our team will look into it.')); }
   });
   bindReviewActions(() => views.u([id]));
 };
@@ -599,23 +653,23 @@ views.u = async ([id]) => {
 function ratingBreakdown(r) {
   if (!r.count) return '';
   return `<div class="form-grid" style="margin-bottom:12px">${Object.entries(r.criteria).map(([k, v]) => `<div class="small">
-    <div class="spread"><span>${CRIT_LABEL[k] || k}</span><strong>${v}</strong></div><div class="bar"><span style="width:${v * 20}%"></span></div></div>`).join('')}</div>`;
+    <div class="spread"><span>${CRIT_LABEL[k] ? tr(CRIT_LABEL[k]) : k}</span><strong>${v}</strong></div><div class="bar"><span style="width:${v * 20}%"></span></div></div>`).join('')}</div>`;
 }
 function reviewItem(r, canRespond) {
   return `<div style="border-top:1px solid var(--line);padding:12px 0">
-    <div class="spread"><div>${stars(r.overall)} <span class="muted small">by <a href="#/u/${r.reviewer_id}">${esc(r.reviewer_name)}</a> · ${cname(r.country)} · ${fmtDate(r.start_date)} – ${fmtDate(r.end_date)}</span></div>
-      <button class="btn ghost sm" data-report-review="${r.id}">Report</button></div>
+    <div class="spread"><div>${stars(r.overall)} <span class="muted small">${tr('by {name}', { name: `<a href="#/u/${r.reviewer_id}">${esc(r.reviewer_name)}</a>` })} · ${cname(r.country)} · ${fmtDate(r.start_date)} – ${fmtDate(r.end_date)}</span></div>
+      <button class="btn ghost sm" data-report-review="${r.id}">${tr('Report')}</button></div>
     <p style="white-space:pre-wrap;margin:6px 0">${esc(r.comment)}</p>
-    ${r.response ? `<div class="alert info small"><strong>Response:</strong> ${esc(r.response)}</div>`
-    : canRespond ? `<button class="btn ghost sm" data-respond="${r.id}">Respond publicly</button>` : ''}</div>`;
+    ${r.response ? `<div class="alert info small"><strong>${tr('Response:')}</strong> ${esc(r.response)}</div>`
+    : canRespond ? `<button class="btn ghost sm" data-respond="${r.id}">${tr('Respond publicly')}</button>` : ''}</div>`;
 }
 function bindReviewActions(reload) {
   document.querySelectorAll('[data-report-review]').forEach((b) => { b.onclick = async () => {
-    const reason = prompt('Why should this review be checked?');
-    if (reason) { await api('/reports', { method: 'POST', body: { review_id: Number(b.dataset.reportReview), reason } }); toast('Reported to moderators.'); }
+    const reason = prompt(tr('Why should this review be checked?'));
+    if (reason) { await api('/reports', { method: 'POST', body: { review_id: Number(b.dataset.reportReview), reason } }); toast(tr('Reported to moderators.')); }
   }; });
   document.querySelectorAll('[data-respond]').forEach((b) => { b.onclick = async () => {
-    const response = prompt('Your public response:');
+    const response = prompt(tr('Your public response:'));
     if (response) { try { await api(`/reviews/${b.dataset.respond}/response`, { method: 'POST', body: { response } }); reload(); } catch (e) { toast(e.message); } }
   }; });
 }
@@ -626,50 +680,51 @@ views.profile = async () => {
   const u = me.user; const p = me.profile || {};
   const isAp = u.role === 'aupair';
   const chipSet = (name, dict, selected) => `<div class="chips" data-chipset="${name}">${Object.entries(dict).map(([k, v]) =>
-    `<button type="button" class="chip chip-toggle ${(selected || []).includes(k) ? 'on' : ''}" data-v="${k}">${esc(v)}</button>`).join('')}</div>`;
+    `<button type="button" class="chip chip-toggle ${(selected || []).includes(k) ? 'on' : ''}" data-v="${k}">${esc(tr(v))}</button>`).join('')}</div>`;
   const pass = me.pass;
-  render(`<div class="spread"><h1>My profile</h1><span><a href="#/account">🔒 Account and safety</a> · <a href="#/u/${u.id}">See how others see you →</a></span></div>
-  ${u.role === 'family' && pass && (pass.required || pass.active) ? `<div class="card spread"><span>💛 <strong>Family Pass</strong> · ${pass.active ? `active until ${fmtDate(pass.ends_at)}` : 'not active'}</span>
-    <a class="btn sm" href="#/family-pass">${pass.active ? 'Details' : 'Get it'}</a></div>` : ''}
-  <div class="card"><h2>Photos</h2><p class="muted small">Your first photo is what people see when they swipe. Add up to 6; clear, smiling, recent photos work best${isAp ? ', and one with kids (with permission) helps' : ', and a family photo plus your home helps'}.</p>
+  render(`<div class="spread"><h1>${tr('My profile')}</h1><span><a href="#/account">🔒 ${tr('Account and safety')}</a> · <a href="#/u/${u.id}">${tr('See how others see you →')}</a></span></div>
+  ${u.role === 'family' && pass && (pass.required || pass.active) ? `<div class="card spread"><span>💛 <strong>Family Pass</strong> · ${pass.active ? tr('active until {date}', { date: fmtDate(pass.ends_at) }) : tr('not active')}</span>
+    <a class="btn sm" href="#/family-pass">${pass.active ? tr('Details') : tr('Get it')}</a></div>` : ''}
+  ${!u.verification?.id ? `<a class="alert info nudge" href="#/account">🪪 ${tr('Verify your ID to get the ID verified badge on your profile.')}</a>` : ''}
+  <div class="card"><h2>${tr('Photos')}</h2><p class="muted small">${isAp ? tr('Your first photo is what people see when they swipe. Add up to 6; clear, smiling, recent photos work best, and one with kids (with permission) helps.') : tr('Your first photo is what people see when they swipe. Add up to 6; clear, smiling, recent photos work best, and a family photo plus your home helps.')}</p>
     <div class="photo-grid" id="photoGrid"></div></div>
-  <form id="f"><div class="card"><h2>Basics</h2><div class="form-grid">
-      <div class="field"><label>Name</label><input name="name" value="${esc(u.name)}" required></div>
-      <div class="field"><label>Country</label><select name="country">${options(COUNTRIES, u.country, 'Choose…')}</select></div>
-      <div class="field"><label>City</label><input name="city" value="${esc(u.city)}"></div>
+  <form id="f"><div class="card"><h2>${tr('Basics')}</h2><div class="form-grid">
+      <div class="field"><label>${tr('Name')}</label><input name="name" value="${esc(u.name)}" required></div>
+      <div class="field"><label>${tr('Country')}</label><select name="country">${options(COUNTRIES, u.country, tr('Choose…'))}</select></div>
+      <div class="field"><label>${tr('City')}</label><input name="city" value="${esc(u.city)}"></div>
 </div>
-      <div class="field"><label>${isAp ? 'About me' : 'About our family'}</label><textarea name="bio" maxlength="5000">${esc(p.bio)}</textarea></div>
-      <label class="check"><input type="checkbox" name="visible" ${p.visible !== 0 ? 'checked' : ''}> Show my profile in search</label></div>
-  ${isAp ? `<div class="card"><h2>Au pair details</h2><div class="form-grid">
-      <div class="field"><label>Date of birth</label><input type="date" name="birth_date" value="${esc(p.birth_date)}"></div>
-      <div class="field"><label>Nationality</label><select name="nationality">${options(COUNTRIES, p.nationality, 'Choose…')}</select></div>
-      <div class="field"><label>Years of childcare experience</label><input type="number" step="0.5" min="0" name="childcare_years" value="${esc(p.childcare_years)}"></div>
-      <div class="field"><label>Available from</label><input type="date" name="available_from" value="${esc(p.available_from)}"></div>
-      <div class="field"><label>Stay length (months)</label><input type="number" min="1" max="24" name="duration_months" value="${esc(p.duration_months)}"></div>
-      <div class="field"><label>Education</label><input name="education" value="${esc(p.education)}"></div>
-      <div class="field"><label>Intro video URL</label><input name="video_url" value="${esc(p.video_url)}"></div></div>
-      <div class="row"><label class="check"><input type="checkbox" name="drivers_license" ${p.drivers_license ? 'checked' : ''}> Driver's license</label>
-        <label class="check"><input type="checkbox" name="non_smoker" ${p.non_smoker !== 0 ? 'checked' : ''}> Non-smoker</label>
-        <label class="check"><input type="checkbox" name="ok_with_pets" ${p.ok_with_pets !== 0 ? 'checked' : ''}> OK with pets</label></div>
-      <h3 style="margin-top:16px">Languages</h3><div id="langs"></div><button type="button" class="btn ghost sm" id="addLang">+ Add language</button>
-      <h3 style="margin-top:16px">Experience with</h3>${chipSet('age_groups', AGE_GROUPS, p.age_groups)}
-      <h3 style="margin-top:16px">Skills</h3>${chipSet('skills', SKILLS, p.skills)}
-      <h3 style="margin-top:16px">Countries I'd like to go to</h3><p class="muted small">Leave empty if you're open to anywhere.</p>
+      <div class="field"><label>${isAp ? tr('About me') : tr('About our family')}</label><textarea name="bio" maxlength="5000">${esc(p.bio)}</textarea></div>
+      <label class="check"><input type="checkbox" name="visible" ${p.visible !== 0 ? 'checked' : ''}> ${tr('Show my profile in search')}</label></div>
+  ${isAp ? `<div class="card"><h2>${tr('Au pair details')}</h2><div class="form-grid">
+      <div class="field"><label>${tr('Date of birth')}</label><input type="date" name="birth_date" value="${esc(p.birth_date)}"></div>
+      <div class="field"><label>${tr('Nationality')}</label><select name="nationality">${options(COUNTRIES, p.nationality, tr('Choose…'))}</select></div>
+      <div class="field"><label>${tr('Years of childcare experience')}</label><input type="number" step="0.5" min="0" name="childcare_years" value="${esc(p.childcare_years)}"></div>
+      <div class="field"><label>${tr('Available from')}</label><input type="date" name="available_from" value="${esc(p.available_from)}"></div>
+      <div class="field"><label>${tr('Stay length (months)')}</label><input type="number" min="1" max="24" name="duration_months" value="${esc(p.duration_months)}"></div>
+      <div class="field"><label>${tr('Education')}</label><input name="education" value="${esc(p.education)}"></div>
+      <div class="field"><label>${tr('Intro video URL')}</label><input name="video_url" value="${esc(p.video_url)}"></div></div>
+      <div class="row"><label class="check"><input type="checkbox" name="drivers_license" ${p.drivers_license ? 'checked' : ''}> ${tr("Driver's license")}</label>
+        <label class="check"><input type="checkbox" name="non_smoker" ${p.non_smoker !== 0 ? 'checked' : ''}> ${tr('Non-smoker')}</label>
+        <label class="check"><input type="checkbox" name="ok_with_pets" ${p.ok_with_pets !== 0 ? 'checked' : ''}> ${tr('OK with pets')}</label></div>
+      <h3 style="margin-top:16px">${tr('Languages')}</h3><div id="langs"></div><button type="button" class="btn ghost sm" id="addLang">+ ${tr('Add language')}</button>
+      <h3 style="margin-top:16px">${tr('Experience with')}</h3>${chipSet('age_groups', AGE_GROUPS, p.age_groups)}
+      <h3 style="margin-top:16px">${tr('Skills')}</h3>${chipSet('skills', SKILLS, p.skills)}
+      <h3 style="margin-top:16px">${tr("Countries I'd like to go to")}</h3><p class="muted small">${tr("Leave empty if you're open to anywhere.")}</p>
       ${chipSet('preferred_countries', Object.fromEntries(PROGRAM_CODES.map((c) => [c, cname(c)])), p.preferred_countries)}</div>`
-    : `<div class="card"><h2>Family details</h2><div class="form-grid">
-      <div class="field"><label>Children's ages (comma separated)</label><input name="children" value="${esc((p.children || []).map((c) => c.age).join(', '))}" placeholder="e.g. 2, 6"></div>
-      <div class="field"><label>Start date</label><input type="date" name="start_date" value="${esc(p.start_date)}"></div>
-      <div class="field"><label>Stay length (months)</label><input type="number" min="1" max="24" name="duration_months" value="${esc(p.duration_months)}"></div>
-      <div class="field"><label>Hours per week</label><input type="number" min="1" max="60" name="weekly_hours" value="${esc(p.weekly_hours)}"></div>
-      <div class="field"><label>Pocket money per month (local currency)</label><input type="number" min="0" name="pocket_money" value="${esc(p.pocket_money)}"></div></div>
-      <div class="row"><label class="check"><input type="checkbox" name="needs_driver" ${p.needs_driver ? 'checked' : ''}> We need a driver</label>
-        <label class="check"><input type="checkbox" name="has_pets" ${p.has_pets ? 'checked' : ''}> We have pets</label>
-        <label class="check"><input type="checkbox" name="smoking_household" ${p.smoking_household ? 'checked' : ''}> Someone smokes at home</label>
-        <label class="check"><input type="checkbox" name="private_room" ${p.private_room !== 0 ? 'checked' : ''}> Private room for the au pair</label></div>
-      <h3 style="margin-top:16px">Languages spoken at home</h3>${chipSet('languages', LANGS, p.languages)}
-      <h3 style="margin-top:16px">Au pair must speak</h3>${chipSet('required_languages', LANGS, p.required_languages)}
+    : `<div class="card"><h2>${tr('Family details')}</h2><div class="form-grid">
+      <div class="field"><label>${tr("Children's ages (comma separated)")}</label><input name="children" value="${esc((p.children || []).map((c) => c.age).join(', '))}" placeholder="${tr('e.g. 2, 6')}"></div>
+      <div class="field"><label>${tr('Start date')}</label><input type="date" name="start_date" value="${esc(p.start_date)}"></div>
+      <div class="field"><label>${tr('Stay length (months)')}</label><input type="number" min="1" max="24" name="duration_months" value="${esc(p.duration_months)}"></div>
+      <div class="field"><label>${tr('Hours per week')}</label><input type="number" min="1" max="60" name="weekly_hours" value="${esc(p.weekly_hours)}"></div>
+      <div class="field"><label>${tr('Pocket money per month (local currency)')}</label><input type="number" min="0" name="pocket_money" value="${esc(p.pocket_money)}"></div></div>
+      <div class="row"><label class="check"><input type="checkbox" name="needs_driver" ${p.needs_driver ? 'checked' : ''}> ${tr('We need a driver')}</label>
+        <label class="check"><input type="checkbox" name="has_pets" ${p.has_pets ? 'checked' : ''}> ${tr('We have pets')}</label>
+        <label class="check"><input type="checkbox" name="smoking_household" ${p.smoking_household ? 'checked' : ''}> ${tr('Someone smokes at home')}</label>
+        <label class="check"><input type="checkbox" name="private_room" ${p.private_room !== 0 ? 'checked' : ''}> ${tr('Private room for the au pair')}</label></div>
+      <h3 style="margin-top:16px">${tr('Languages spoken at home')}</h3>${chipSet('languages', LANGS, p.languages)}
+      <h3 style="margin-top:16px">${tr('Au pair must speak')}</h3>${chipSet('required_languages', LANGS, p.required_languages)}
       <div id="programHint" style="margin-top:16px"></div></div>`}
-  <div id="err"></div><button class="btn">Save profile</button></form>`);
+  <div id="err"></div><button class="btn">${tr('Save profile')}</button></form>`);
 
   renderPhotoGrid(u.photos || []);
   document.querySelectorAll('.chip-toggle').forEach((b) => { b.onclick = () => b.classList.toggle('on'); });
@@ -678,9 +733,9 @@ views.profile = async () => {
     const addLang = (l = { code: '', level: 'B2' }) => {
       const row = document.createElement('div');
       row.className = 'row lang-row'; row.style.marginBottom = '8px';
-      row.innerHTML = `<select class="lc" style="max-width:220px">${options(LANGS, l.code, 'Language…')}</select>
-        <select class="ll" style="max-width:120px">${LEVELS.map((v) => `<option ${v === l.level ? 'selected' : ''}>${v}</option>`).join('')}</select>
-        <button type="button" class="btn ghost sm">Remove</button>`;
+      row.innerHTML = `<select class="lc" style="max-width:220px">${options(LANGS, l.code, tr('Language…'))}</select>
+        <select class="ll" style="max-width:120px">${LEVELS.map((v) => `<option value="${v}" ${v === l.level ? 'selected' : ''}>${v === 'native' ? tr('native') : v}</option>`).join('')}</select>
+        <button type="button" class="btn ghost sm">${tr('Remove')}</button>`;
       row.querySelector('button').onclick = () => row.remove();
       $langs.appendChild(row);
     };
@@ -688,8 +743,10 @@ views.profile = async () => {
     document.getElementById('addLang').onclick = () => addLang();
   } else if (u.country) {
     api(`/programs/${u.country}`).then((pr) => {
-      document.getElementById('programHint').innerHTML = (pr.status_note ? `<div class="alert ${pr.status === 'closed' ? 'error' : 'warning'} small">${esc(pr.status_note)}</div>` : '') + `<div class="alert info small"><strong>${esc(pr.name)} rules:</strong> au pairs aged ${pr.min_age}-${pr.max_age},
-        max ${pr.max_weekly_hours} h/week${pr.min_pocket_money ? `, at least ${pr.min_pocket_money} ${pr.currency}/month pocket money` : ''}. <a href="#/programs/${pr.code}">Full program guide</a></div>`;
+      const rules = pr.min_pocket_money
+        ? tr('{country} rules: au pairs aged {min}-{max}, up to {hours} h/week, at least {money} {currency}/month pocket money.', { country: esc(country(pr.code)), min: pr.min_age, max: pr.max_age, hours: pr.max_weekly_hours, money: pr.min_pocket_money, currency: pr.currency })
+        : tr('{country} rules: au pairs aged {min}-{max}, up to {hours} h/week.', { country: esc(country(pr.code)), min: pr.min_age, max: pr.max_age, hours: pr.max_weekly_hours });
+      document.getElementById('programHint').innerHTML = (pr.status_note ? `<div class="alert ${pr.status === 'closed' ? 'error' : 'warning'} small">${esc(pr.status_note)}</div>` : '') + `<div class="alert info small">${rules} <a href="#/programs/${pr.code}">${tr('Full program guide')}</a></div>`;
     }).catch(() => {});
   }
 
@@ -714,26 +771,26 @@ views.profile = async () => {
     });
     try {
       await api('/me', { method: 'PUT', body: { name: v.name, country: v.country, city: v.city, profile } });
-      toast('Profile saved'); views.profile();
+      toast(tr('Profile saved')); views.profile();
     } catch (err) { document.getElementById('err').innerHTML = `<div class="alert error">${esc(err.message)}</div>`; }
   };
 };
 function renderPhotoGrid(photos) {
   const $g = document.getElementById('photoGrid'); if (!$g) return;
   $g.innerHTML = Array.from({ length: 6 }, (_, i) => (photos[i]
-    ? `<div class="photo-slot"><img src="${esc(photos[i])}" alt="">${i === 0 ? '<span class="main-tag">Main</span>' : `<button type="button" class="slot-btn main" data-main="${i}" title="Make main photo">★</button>`}
-       <button type="button" class="slot-btn del" data-del="${i}" title="Remove">✕</button></div>`
-    : `<label class="photo-slot empty">${i === photos.length ? '<span>＋<br><small>Add photo</small></span><input type="file" accept="image/jpeg,image/png,image/webp" hidden>' : ''}</label>`)).join('');
+    ? `<div class="photo-slot"><img src="${esc(photos[i])}" alt="">${i === 0 ? `<span class="main-tag">${tr('Main')}</span>` : `<button type="button" class="slot-btn main" data-main="${i}" title="${tr('Make main photo')}">★</button>`}
+       <button type="button" class="slot-btn del" data-del="${i}" title="${tr('Remove')}">✕</button></div>`
+    : `<label class="photo-slot empty">${i === photos.length ? `<span>＋<br><small>${tr('Add photo')}</small></span><input type="file" accept="image/jpeg,image/png,image/webp" hidden>` : ''}</label>`)).join('');
   const save = async (list) => { const r = await api('/me/photos', { method: 'PUT', body: { photos: list } }); me.user.photos = r.photos; renderPhotoGrid(r.photos); };
-  $g.querySelectorAll('[data-del]').forEach((b) => { b.onclick = () => confirm('Remove this photo?') && save(photos.filter((_, j) => j !== Number(b.dataset.del))); });
+  $g.querySelectorAll('[data-del]').forEach((b) => { b.onclick = () => confirm(tr('Remove this photo?')) && save(photos.filter((_, j) => j !== Number(b.dataset.del))); });
   $g.querySelectorAll('[data-main]').forEach((b) => { b.onclick = () => { const i = Number(b.dataset.main); save([photos[i], ...photos.filter((_, j) => j !== i)]); }; });
   const input = $g.querySelector('input[type=file]');
   if (input) input.onchange = async () => {
     const file = input.files[0]; if (!file) return;
-    const slot = input.closest('.photo-slot'); slot.innerHTML = '<span>Uploading…</span>';
+    const slot = input.closest('.photo-slot'); slot.innerHTML = `<span>${tr('Uploading…')}</span>`;
     try {
       const r = await api('/me/photos', { method: 'POST', body: { data_url: await resizeImage(file) } });
-      me.user.photos = r.photos; renderPhotoGrid(r.photos); toast('Photo added');
+      me.user.photos = r.photos; renderPhotoGrid(r.photos); toast(tr('Photo added'));
     } catch (e) { toast(e.message); renderPhotoGrid(photos); }
   };
 }
@@ -750,7 +807,7 @@ function resizeImage(file, max = 1200) {
       URL.revokeObjectURL(img.src);
       resolve(c.toDataURL('image/jpeg', 0.85));
     };
-    img.onerror = () => reject(new Error('That file is not an image we can read.'));
+    img.onerror = () => reject(new Error(tr('That file is not an image we can read.')));
     img.src = URL.createObjectURL(file);
   });
 }
@@ -761,18 +818,18 @@ let PROGRAM_CODES = ['US', 'DE', 'FR', 'NL', 'DK', 'NO', 'SE', 'ES', 'CH', 'GB',
 function requestRow(r) {
   const incoming = r.to_user === me.user.id;
   const other = incoming ? { id: r.from_user, name: r.from_name, photo_url: r.from_photo, country: r.from_country } : { id: r.to_user, name: r.to_name, photo_url: r.to_photo, country: r.to_country };
-  const statusChip = { pending: '<span class="chip warn">Pending</span>', accepted: '<span class="chip ok">Matched</span>', declined: '<span class="chip">Declined</span>', withdrawn: '<span class="chip">Withdrawn</span>' }[r.status];
+  const statusChip = { pending: `<span class="chip warn">${tr('Pending')}</span>`, accepted: `<span class="chip ok">${tr('Matched')}</span>`, declined: `<span class="chip">${tr('Declined')}</span>`, withdrawn: `<span class="chip">${tr('Withdrawn')}</span>` }[r.status];
   return `<div class="row" style="border-top:1px solid var(--line);padding:12px 0;align-items:flex-start">${avatar(other, 'sm')}
     <div style="flex:1"><div class="spread"><a href="#/u/${other.id}"><strong>${esc(other.name)}</strong></a> ${statusChip}</div>
       <div class="muted small">${cname(other.country)} · ${fmtDate(r.created_at)}</div>
       ${r.message ? `<p class="small" style="margin:4px 0;white-space:pre-wrap">${esc(r.message)}</p>` : ''}
-      <div class="row">${r.status === 'pending' && incoming ? `<button class="btn sm" data-act="accept" data-id="${r.id}">Accept</button><button class="btn ghost sm" data-act="decline" data-id="${r.id}">Decline</button>` : ''}
-        ${r.status === 'pending' && !incoming ? `<button class="btn ghost sm" data-act="withdraw" data-id="${r.id}">Withdraw</button>` : ''}
-        ${r.status === 'accepted' ? `<button class="btn ghost sm" data-chat="${other.id}">Message</button>` : ''}</div></div></div>`;
+      <div class="row">${r.status === 'pending' && incoming ? `<button class="btn sm" data-act="accept" data-id="${r.id}">${tr('Accept')}</button><button class="btn ghost sm" data-act="decline" data-id="${r.id}">${tr('Decline')}</button>` : ''}
+        ${r.status === 'pending' && !incoming ? `<button class="btn ghost sm" data-act="withdraw" data-id="${r.id}">${tr('Withdraw')}</button>` : ''}
+        ${r.status === 'accepted' ? `<button class="btn ghost sm" data-chat="${other.id}">${tr('Message')}</button>` : ''}</div></div></div>`;
 }
 function bindRequestActions(reload) {
   document.querySelectorAll('[data-act]').forEach((b) => { b.onclick = async () => {
-    try { await api(`/requests/${b.dataset.id}/respond`, { method: 'POST', body: { action: b.dataset.act } }); toast(`Request ${b.dataset.act}ed`); await refreshMe(); reload(); } catch (e) { toast(e.message); }
+    try { await api(`/requests/${b.dataset.id}/respond`, { method: 'POST', body: { action: b.dataset.act } }); toast({ accept: tr('Request accepted'), decline: tr('Request declined'), withdraw: tr('Request withdrawn') }[b.dataset.act]); await refreshMe(); reload(); } catch (e) { toast(e.message); }
   }; });
   document.querySelectorAll('[data-chat]').forEach((b) => { b.onclick = async () => {
     const c = await api('/conversations', { method: 'POST', body: { user_id: Number(b.dataset.chat) } }); go(`#/messages/${c.id}`);
@@ -780,9 +837,9 @@ function bindRequestActions(reload) {
 }
 views.requests = async () => {
   const { incoming, outgoing } = await api('/requests');
-  render(`<h1>Match requests</h1><div class="cols-2">
-    <div class="card"><h2>Received</h2>${incoming.map(requestRow).join('') || '<div class="empty">Nothing yet.</div>'}</div>
-    <div class="card"><h2>Sent</h2>${outgoing.map(requestRow).join('') || '<div class="empty">You haven\'t sent any requests. <a href="#/search">Start searching</a>.</div>'}</div></div>`);
+  render(`<h1>${tr('Match requests')}</h1><div class="cols-2">
+    <div class="card"><h2>${tr('Received')}</h2>${incoming.map(requestRow).join('') || `<div class="empty">${tr('Nothing yet.')}</div>`}</div>
+    <div class="card"><h2>${tr('Sent')}</h2>${outgoing.map(requestRow).join('') || `<div class="empty">${tr("You haven't sent any requests.")} <a href="#/search">${tr('Start searching')}</a></div>`}</div></div>`);
   bindRequestActions(views.requests);
 };
 
@@ -790,18 +847,18 @@ views.requests = async () => {
 views.messages = async ([convId]) => {
   const { conversations } = await api('/conversations');
   const active = convId ? Number(convId) : conversations[0]?.id;
-  render(`<h1>Messages</h1><div class="card chat"><div class="chat-list">${conversations.map((c) => `<a href="#/messages/${c.id}" class="${c.id === active ? 'active' : ''}">
+  render(`<h1>${tr('Messages')}</h1><div class="card chat"><div class="chat-list">${conversations.map((c) => `<a href="#/messages/${c.id}" class="${c.id === active ? 'active' : ''}">
       ${avatar(c.other, 'sm')}<div style="min-width:0;flex:1"><div class="spread"><strong>${esc(c.other.name)}</strong>${c.unread ? `<span class="badge">${c.unread}</span>` : ''}</div>
-      <div class="muted small" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.last_body || 'No messages yet')}</div></div></a>`).join('')
-    || '<div class="empty">Conversations open when a match request is accepted.</div>'}</div>
-    <div class="chat-main" id="chat">${active ? '' : '<div class="empty">Pick a conversation.</div>'}</div></div>`);
+      <div class="muted small" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.last_body || tr('No messages yet'))}</div></div></a>`).join('')
+    || `<div class="empty">${tr('Conversations open when you match with someone.')}</div>`}</div>
+    <div class="chat-main" id="chat">${active ? '' : `<div class="empty">${tr('Pick a conversation.')}</div>`}</div></div>`);
   if (!active) return;
   const data = await api(`/conversations/${active}/messages`);
   const $chat = document.getElementById('chat');
   $chat.innerHTML = `<div class="chat-head spread"><a href="#/u/${data.other.id}"><strong>${esc(data.other.name)}</strong></a>
-      <span class="muted small">${cname(data.other.country)} <button class="btn ghost sm" id="reportBlock">⚑ Report and block</button></span></div>
+      <span class="muted small">${cname(data.other.country)} <button class="btn ghost sm" id="reportBlock">⚑ ${tr('Report and block')}</button></span></div>
     <div class="chat-msgs" id="msgs"></div>
-    <form class="chat-form" id="send"><textarea name="body" placeholder="Write a message… (Enter to send)" required></textarea><button class="btn">Send</button></form>`;
+    <form class="chat-form" id="send"><textarea name="body" placeholder="${tr('Write a message… (Enter to send)')}" required></textarea><button class="btn">${tr('Send')}</button></form>`;
   const $msgs = document.getElementById('msgs');
   let lastId = 0;
   const add = (list) => {
@@ -824,7 +881,7 @@ views.messages = async ([convId]) => {
     } catch (err) { form.body.value = body; if (err.data?.code === 'pass_required') return go('#/family-pass'); if (!needsCode(err)) toast(err.message); }
   };
   document.getElementById('reportBlock').onclick = async () => {
-    const reason = prompt('What happened? Our safety team reviews every report. Leave empty to just block.');
+    const reason = prompt(tr('What happened? Our safety team reviews every report. Leave empty to just block.'));
     if (reason === null) return;
     if (await blockUser(data.other, reason.trim() || null)) go('#/matches');
   };
@@ -842,35 +899,35 @@ function placementRow(p) {
   const status = { proposed: 'warn', confirmed: 'ok', active: 'ok', completed: '', cancelled: '' }[p.status];
   return `<a href="#/placements/${p.id}" class="row" style="border-top:1px solid var(--line);padding:10px 0;color:inherit;text-decoration:none">
     ${avatar(other, 'sm')}<div style="flex:1"><div class="spread"><strong>${me.user.role === 'admin' ? `${esc(p.aupair.name)} ↔ ${esc(p.family.name)}` : esc(other.name)}</strong>
-    <span class="chip ${status}">${p.status}</span></div>
-    <div class="muted small">${cname(p.country)} · ${fmtDate(p.start_date)} – ${fmtDate(p.end_date)} · checklist ${p.tasks_done}/${p.tasks_total}</div></div></a>`;
+    <span class="chip ${status}">${statusLabel(p.status)}</span></div>
+    <div class="muted small">${cname(p.country)} · ${fmtDate(p.start_date)} – ${fmtDate(p.end_date)} · ${tr('checklist {done}/{total}', { done: p.tasks_done, total: p.tasks_total })}</div></div></a>`;
 }
 views.placements = async ([id]) => {
   if (id) return placementDetail(id);
   const { placements } = await api('/placements');
-  render(`<h1>Placements</h1><div class="card">${placements.map(placementRow).join('') || '<div class="empty">No placements yet. After a match is accepted, propose one from the other person\'s profile.</div>'}</div>`);
+  render(`<h1>${tr('Placements')}</h1><div class="card">${placements.map(placementRow).join('') || `<div class="empty">${tr("No placements yet. Once you match, propose one from the other person's profile.")}</div>`}</div>`);
 };
 
 function complianceBox(c) {
   return c.issues.map((i) => `<div class="alert ${i.level}">${i.level === 'error' ? '✖' : i.level === 'warning' ? '⚠' : 'ℹ'} ${esc(i.text)}</div>`).join('')
-    + (c.ok ? '<div class="alert ok">✓ Meets the program rules on file.</div>' : '');
+    + (c.ok ? `<div class="alert ok">✓ ${tr('Meets the program rules on file.')}</div>` : '');
 }
 
 views['new-placement'] = async ([otherId]) => {
   const d = await api(`/users/${otherId}`);
   const famProfile = me.user.role === 'family' ? me.profile : d.profile;
-  const country = me.user.role === 'family' ? me.user.country : d.user.country;
+  const placeCountry = me.user.role === 'family' ? me.user.country : d.user.country;
   const start = famProfile?.start_date || new Date().toISOString().slice(0, 10);
   const months = famProfile?.duration_months || 12;
   const endD = new Date(start); endD.setMonth(endD.getMonth() + months); endD.setDate(endD.getDate() - 1);
-  render(`<h1>Propose a placement with ${esc(d.user.name)}</h1><div class="cols-2"><form class="card" id="f">
-    <p class="muted">Country: <strong>${cname(country)}</strong>. Both sides confirm before it's final.</p>
-    <div class="form-grid"><div class="field"><label>Start date</label><input type="date" name="start_date" value="${start}" required></div>
-    <div class="field"><label>End date</label><input type="date" name="end_date" value="${endD.toISOString().slice(0, 10)}" required></div>
-    <div class="field"><label>Hours per week</label><input type="number" name="weekly_hours" min="1" value="${famProfile?.weekly_hours ?? 30}" required></div>
-    <div class="field"><label>Pocket money per month</label><input type="number" name="pocket_money" min="0" value="${famProfile?.pocket_money ?? ''}" required></div></div>
-    <div id="err"></div><button class="btn">Send proposal</button></form>
-    <div class="card"><h2>Program check</h2><div id="comp" class="muted">Checking…</div></div></div>`);
+  render(`<h1>${tr('Propose a placement with {name}', { name: esc(d.user.name) })}</h1><div class="cols-2"><form class="card" id="f">
+    <p class="muted">${tr('Country: {country}. Both sides confirm before it\'s final.', { country: `<strong>${cname(placeCountry)}</strong>` })}</p>
+    <div class="form-grid"><div class="field"><label>${tr('Start date')}</label><input type="date" name="start_date" value="${start}" required></div>
+    <div class="field"><label>${tr('End date')}</label><input type="date" name="end_date" value="${endD.toISOString().slice(0, 10)}" required></div>
+    <div class="field"><label>${tr('Hours per week')}</label><input type="number" name="weekly_hours" min="1" value="${famProfile?.weekly_hours ?? 30}" required></div>
+    <div class="field"><label>${tr('Pocket money per month')}</label><input type="number" name="pocket_money" min="0" value="${famProfile?.pocket_money ?? ''}" required></div></div>
+    <div id="err"></div><button class="btn">${tr('Send proposal')}</button></form>
+    <div class="card"><h2>${tr('Program check')}</h2><div id="comp" class="muted">${tr('Checking…')}</div></div></div>`);
   const f = document.getElementById('f');
   const body = () => ({ ...formData(f), other_user_id: Number(otherId), weekly_hours: Number(f.weekly_hours.value), pocket_money: Number(f.pocket_money.value) });
   const check = async () => {
@@ -884,7 +941,7 @@ views['new-placement'] = async ([otherId]) => {
   check();
   f.onsubmit = async (e) => {
     e.preventDefault();
-    try { const r = await api('/placements', { method: 'POST', body: body() }); toast('Proposal sent'); go(`#/placements/${r.id}`); }
+    try { const r = await api('/placements', { method: 'POST', body: body() }); toast(tr('Proposal sent')); go(`#/placements/${r.id}`); }
     catch (err) {
       document.getElementById('err').innerHTML = `<div class="alert error">${esc(err.message)}</div>`;
       if (err.data?.compliance) document.getElementById('comp').innerHTML = complianceBox(err.data.compliance);
@@ -899,38 +956,39 @@ async function placementDetail(id) {
   const myConfirmed = isAp ? p.aupair_confirmed : p.family_confirmed;
   const cur = p.program?.currency || '';
   const next = { proposed: [], confirmed: ['active'], active: ['completed'] }[p.status] || [];
-  render(`<div class="spread"><h1>Placement: ${esc(p.aupair.name)} with ${esc(p.family.name)}</h1><span class="chip ${['confirmed', 'active'].includes(p.status) ? 'ok' : p.status === 'proposed' ? 'warn' : ''}">${p.status}</span></div>
+  const markAs = { active: tr('Mark as active'), completed: tr('Mark as completed') };
+  render(`<div class="spread"><h1>${tr('Placement: {aupair} with {family}', { aupair: esc(p.aupair.name), family: esc(p.family.name) })}</h1><span class="chip ${['confirmed', 'active'].includes(p.status) ? 'ok' : p.status === 'proposed' ? 'warn' : ''}">${statusLabel(p.status)}</span></div>
   <div class="cols-2"><div>
     <div class="card"><table>
-      <tr><th>Country</th><td>${cname(p.country)}${p.program ? ` · <a href="#/programs/${p.program.code}">program guide</a>` : ''}</td></tr>
-      <tr><th>Visa route</th><td>${esc(p.program?.visa || 'Check local rules')}</td></tr>
-      <tr><th>Dates</th><td>${fmtDate(p.start_date)} – ${fmtDate(p.end_date)}</td></tr>
-      <tr><th>Hours / week</th><td>${p.weekly_hours}</td></tr><tr><th>Pocket money</th><td>${p.pocket_money} ${cur} / month</td></tr>
-      <tr><th>Confirmed by</th><td>${p.aupair_confirmed ? '✓' : '○'} au pair · ${p.family_confirmed ? '✓' : '○'} family</td></tr></table>
+      <tr><th>${tr('Country')}</th><td>${cname(p.country)}${p.program ? ` · <a href="#/programs/${p.program.code}">${tr('program guide')}</a>` : ''}</td></tr>
+      <tr><th>${tr('Visa route')}</th><td>${esc(p.program?.visa || tr('Check local rules'))}</td></tr>
+      <tr><th>${tr('Dates')}</th><td>${fmtDate(p.start_date)} – ${fmtDate(p.end_date)}</td></tr>
+      <tr><th>${tr('Hours / week')}</th><td>${p.weekly_hours}</td></tr><tr><th>${tr('Pocket money')}</th><td>${tr('{amount} {currency} / month', { amount: p.pocket_money, currency: cur })}</td></tr>
+      <tr><th>${tr('Confirmed by')}</th><td>${p.aupair_confirmed ? '✓' : '○'} ${tr('au pair')} · ${p.family_confirmed ? '✓' : '○'} ${tr('family')}</td></tr></table>
       <div class="row" style="margin-top:12px">
-        ${!isAdmin && p.status === 'proposed' && !myConfirmed ? '<button class="btn" id="confirm">Confirm placement</button>' : ''}
-        ${!isAdmin ? next.map((s) => `<button class="btn secondary" data-status="${s}">Mark as ${s}</button>`).join('') : ''}
-        ${['proposed', 'confirmed', 'active'].includes(p.status) ? '<button class="btn ghost" data-status="cancelled">Cancel</button>' : ''}
-        ${!isAdmin ? `<a class="btn ghost" href="#/u/${other.id}">View ${esc(other.name)}</a>` : ''}</div></div>
-    <div class="card"><h2>Program check</h2>${complianceBox(p.compliance)}</div>
+        ${!isAdmin && p.status === 'proposed' && !myConfirmed ? `<button class="btn" id="confirm">${tr('Confirm placement')}</button>` : ''}
+        ${!isAdmin ? next.map((s) => `<button class="btn secondary" data-status="${s}">${markAs[s] || s}</button>`).join('') : ''}
+        ${['proposed', 'confirmed', 'active'].includes(p.status) ? `<button class="btn ghost" data-status="cancelled">${tr('Cancel')}</button>` : ''}
+        ${!isAdmin ? `<a class="btn ghost" href="#/u/${other.id}">${tr('View {name}', { name: esc(other.name) })}</a>` : ''}</div></div>
+    <div class="card"><h2>${tr('Program check')}</h2>${complianceBox(p.compliance)}</div>
   </div><div>
-    <div class="card"><h2>Checklist</h2><div class="muted small">${p.tasks.filter((t) => t.done).length} of ${p.tasks.length} done</div>
+    <div class="card"><h2>${tr('Checklist')}</h2><div class="muted small">${tr('{done} of {total} done', { done: p.tasks.filter((t) => t.done).length, total: p.tasks.length })}</div>
       ${p.tasks.map((t) => `<label class="task ${t.done ? 'done' : ''}"><input type="checkbox" data-task="${t.id}" ${t.done ? 'checked' : ''} ${isAdmin ? 'disabled' : ''}>
-        <span class="t" style="flex:1">${esc(t.title)}</span><span class="chip">${t.owner === 'both' ? 'Both' : t.owner === 'aupair' ? 'Au pair' : 'Family'}</span>
+        <span class="t" style="flex:1">${esc(tr(t.title))}</span><span class="chip">${t.owner === 'both' ? tr('Both') : t.owner === 'aupair' ? tr('Au pair') : tr('Family')}</span>
         <span class="muted small" style="min-width:90px;text-align:right">${fmtDate(t.due_date)}</span></label>`).join('')}</div>
-    ${p.can_review ? `<form class="card" id="review"><h2>Review ${esc(other.name)}</h2>
-      <p class="muted small">Your review stays hidden until ${esc(other.name)} reviews you too, or 14 days after the placement ends.</p>
-      <div class="field"><label>Overall</label>${starInput('overall')}</div>
-      <div class="form-grid">${p.review_criteria.map((c) => `<div class="field"><label>${CRIT_LABEL[c] || c}</label>${starInput(c)}</div>`).join('')}</div>
-      <div class="field"><label>Your experience</label><textarea name="comment" required placeholder="What went well? What should others know?"></textarea></div>
-      <div id="err"></div><button class="btn">Submit review</button></form>`
-    : p.my_review ? `<div class="card"><h2>Your review</h2>${stars(p.my_review.overall)}<p style="white-space:pre-wrap">${esc(p.my_review.comment)}</p></div>` : ''}
+    ${p.can_review ? `<form class="card" id="review"><h2>${tr('Review {name}', { name: esc(other.name) })}</h2>
+      <p class="muted small">${tr('Your review stays hidden until {name} reviews you too, or 14 days after the placement ends.', { name: esc(other.name) })}</p>
+      <div class="field"><label>${tr('Overall')}</label>${starInput('overall')}</div>
+      <div class="form-grid">${p.review_criteria.map((c) => `<div class="field"><label>${CRIT_LABEL[c] ? tr(CRIT_LABEL[c]) : c}</label>${starInput(c)}</div>`).join('')}</div>
+      <div class="field"><label>${tr('Your experience')}</label><textarea name="comment" required placeholder="${tr('What went well? What should others know?')}"></textarea></div>
+      <div id="err"></div><button class="btn">${tr('Submit review')}</button></form>`
+    : p.my_review ? `<div class="card"><h2>${tr('Your review')}</h2>${stars(p.my_review.overall)}<p style="white-space:pre-wrap">${esc(p.my_review.comment)}</p></div>` : ''}
   </div></div>`);
   const reload = () => placementDetail(id);
   const c = document.getElementById('confirm');
-  if (c) c.onclick = async () => { await api(`/placements/${id}/confirm`, { method: 'POST' }); toast('Confirmed'); reload(); };
+  if (c) c.onclick = async () => { await api(`/placements/${id}/confirm`, { method: 'POST' }); toast(tr('Confirmed')); reload(); };
   document.querySelectorAll('[data-status]').forEach((b) => { b.onclick = async () => {
-    if (b.dataset.status === 'cancelled' && !confirm('Cancel this placement?')) return;
+    if (b.dataset.status === 'cancelled' && !confirm(tr('Cancel this placement?'))) return;
     try { await api(`/placements/${id}/status`, { method: 'POST', body: { status: b.dataset.status } }); reload(); } catch (e) { toast(e.message); }
   }; });
   document.querySelectorAll('[data-task]').forEach((cb) => { cb.onchange = async () => {
@@ -945,11 +1003,11 @@ async function placementDetail(id) {
     try {
       await api(`/placements/${id}/review`, { method: 'POST', body: { overall: val('overall'), comment: rf.comment.value,
         criteria: Object.fromEntries(p.review_criteria.map((k) => [k, val(k)]).filter(([, v]) => v)) } });
-      toast('Thanks for your review!'); reload();
+      toast(tr('Thanks for your review!')); reload();
     } catch (err) { document.getElementById('err').innerHTML = `<div class="alert error">${esc(err.message)}</div>`; }
   };
 }
-const starInput = (name) => `<span class="star-input" data-stars="${name}" data-value="">${[1, 2, 3, 4, 5].map((n) => `<button type="button" data-n="${n}" aria-label="${n} stars">★</button>`).join('')}</span>`;
+const starInput = (name) => `<span class="star-input" data-stars="${name}" data-value="">${[1, 2, 3, 4, 5].map((n) => `<button type="button" data-n="${n}" aria-label="${trn(n, '{n} star', '{n} stars')}">★</button>`).join('')}</span>`;
 function bindStarInputs() {
   document.querySelectorAll('.star-input').forEach((g) => g.querySelectorAll('button').forEach((b) => { b.onclick = () => {
     g.dataset.value = b.dataset.n;
@@ -958,30 +1016,31 @@ function bindStarInputs() {
 }
 
 // ---------- programs ----------
-const statusChip = (p) => (p.status === 'closed' ? `<span class="chip warn" style="background:var(--err-soft);color:var(--err)">${p.eu_eea_only ? 'Closed to non-EU' : 'No au pair route'}</span>`
-  : p.status === 'paused' ? '<span class="chip warn">Visas stalled</span>' : '<span class="chip ok">Open</span>');
+const statusChip = (p) => (p.status === 'closed' ? `<span class="chip warn" style="background:var(--err-soft);color:var(--err)">${p.eu_eea_only ? tr('Closed to non-EU') : tr('No au pair route')}</span>`
+  : p.status === 'paused' ? `<span class="chip warn">${tr('Visas stalled')}</span>` : `<span class="chip ok">${tr('Open')}</span>`);
 views.programs = async ([code]) => {
   const { programs } = await api('/programs');
   PROGRAM_CODES = programs.map((p) => p.code);
   if (code) {
     const p = programs.find((x) => x.code === code.toUpperCase());
-    if (!p) return render('<div class="empty">No program on file.</div>');
-    return render(`<a href="#/programs">← All countries</a><h1 style="margin-top:8px">${cname(p.code)} au pair program ${statusChip(p)}</h1>
+    if (!p) return render(`<div class="empty">${tr('No program on file.')}</div>`);
+    return render(`<a href="#/programs">← ${tr('All countries')}</a><h1 style="margin-top:8px">${tr('{country} au pair program', { country: cname(p.code) })} ${statusChip(p)}</h1>
       ${p.status_note ? `<div class="alert ${p.status === 'closed' ? 'error' : 'warning'}">${esc(p.status_note)}</div>` : ''}
       <div class="cols-2"><div class="card"><table>
-        <tr><th>Visa / route</th><td>${esc(p.visa)}</td></tr><tr><th>Age</th><td>${p.min_age}–${p.max_age}</td></tr>
-        <tr><th>Max hours</th><td>${p.max_weekly_hours} per week${p.max_daily_hours ? `, ${p.max_daily_hours} per day` : ''}</td></tr>
-        <tr><th>Pocket money</th><td>${p.min_pocket_money ? `From ${p.min_pocket_money} ${p.currency}/month. ` : ''}${esc(p.pocket_money_note)}</td></tr>
-        <tr><th>Stay length</th><td>${p.min_months}–${p.max_months} months</td></tr>
-        <tr><th>Agency required</th><td>${p.agency_required ? 'Yes' : 'No'}</td></tr>
-        ${p.notes ? `<tr><th>Notes</th><td>${esc(p.notes)}</td></tr>` : ''}</table></div>
-      <div class="card"><h2>Host family obligations</h2><ul>${p.family_obligations.map((o) => `<li>${esc(o)}</li>`).join('')}</ul>
-        <p class="small muted">Last reviewed ${esc(p.last_reviewed)}. Rules change: always confirm with the <a href="${esc(p.official_source)}" target="_blank" rel="noopener">official source</a>.</p></div></div>`);
+        <tr><th>${tr('Visa / route')}</th><td>${esc(p.visa)}</td></tr><tr><th>${tr('Age')}</th><td>${p.min_age}–${p.max_age}</td></tr>
+        <tr><th>${tr('Max hours')}</th><td>${p.max_daily_hours ? tr('{week} per week, {day} per day', { week: p.max_weekly_hours, day: p.max_daily_hours }) : tr('{week} per week', { week: p.max_weekly_hours })}</td></tr>
+        <tr><th>${tr('Pocket money')}</th><td>${p.min_pocket_money ? `${tr('From {amount} {currency}/month.', { amount: p.min_pocket_money, currency: p.currency })} ` : ''}${esc(p.pocket_money_note)}</td></tr>
+        <tr><th>${tr('Stay length')}</th><td>${tr('{min}–{max} months', { min: p.min_months, max: p.max_months })}</td></tr>
+        <tr><th>${tr('Agency required')}</th><td>${p.agency_required ? tr('Yes') : tr('No')}</td></tr>
+        ${p.notes ? `<tr><th>${tr('Notes')}</th><td>${esc(p.notes)}</td></tr>` : ''}</table></div>
+      <div class="card"><h2>${tr('Host family obligations')}</h2><ul>${p.family_obligations.map((o) => `<li>${esc(o)}</li>`).join('')}</ul>
+        <p class="small muted">${tr('Last reviewed {date}. Rules change: always confirm with the {source}.', { date: esc(p.last_reviewed), source: `<a href="${esc(p.official_source)}" target="_blank" rel="noopener">${tr('official source')}</a>` })}</p>
+        ${LANG !== 'en' ? `<p class="small muted">${tr('Program details are written in English.')}</p>` : ''}</div></div>`);
   }
-  render(`<h1>Country programs</h1><p class="muted">Indicative rules for the main au pair destinations. The app uses these to check every placement. Always confirm with the official source.</p>
-    <div class="card table-wrap"><table><tr><th>Country</th><th>Status</th><th>Age</th><th>Max h/week</th><th>Min pocket money / month</th><th>Stay</th><th>Agency</th></tr>
+  render(`<h1>${tr('Country programs')}</h1><p class="muted">${tr('Indicative rules for the main au pair destinations. The app uses these to check every placement. Always confirm with the official source.')}</p>
+    <div class="card table-wrap"><table><tr><th>${tr('Country')}</th><th>${tr('Status')}</th><th>${tr('Age')}</th><th>${tr('Max h/week')}</th><th>${tr('Min pocket money / month')}</th><th>${tr('Stay')}</th><th>${tr('Agency')}</th></tr>
     ${programs.map((p) => `<tr><td><a href="#/programs/${p.code}">${cname(p.code)}</a></td><td>${statusChip(p)}</td><td>${p.min_age}–${p.max_age}</td><td>${p.max_weekly_hours}</td>
-      <td>${p.min_pocket_money ? `${p.min_pocket_money} ${p.currency}` : '<span class="muted">see guide</span>'}</td><td>${p.min_months}–${p.max_months} mo</td><td>${p.agency_required ? 'Required' : '—'}</td></tr>`).join('')}</table></div>`);
+      <td>${p.min_pocket_money ? `${p.min_pocket_money} ${p.currency}` : `<span class="muted">${tr('see guide')}</span>`}</td><td>${tr('{min}–{max} mo', { min: p.min_months, max: p.max_months })}</td><td>${p.agency_required ? tr('Required') : '—'}</td></tr>`).join('')}</table></div>`);
 };
 
 // ---------- notifications ----------
@@ -989,8 +1048,8 @@ views.notifications = async () => {
   const { notifications } = await api('/notifications');
   await api('/notifications/read', { method: 'POST' });
   refreshMe();
-  render(`<h1>Notifications</h1><div class="card">${notifications.map((n) => `<a href="${esc(n.link || '#/')}" class="spread" style="padding:10px 0;border-top:1px solid var(--line);color:inherit">
-    <span>${n.read ? '' : '🔵 '}${esc(n.text)}</span><span class="muted small">${fmtTime(n.created_at)}</span></a>`).join('') || '<div class="empty">You\'re all caught up.</div>'}</div>`);
+  render(`<h1>${tr('Notifications')}</h1><div class="card">${notifications.map((n) => `<a href="${esc(n.link || '#/')}" class="spread" style="padding:10px 0;border-top:1px solid var(--line);color:inherit">
+    <span>${n.read ? '' : '🔵 '}${esc(n.text)}</span><span class="muted small">${fmtTime(n.created_at)}</span></a>`).join('') || `<div class="empty">${tr("You're all caught up.")}</div>`}</div>`);
 };
 
 // ---------- admin ----------
@@ -1072,18 +1131,18 @@ views['family-pass'] = async (_args, qs) => {
   let pass = await api('/family-pass');
   if (paid) {
     // Back from Stripe: confirm the payment here too, in case its webhook is slow.
-    try { const r = await api(`/family-pass/checkout/${encodeURIComponent(paid)}`, { method: 'POST' }); pass = r.pass; if (r.paid) { toast('Thank you! Your Family Pass is active.'); await refreshMe(); } }
+    try { const r = await api(`/family-pass/checkout/${encodeURIComponent(paid)}`, { method: 'POST' }); pass = r.pass; if (r.paid) { toast(tr('Thank you! Your Family Pass is active.')); await refreshMe(); } }
     catch (e) { toast(e.message); }
     history.replaceState(null, '', '#/family-pass');
   }
-  const until = pass.active ? `<p><strong>Active until ${fmtDate(pass.ends_at)}.</strong> Buying again adds ${pass.days} days after that.</p>` : '';
+  const until = pass.active ? `<p><strong>${tr('Your Family Pass is active until {date}.', { date: fmtDate(pass.ends_at) })}</strong> ${tr('Buying again adds {days} days after that.', { days: pass.days })}</p>` : '';
   render(`<h1>Family Pass</h1><div class="card" style="max-width:560px">
-    <p class="muted">${pass.days} days for ${esc(pass.price)}, paid once. It doesn't renew by itself.</p>
-    <ul><li>Message the au pairs you match with</li><li>See who liked your family</li><li>Au pairs always use PairMundo for free</li></ul>
+    <p class="muted">${tr("{days} days for {price}, paid once. It doesn't renew by itself.", { days: pass.days, price: esc(pass.price) })}</p>
+    <ul><li>${tr('Message every au pair you match with')}</li><li>${tr('See everyone who liked you, and match with one tap')}</li><li>${tr('Au pairs never pay. Swiping and matching are free for everyone.')}</li></ul>
     ${until}
-    ${pass.web_checkout ? `<button class="btn" id="buy">${pass.active ? 'Add another' : 'Get'} ${pass.days} days for ${esc(pass.price)}</button>
-      <p class="muted small">You pay securely with Stripe.</p>`
-      : `<p class="muted">${pass.required ? 'Payments are coming soon.' : 'Right now families can use every feature for free.'}</p>`}
+    ${pass.web_checkout ? `<button class="btn" id="buy">${pass.active ? tr('Add {days} more days for {price}', { days: pass.days, price: esc(pass.price) }) : tr('Get {days} days for {price}', { days: pass.days, price: esc(pass.price) })}</button>
+      <p class="muted small">${tr('You pay securely with Stripe.')}</p>`
+      : `<p class="muted">${pass.required ? tr('Payments are coming soon.') : tr('Payments are coming soon. Until then, families can use every feature for free.')}</p>`}
   </div>`);
   const $buy = document.getElementById('buy');
   if ($buy) $buy.onclick = async () => {
@@ -1103,7 +1162,7 @@ async function route() {
   const [name = '', ...args] = path.split('/').filter(Boolean);
   const view = views[name || 'home'];
   renderNav();
-  if (!view) return render('<div class="empty">Page not found. <a href="#/">Go home</a></div>');
+  if (!view) return render(`<div class="empty">${tr('Page not found.')} <a href="#/">${tr('Go home')}</a></div>`);
   if (!me && !PUBLIC.has(name || 'home')) return go('#/login');
   try { await view(args, new URLSearchParams(qs || '')); }
   catch (e) {
@@ -1112,5 +1171,5 @@ async function route() {
   }
 }
 window.addEventListener('hashchange', route);
-refreshMe().then(route);
+loadLang().then(() => { renderFooter(); return refreshMe(); }).then(route);
 setInterval(() => { if (me) api('/me').then((d) => { me = d; renderNav(); }).catch(() => {}); }, 30000);
