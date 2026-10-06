@@ -1,5 +1,6 @@
 import { openDb } from './db.js';
 import { createApp, normEmail } from './app.js';
+import { createBackups } from './backup.js';
 import { hashPassword } from './auth.js';
 
 const db = openDb();
@@ -16,4 +17,6 @@ if (ADMIN_EMAIL && ADMIN_PASSWORD && !db.prepare('SELECT 1 FROM users WHERE lowe
 }
 
 const port = Number(process.env.PORT || 3000);
-createApp(db).listen(port, () => console.log(`PairMundo running on http://localhost:${port}`));
+const backups = createBackups(db);
+backups.start();
+createApp(db, { backups }).listen(port, () => console.log(`PairMundo running on http://localhost:${port}`));

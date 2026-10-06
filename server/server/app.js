@@ -12,6 +12,7 @@ import { createCheckout, createIdentity, verifyWebhook } from './identity.js';
 import { createRevenueCat, storeName, webhookAuthorized } from './revenuecat.js';
 import { createPusher, isPushToken } from './push.js';
 import { createStorage } from './storage.js';
+import { createBackups } from './backup.js';
 
 const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
 const MAX_PHOTOS = 6;
@@ -60,7 +61,7 @@ export function seedPrograms(db) {
   }
 }
 
-export function createApp(db, { mailer = createMailer(), pusher = createPusher(), storage, identity = createIdentity(), checkout = createCheckout(), revenuecat = createRevenueCat() } = {}) {
+export function createApp(db, { mailer = createMailer(), pusher = createPusher(), storage, identity = createIdentity(), checkout = createCheckout(), revenuecat = createRevenueCat(), backups = createBackups(db) } = {}) {
   const UPLOAD_DIR = process.env.UPLOAD_DIR || 'data/uploads';
   storage ??= createStorage({ dir: UPLOAD_DIR });
   seedPrograms(db);
@@ -1074,6 +1075,12 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     res.set('Content-Disposition', 'attachment; filename="pairmundo-waitlist.csv"').type('text/csv')
       .send(['email,role,country,language,joined', ...rows.map((r) => [r.email, r.role, r.country, r.lang, r.created_at].map(cell).join(','))].join('\n') + '\n');
   });
+  api.get('/admin/backup', requireRole('admin'), wrap(() => backups.status()));
+  api.post('/admin/backup', requireRole('admin'), wrap(async () => {
+    if (!backups.enabled) throw bad(backups.status().problem);
+    try { await backups.run(); } catch (e) { throw bad(`Backup failed: ${e.message}`); }
+    return backups.status();
+  }));
   api.get('/admin/stats', requireRole('admin'), wrap(() => {
     const n = (q, ...a) => db.prepare(q).get(...a).n;
     return {

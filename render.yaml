@@ -43,6 +43,9 @@ services:
         sync: false
       - key: S3_PUBLIC_URL
         sync: false
+      # Optional nightly database backups to a second, private bucket (uses the S3_* endpoint and keys above).
+      - key: BACKUP_BUCKET
+        sync: false
       # Optional ID check (Stripe Identity). Leave empty to keep it switched off.
       - key: STRIPE_SECRET_KEY
         sync: false
