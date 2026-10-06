@@ -243,3 +243,4 @@ th { color: var(--muted); font-weight: 600; font-size: .8rem; text-transform: up
   align-items: center; justify-content: center; font-weight: 800; }
 .center { text-align: center; }
 .waitlist[hidden] { display: none; }
+.preview-note { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 16px; }

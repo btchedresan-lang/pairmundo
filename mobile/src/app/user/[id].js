@@ -89,6 +89,13 @@ export default function UserProfile() {
       </View>
 
       <View style={{ padding: 16, gap: 12 }}>
+        {isMe ? (
+          <Card>
+            <T bold>👁 {u.role === 'aupair' ? tr('This is how host families see your profile.') : tr('This is how au pairs see your profile.')}</T>
+            {p.visible === 0 ? <Alert level="warning" text={tr('Your profile is hidden right now, so nobody can find you. You can show it again in your profile settings.')} /> : null}
+            <Button small kind="secondary" title={tr('Edit profile')} onPress={() => (router.canGoBack() ? router.back() : router.replace('/profile'))} />
+          </Card>
+        ) : null}
         {d.blocked ? (
           <View style={{ gap: 10 }}>
             <Alert level="warning" text={tr("You blocked this person. They can't see you or message you.")} />
