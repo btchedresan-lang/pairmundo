@@ -315,7 +315,6 @@
   "Photo-first profiles from families and au pairs worldwide. Swipe right on the ones you like; when it's mutual, you're matched and can chat. Program rules, verification and two-way reviews are built in.": "Profiler med fokus på bilder från familjer och au pairer över hela världen. Svep höger på dem du gillar; när det är ömsesidigt blir det en match och ni kan chatta. Programregler, verifiering och ömsesidiga omdömen är inbyggda.",
   "Photos": "Foton",
   "Photos must be under 5 MB.": "Foton måste vara mindre än 5 MB.",
-  "Photos showing children aren't allowed on PairMundo. Please choose a photo without children.": "Foton som visar barn är inte tillåtna på PairMundo. Välj ett foto utan barn.",
   "Pick a conversation.": "Välj en konversation.",
   "Placement checklist": "Checklista för vistelsen",
   "Placement: {aupair} with {family}": "Vistelse: {aupair} hos {family}",
@@ -524,8 +523,6 @@
   "Your email": "Din e-post",
   "Your email is confirmed.": "Din e-post är bekräftad.",
   "Your experience": "Din erfarenhet",
-  "Your first photo is what people see when they swipe. Add up to 6; clear, smiling, recent photos work best, and a photo of the adults in the family plus your home helps. Photos of children aren't allowed.": "Ditt första foto är det andra ser när de sveper. Lägg till upp till 6; tydliga, glada och aktuella foton fungerar bäst, och ett foto på de vuxna i familjen samt ert hem hjälper. Foton på barn är inte tillåtna.",
-  "Your first photo is what people see when they swipe. Add up to 6; clear, smiling, recent photos work best. Photos of children aren't allowed.": "Ditt första foto är det andra ser när de sveper. Lägg till upp till 6; tydliga, glada och aktuella foton fungerar bäst. Foton på barn är inte tillåtna.",
   "Your last check didn't go through. Try again with a clear, well-lit photo of your document.": "Din senaste kontroll gick inte igenom. Försök igen med ett skarpt och väl upplyst foto av ditt dokument.",
   "Your password": "Ditt lösenord",
   "Your profile is hidden right now, so nobody can find you. You can show it again in your profile settings.": "Din profil är dold just nu, så ingen kan hitta dig. Du kan visa den igen i dina profilinställningar.",
@@ -581,5 +578,9 @@
   "{n} years old": "{n} år",
   "{n}% match": "{n} % match",
   "{week} per week": "{week} per vecka",
-  "{week} per week, {day} per day": "{week} per vecka, {day} per dag"
+  "{week} per week, {day} per day": "{week} per vecka, {day} per dag",
+  "Your first photo is what people see when they swipe. Add up to 6; clear, smiling, recent photos work best, and a family photo plus your home helps.": "Ditt första foto är det andra ser när de sveper. Lägg upp upp till 6; tydliga, glada och aktuella foton fungerar bäst, och ett familjefoto plus ett på ert hem hjälper.",
+  "This photo shows children. Are you their parent or guardian, or do you have their parents' permission to post it?": "Det här fotot visar barn. Är du deras förälder eller vårdnadshavare, eller har du deras föräldrars tillåtelse att lägga upp det?",
+  "Your first photo is what people see when they swipe. Add up to 6; clear, smiling, recent photos work best. Photos with children need their parents' permission.": "Ditt första foto är det andra ser när de sveper. Lägg upp upp till 6; tydliga, glada och aktuella foton fungerar bäst. Foton med barn kräver föräldrarnas tillåtelse.",
+  "This photo shows children. Please confirm you are their parent or guardian, or have their parents' permission, to post it.": "Det här fotot visar barn. Bekräfta att du är deras förälder eller vårdnadshavare, eller har deras föräldrars tillåtelse, för att lägga upp det."
 }

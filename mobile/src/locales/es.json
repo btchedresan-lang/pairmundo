@@ -43,7 +43,6 @@
   "Au pair lives in": "El au pair vive en",
   "Au pair must speak": "El au pair debe hablar",
   "Au pairs never pay. Swiping and matching are free for everyone.": "Los au pairs nunca pagan. Deslizar y hacer match es gratis para todos.",
-  "Au pairs want to see who they would live with. A friendly photo of the adults in the family works best.": "Los au pairs quieren ver con quién van a vivir. Una foto amable de los adultos de la familia funciona mejor.",
   "Australia": "Australia",
   "Austria": "Austria",
   "Available": "Disponible",
@@ -267,7 +266,6 @@
   "Philippines": "Filipinas",
   "Photos": "Fotos",
   "Photos must be under 5 MB.": "Las fotos deben pesar menos de 5 MB.",
-  "Photos showing children aren't allowed on PairMundo. Please choose a photo without children.": "En PairMundo no se permiten fotos en las que aparezcan niños. Elige una foto sin niños, por favor.",
   "Placement": "Estancia",
   "Placements": "Estancias",
   "Pocket money": "Dinero de bolsillo",
@@ -448,8 +446,6 @@
   "Your ID is already verified.": "Tu identidad ya está verificada.",
   "Your email is confirmed.": "Tu correo está confirmado.",
   "Your experience": "Tu experiencia",
-  "Your first photo is what people see when they swipe. Clear, smiling, recent photos work best, and a photo of the adults in the family helps. Photos of children aren't allowed.": "Tu primera foto es lo que la gente ve al deslizar. Funcionan mejor las fotos nítidas, sonrientes y recientes, y una foto de los adultos de la familia ayuda. No se permiten fotos de niños.",
-  "Your first photo is what people see when they swipe. Clear, smiling, recent photos work best. Photos of children aren't allowed.": "Tu primera foto es lo que la gente ve al deslizar. Funcionan mejor las fotos nítidas, sonrientes y recientes. No se permiten fotos de niños.",
   "Your last check didn't go through. Try again with a clear, well-lit photo of your document.": "Tu última verificación no se pudo completar. Inténtalo de nuevo con una foto nítida y bien iluminada de tu documento.",
   "Your password": "Tu contraseña",
   "Your profile is hidden right now, so nobody can find you. You can show it again in your profile settings.": "Ahora mismo tu perfil está oculto, así que nadie puede encontrarte. Puedes volver a mostrarlo en los ajustes de tu perfil.",
@@ -486,5 +482,10 @@
   "{n} years": "{n} años",
   "{n} yrs": "{n} años",
   "{n} yrs childcare": "{n} años cuidando niños",
-  "{score}% match": "{score}% de match"
+  "{score}% match": "{score}% de match",
+  "This photo shows children. Are you their parent or guardian, or do you have their parents' permission to post it?": "Esta foto muestra a niños. ¿Eres su madre, padre o tutor, o tienes el permiso de sus padres para publicarla?",
+  "This photo shows children. Please confirm you are their parent or guardian, or have their parents' permission, to post it.": "Esta foto muestra a niños. Confirma que eres su madre, padre o tutor, o que tienes el permiso de sus padres, para publicarla.",
+  "Your first photo is what people see when they swipe. Clear, smiling, recent photos work best. Photos with children need their parents' permission.": "Tu primera foto es lo que la gente ve al deslizar. Funcionan mejor las fotos claras, sonrientes y recientes. Las fotos con niños necesitan el permiso de sus padres.",
+  "Au pairs want to see who they would live with. A friendly family photo works best.": "Los au pairs quieren ver con quién van a vivir. Una foto familiar amable funciona mejor.",
+  "Your first photo is what people see when they swipe. Clear, smiling, recent photos work best, and a family photo helps.": "Tu primera foto es lo que la gente ve al deslizar. Funcionan mejor las fotos claras, sonrientes y recientes, y una foto familiar ayuda."
 }
