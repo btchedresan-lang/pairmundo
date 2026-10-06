@@ -8,7 +8,7 @@ import { scoreMatch, checkCompliance, ageOn } from './matching.js';
 import { PROGRAMS, REVIEW_CRITERIA, PLACEMENT_TASKS } from './programs.js';
 import { createMailer, codeEmail } from './mailer.js';
 import { pickLang, t as translate } from './i18n.js';
-import { createCheckout, createIdentity, verifyWebhook } from './identity.js';
+import { createIdentity, verifyWebhook } from './identity.js';
 import { createPusher, isPushToken } from './push.js';
 import { createStorage } from './storage.js';
 
@@ -30,7 +30,7 @@ const CODE_MINUTES = 30;
 const CODE_MAX_ATTEMPTS = 5;
 
 /** The Family Pass: what families buy to message au pairs. The price is shown in the app; the stores charge their own listed price. */
-export const FAMILY_PASS = { days: 90, price: '€79', amount: 7900, currency: 'eur' };
+export const FAMILY_PASS = { days: 90, price: '€79' };
 
 class HttpError extends Error {
   constructor(status, message, code) { super(message); this.status = status; this.code = code; }
@@ -57,7 +57,7 @@ export function seedPrograms(db) {
   }
 }
 
-export function createApp(db, { mailer = createMailer(), pusher = createPusher(), storage, identity = createIdentity(), checkout = createCheckout() } = {}) {
+export function createApp(db, { mailer = createMailer(), pusher = createPusher(), storage, identity = createIdentity() } = {}) {
   const UPLOAD_DIR = process.env.UPLOAD_DIR || 'data/uploads';
   storage ??= createStorage({ dir: UPLOAD_DIR });
   seedPrograms(db);
@@ -561,7 +561,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   const needsPass = (u) => passRequired() && u.role === 'family' && !activePass(u.id);
   const passView = (u) => {
     const p = activePass(u.id);
-    return { required: passRequired() && u.role === 'family', active: !!p, ends_at: p?.ends_at ?? null, days: FAMILY_PASS.days, price: FAMILY_PASS.price, web_checkout: !!checkout };
+    return { required: passRequired() && u.role === 'family', active: !!p, ends_at: p?.ends_at ?? null, days: FAMILY_PASS.days, price: FAMILY_PASS.price };
   };
   /** Adds a pass, starting when the current one ends. A purchase already counted (same source and ref) is ignored. */
   const grantPass = (userId, source, ref = null, days = FAMILY_PASS.days) => {
@@ -575,25 +575,6 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (needsPass(u)) throw new HttpError(402, 'Get the Family Pass to message au pairs.', 'pass_required');
   };
   api.get('/family-pass', requireAuth, wrap((req) => passView(req.user)));
-  const publicBase = () => (process.env.PUBLIC_URL || 'https://pairmundo.com').replace(/\/$/, '');
-  // Paying on the website goes through Stripe Checkout. The webhook grants the pass; the page also checks on return.
-  api.post('/family-pass/checkout', requireAuth, wrap(async (req) => {
-    if (!checkout) throw new HttpError(503, 'Payments are coming soon.');
-    if (req.user.role !== 'family') throw forbidden('Only families need the Family Pass.');
-    const s = await checkout.start(req.user, {
-      amount: FAMILY_PASS.amount, currency: FAMILY_PASS.currency, name: 'PairMundo Family Pass (3 months)',
-      successUrl: `${publicBase()}/#/family-pass?paid={CHECKOUT_SESSION_ID}`, cancelUrl: `${publicBase()}/#/family-pass`,
-    });
-    return { url: s.url };
-  }));
-  api.post('/family-pass/checkout/:id', requireAuth, wrap(async (req) => {
-    if (!checkout) throw new HttpError(503, 'Payments are coming soon.');
-    let r;
-    try { r = await checkout.result(req.params.id); } catch { throw notFound(); }
-    if (r.userId !== req.user.id) throw notFound();
-    if (r.paid) grantPass(req.user.id, 'stripe', req.params.id);
-    return { paid: r.paid, pass: passView(req.user) };
-  }));
 
   // ID check (Stripe Identity). Each check costs money, so a person can start only a few a day.
   const ID_CHECKS_PER_DAY = 3;
@@ -622,7 +603,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (req.user.id_verified) throw new HttpError(409, 'Your ID is already verified.');
     const today = db.prepare("SELECT COUNT(*) n FROM id_checks WHERE user_id = ? AND created_at > datetime('now', '-1 day')").get(req.user.id).n;
     if (today >= ID_CHECKS_PER_DAY) throw new HttpError(429, 'You have started several ID checks today. Try again tomorrow.');
-    const s = await identity.start(req.user, `${publicBase()}/id-check-done`);
+    const base = (process.env.PUBLIC_URL || 'https://pairmundo.com').replace(/\/$/, '');
+    const s = await identity.start(req.user, `${base}/id-check-done`);
     db.prepare('INSERT INTO id_checks (session_id, user_id, status) VALUES (?,?,?)').run(s.id, req.user.id, s.status || 'requires_input');
     return { url: s.url };
   }));
@@ -633,10 +615,6 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (String(event.type).startsWith('identity.verification_session.') && s?.id) {
       const row = db.prepare('SELECT user_id FROM id_checks WHERE session_id = ?').get(s.id);
       if (row) idCheckDone(row.user_id, s.id, s.status, s.last_error?.code || null);
-    }
-    if (event.type === 'checkout.session.completed' && s?.id && s.metadata?.product === 'family_pass' && s.payment_status === 'paid') {
-      const u = getUser(Number(s.metadata.user_id));
-      if (u) grantPass(u.id, 'stripe', s.id);
     }
     res.json({ received: true });
   };

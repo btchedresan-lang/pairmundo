@@ -298,12 +298,7 @@ const tile = (r, extra = '') => `<a class="tile" href="#/u/${r.user.id}">${photo
   <div class="tile-info"><strong>${esc(r.user.name)}${ageOf(r) ? `, ${ageOf(r)}` : ''}</strong><span>${flag(r.user.country)} ${esc(COUNTRIES[r.user.country] || '')}</span>${extra}</div></a>`;
 
 views.likes = async () => {
-  const { likes, locked, count } = await api('/likes');
-  if (locked) {
-    return render(`<h1>${count} ${count === 1 ? 'person likes' : 'people like'} you</h1>
-      <div class="card" style="text-align:center"><p style="font-size:40px;margin:0">💛</p>
-      <p>Get the Family Pass to see who liked you and to message au pairs.</p><a class="btn" href="#/family-pass">See the Family Pass</a></div>`);
-  }
+  const { likes } = await api('/likes');
   render(`<h1>${likes.length} ${likes.length === 1 ? 'person likes' : 'people like'} you</h1>
     <p class="muted">Like them back to match and start chatting.</p>
     <div class="tiles">${likes.map((l) => tile(l, l.message ? `<em>“${esc(l.message.slice(0, 60))}${l.message.length > 60 ? '…' : ''}”</em>` : '')).join('')
@@ -627,10 +622,7 @@ views.profile = async () => {
   const isAp = u.role === 'aupair';
   const chipSet = (name, dict, selected) => `<div class="chips" data-chipset="${name}">${Object.entries(dict).map(([k, v]) =>
     `<button type="button" class="chip chip-toggle ${(selected || []).includes(k) ? 'on' : ''}" data-v="${k}">${esc(v)}</button>`).join('')}</div>`;
-  const pass = me.pass;
   render(`<div class="spread"><h1>My profile</h1><span><a href="#/account">🔒 Account and safety</a> · <a href="#/u/${u.id}">See how others see you →</a></span></div>
-  ${u.role === 'family' && pass && (pass.required || pass.active) ? `<div class="card spread"><span>💛 <strong>Family Pass</strong> · ${pass.active ? `active until ${fmtDate(pass.ends_at)}` : 'not active'}</span>
-    <a class="btn sm" href="#/family-pass">${pass.active ? 'Details' : 'Get it'}</a></div>` : ''}
   <div class="card"><h2>Photos</h2><p class="muted small">Your first photo is what people see when they swipe. Add up to 6; clear, smiling, recent photos work best${isAp ? ', and one with kids (with permission) helps' : ', and a family photo plus your home helps'}.</p>
     <div class="photo-grid" id="photoGrid"></div></div>
   <form id="f"><div class="card"><h2>Basics</h2><div class="form-grid">
@@ -821,7 +813,7 @@ views.messages = async ([convId]) => {
     try {
       const m = await api(`/conversations/${active}/messages`, { method: 'POST', body: { body } });
       if (m.id > lastId) add([m]);
-    } catch (err) { form.body.value = body; if (err.data?.code === 'pass_required') return go('#/family-pass'); if (!needsCode(err)) toast(err.message); }
+    } catch (err) { form.body.value = body; if (!needsCode(err)) toast(err.message); }
   };
   document.getElementById('reportBlock').onclick = async () => {
     const reason = prompt('What happened? Our safety team reviews every report. Leave empty to just block.');
@@ -1064,33 +1056,6 @@ views.admin = async ([tab = 'overview']) => {
       try { await api(`/programs/${f.dataset.prog}`, { method: 'PUT', body }); toast('Program updated'); } catch (err) { toast(err.message); }
     }; });
   }
-};
-
-// ---------- Family Pass ----------
-views['family-pass'] = async (_args, qs) => {
-  const paid = qs.get('paid');
-  let pass = await api('/family-pass');
-  if (paid) {
-    // Back from Stripe: confirm the payment here too, in case its webhook is slow.
-    try { const r = await api(`/family-pass/checkout/${encodeURIComponent(paid)}`, { method: 'POST' }); pass = r.pass; if (r.paid) { toast('Thank you! Your Family Pass is active.'); await refreshMe(); } }
-    catch (e) { toast(e.message); }
-    history.replaceState(null, '', '#/family-pass');
-  }
-  const until = pass.active ? `<p><strong>Active until ${fmtDate(pass.ends_at)}.</strong> Buying again adds ${pass.days} days after that.</p>` : '';
-  render(`<h1>Family Pass</h1><div class="card" style="max-width:560px">
-    <p class="muted">${pass.days} days for ${esc(pass.price)}, paid once. It doesn't renew by itself.</p>
-    <ul><li>Message the au pairs you match with</li><li>See who liked your family</li><li>Au pairs always use PairMundo for free</li></ul>
-    ${until}
-    ${pass.web_checkout ? `<button class="btn" id="buy">${pass.active ? 'Add another' : 'Get'} ${pass.days} days for ${esc(pass.price)}</button>
-      <p class="muted small">You pay securely with Stripe.</p>`
-      : `<p class="muted">${pass.required ? 'Payments are coming soon.' : 'Right now families can use every feature for free.'}</p>`}
-  </div>`);
-  const $buy = document.getElementById('buy');
-  if ($buy) $buy.onclick = async () => {
-    $buy.disabled = true;
-    try { location.href = (await api('/family-pass/checkout', { method: 'POST' })).url; }
-    catch (e) { $buy.disabled = false; if (!needsCode(e)) toast(e.message); }
-  };
 };
 
 // ---------- router ----------
