@@ -27,24 +27,24 @@ const DICT = {
     es: '{name} quiere hacer match contigo.', fr: '{name} aimerait matcher avec vous.',
     de: '{name} möchte mit dir matchen.', pt: '{name} quer dar match com você.' },
   '{name} proposed a placement. Review and confirm it.': {
-    es: '{name} ha propuesto una estancia. Revísala y confírmala.', fr: '{name} a proposé un séjour. Vérifiez-le et confirmez-le.',
-    de: '{name} hat einen Aufenthalt vorgeschlagen. Prüfe und bestätige ihn.', pt: '{name} propôs uma estadia. Revise e confirme.' },
+    es: '{name} ha propuesto una estancia. Revísala y confírmala.', fr: '{name} a proposé un placement. Vérifiez-le et confirmez-le.',
+    de: '{name} hat eine Vermittlung vorgeschlagen. Prüfe und bestätige sie.', pt: '{name} propôs uma estadia. Revise e confirme.' },
   'Your placement is confirmed. Work through the checklist together.': {
-    es: 'Tu estancia está confirmada. Completad juntos la lista de tareas.', fr: 'Votre séjour est confirmé. Suivez la liste de tâches ensemble.',
-    de: 'Dein Aufenthalt ist bestätigt. Arbeitet die Checkliste gemeinsam ab.', pt: 'Sua estadia está confirmada. Façam a lista de tarefas juntos.' },
+    es: 'Tu estancia está confirmada. Completad juntos la lista de tareas.', fr: 'Votre placement est confirmé. Suivez la liste de tâches ensemble.',
+    de: 'Eure Vermittlung ist bestätigt. Arbeitet die Checkliste gemeinsam ab.', pt: 'Sua estadia está confirmada. Façam a lista de tarefas juntos.' },
   'Your placement is now active.': {
-    es: 'Tu estancia ya está activa.', fr: 'Votre séjour est maintenant en cours.', de: 'Dein Aufenthalt ist jetzt aktiv.', pt: 'Sua estadia agora está ativa.' },
+    es: 'Tu estancia ya está activa.', fr: 'Votre placement est maintenant en cours.', de: 'Eure Vermittlung ist jetzt aktiv.', pt: 'Sua estadia agora está ativa.' },
   'Your placement is now completed.': {
-    es: 'Tu estancia ha finalizado.', fr: 'Votre séjour est maintenant terminé.', de: 'Dein Aufenthalt ist jetzt abgeschlossen.', pt: 'Sua estadia foi concluída.' },
+    es: 'Tu estancia ha finalizado.', fr: 'Votre placement est maintenant terminé.', de: 'Eure Vermittlung ist jetzt abgeschlossen.', pt: 'Sua estadia foi concluída.' },
   'Your placement was cancelled.': {
-    es: 'Tu estancia se ha cancelado.', fr: 'Votre séjour a été annulé.', de: 'Dein Aufenthalt wurde abgesagt.', pt: 'Sua estadia foi cancelada.' },
+    es: 'Tu estancia se ha cancelado.', fr: 'Votre placement a été annulé.', de: 'Eure Vermittlung wurde storniert.', pt: 'Sua estadia foi cancelada.' },
   'Your placement ended. Leave a review to help the community.': {
-    es: 'Tu estancia ha terminado. Deja una reseña para ayudar a la comunidad.', fr: 'Votre séjour est terminé. Laissez un avis pour aider la communauté.',
-    de: 'Dein Aufenthalt ist vorbei. Hinterlasse eine Bewertung, um der Community zu helfen.', pt: 'Sua estadia terminou. Deixe uma avaliação para ajudar a comunidade.' },
+    es: 'Tu estancia ha terminado. Deja una reseña para ayudar a la comunidad.', fr: 'Votre placement est terminé. Laissez un avis pour aider la communauté.',
+    de: 'Eure Vermittlung ist beendet. Hinterlasse eine Bewertung, um der Community zu helfen.', pt: 'Sua estadia terminou. Deixe uma avaliação para ajudar a comunidade.' },
   '{name} left you a review. It appears once you review them too, or {days} days after the placement ends.': {
     es: '{name} te ha dejado una reseña. Se mostrará cuando tú también le valores, o {days} días después de que termine la estancia.',
-    fr: "{name} vous a laissé un avis. Il s'affichera quand vous l'aurez évalué à votre tour, ou {days} jours après la fin du séjour.",
-    de: '{name} hat dich bewertet. Die Bewertung erscheint, sobald du auch bewertest, oder {days} Tage nach Ende des Aufenthalts.',
+    fr: "{name} vous a laissé un avis. Il s'affichera quand vous l'aurez évalué à votre tour, ou {days} jours après la fin du placement.",
+    de: '{name} hat dich bewertet. Die Bewertung erscheint, sobald du auch bewertest, oder {days} Tage nach Ende der Vermittlung.',
     pt: '{name} deixou uma avaliação para você. Ela aparece quando você também avaliar, ou {days} dias após o fim da estadia.' },
   'Your profile has a new verification badge.': {
     es: 'Tu perfil tiene una nueva insignia de verificación.', fr: 'Votre profil a un nouveau badge de vérification.',
@@ -63,10 +63,84 @@ const DICT = {
     fr: "Votre code de réinitialisation est {code}. Saisissez-le dans l'app avec votre nouveau mot de passe. Il expire dans 30 minutes.\n\nSi vous n'avez pas demandé à réinitialiser votre mot de passe, ignorez cet e-mail ; votre mot de passe reste inchangé.",
     de: 'Dein Code zum Zurücksetzen des Passworts ist {code}. Gib ihn in der App zusammen mit deinem neuen Passwort ein. Er läuft in 30 Minuten ab.\n\nWenn du das nicht angefordert hast, kannst du diese E-Mail ignorieren; dein Passwort bleibt unverändert.',
     pt: 'Seu código para redefinir a senha é {code}. Digite-o no app com sua nova senha. Ele expira em 30 minutos.\n\nSe você não pediu para redefinir a senha, pode ignorar este e-mail; sua senha continua a mesma.' },
+
+  // Match reasons and warnings (matching.js)
+  'Wants to go to {country}': { es: 'Quiere ir a {country}', fr: 'Destination souhaitée : {country}', de: 'Möchte nach {country}', pt: 'Quer ir para {country}' },
+  "Destination is not in the au pair's preferred countries": {
+    es: 'El destino no está entre los países preferidos del au pair', fr: "La destination ne fait pas partie des pays souhaités par l'au pair",
+    de: 'Das Ziel gehört nicht zu den Wunschländern des Au-pairs', pt: 'O destino não está entre os países preferidos do au pair' },
+  'Speaks {languages}': { es: 'Habla {languages}', fr: 'Parle {languages}', de: 'Spricht {languages}', pt: 'Fala {languages}' },
+  'Missing required language: {languages}': {
+    es: 'Falta un idioma requerido: {languages}', fr: 'Langue requise manquante : {languages}', de: 'Fehlende Pflichtsprache: {languages}', pt: 'Falta um idioma exigido: {languages}' },
+  'Shares a home language': { es: 'Comparte un idioma de casa', fr: 'Parle une langue de la famille', de: 'Spricht eine Familiensprache', pt: 'Fala um idioma da família' },
+  'Availability lines up with start date': {
+    es: 'Su disponibilidad coincide con la fecha de inicio', fr: 'La disponibilité correspond à la date de début', de: 'Verfügbarkeit passt zum Startdatum', pt: 'A disponibilidade coincide com a data de início' },
+  'Availability is far from the start date': {
+    es: 'Su disponibilidad está lejos de la fecha de inicio', fr: 'La disponibilité est éloignée de la date de début', de: 'Verfügbarkeit liegt weit vom Startdatum entfernt', pt: 'A disponibilidade está longe da data de início' },
+  "Experienced with these children's ages": {
+    es: 'Tiene experiencia con niños de estas edades', fr: "A de l'expérience avec des enfants de cet âge", de: 'Erfahrung mit Kindern in diesem Alter', pt: 'Tem experiência com crianças dessas idades' },
+  'Family has an infant; au pair lists no infant experience': {
+    es: 'La familia tiene un bebé; el au pair no indica experiencia con bebés', fr: "La famille a un bébé ; l'au pair n'indique aucune expérience avec les bébés",
+    de: 'Familie hat ein Baby; Au-pair gibt keine Erfahrung mit Babys an', pt: 'A família tem um bebê; o au pair não informa experiência com bebês' },
+  "Has a driver's license": { es: 'Tiene carné de conducir', fr: 'A le permis de conduire', de: 'Hat einen Führerschein', pt: 'Tem carteira de motorista' },
+  'Family needs a driver': { es: 'La familia necesita a alguien que conduzca', fr: 'La famille a besoin de quelqu’un qui conduit', de: 'Familie braucht jemanden mit Führerschein', pt: 'A família precisa de alguém que dirija' },
+  'Family has pets': { es: 'La familia tiene mascotas', fr: 'La famille a des animaux', de: 'Familie hat Haustiere', pt: 'A família tem animais de estimação' },
+  '{country} has no au pair route for this au pair': {
+    es: '{country} no tiene vía de au pair para este au pair', fr: "{country} : aucune voie au pair pour cet au pair", de: '{country}: kein Au-pair-Weg für dieses Au-pair', pt: '{country} não tem via de au pair para este au pair' },
+  '{country} only has an au pair route for EU/EEA citizens': {
+    es: '{country} solo tiene vía de au pair para ciudadanos de la UE/EEE', fr: '{country} : voie au pair réservée aux citoyens UE/EEE',
+    de: '{country}: Au-pair-Weg nur für EU/EWR-Bürger', pt: '{country} só tem via de au pair para cidadãos da UE/EEE' },
+  "{country}'s au pair visas are currently stalled": {
+    es: 'Los visados de au pair de {country} están paralizados', fr: '{country} : les visas au pair sont actuellement bloqués',
+    de: '{country}: Au-pair-Visa sind derzeit ausgesetzt', pt: 'Os vistos de au pair de {country} estão parados no momento' },
+  "Age {age} is outside {country}'s {min}-{max} range": {
+    es: 'Con {age} años queda fuera del rango de {min} a {max} de {country}', fr: "{age} ans : hors de la tranche {min}-{max} ans de {country}",
+    de: 'Alter {age} liegt außerhalb von {min}-{max} ({country})', pt: '{age} anos está fora da faixa de {min} a {max} de {country}' },
+  // Placement checks (matching.js)
+  'No program rules on file for this country; check local regulations.': {
+    es: 'No tenemos normas para este país; consulta la normativa local.', fr: "Aucune règle enregistrée pour ce pays ; vérifiez la réglementation locale.",
+    de: 'Für dieses Land sind keine Regeln hinterlegt; prüfe die örtlichen Vorschriften.', pt: 'Não temos regras para este país; confira a legislação local.' },
+  '{country} currently has no au pair route.': {
+    es: '{country} no tiene ahora vía de au pair.', fr: "{country} n'a actuellement aucune voie au pair.", de: '{country} hat derzeit keinen Au-pair-Weg.', pt: '{country} não tem via de au pair no momento.' },
+  'This au pair is an EU/EEA citizen, so free movement applies.': {
+    es: 'Este au pair es ciudadano de la UE/EEE, así que aplica la libre circulación.', fr: "Cet au pair est citoyen de l'UE/EEE : la libre circulation s'applique.",
+    de: 'Dieses Au-pair ist EU/EWR-Bürger, daher gilt die Freizügigkeit.', pt: 'Este au pair é cidadão da UE/EEE, então vale a livre circulação.' },
+  "{country}'s au pair visas are currently paused.": {
+    es: 'Los visados de au pair de {country} están en pausa.', fr: '{country} : les visas au pair sont actuellement suspendus.',
+    de: '{country}: Au-pair-Visa sind derzeit ausgesetzt.', pt: 'Os vistos de au pair de {country} estão suspensos no momento.' },
+  'Au pair will be {age} at start; {country} requires {min}-{max}.': {
+    es: 'El au pair tendrá {age} años al empezar; {country} exige de {min} a {max}.', fr: "L'au pair aura {age} ans au début ; {country} exige {min}-{max} ans.",
+    de: 'Das Au-pair ist zu Beginn {age}; {country} verlangt {min}-{max}.', pt: 'O au pair terá {age} anos no início; {country} exige de {min} a {max}.' },
+  '{hours} h/week exceeds the {max} h maximum.': {
+    es: '{hours} h/semana supera el máximo de {max} h.', fr: '{hours} h/semaine dépasse le maximum de {max} h.', de: '{hours} Std./Woche überschreitet das Maximum von {max} Std.', pt: '{hours} h/semana passa do máximo de {max} h.' },
+  'Pocket money {amount} {currency}/month is below the {min} {currency} minimum.': {
+    es: 'El dinero de bolsillo de {amount} {currency}/mes está por debajo del mínimo de {min} {currency}.', fr: "L'argent de poche de {amount} {currency}/mois est inférieur au minimum de {min} {currency}.",
+    de: 'Taschengeld von {amount} {currency}/Monat liegt unter dem Minimum von {min} {currency}.', pt: 'A mesada de {amount} {currency}/mês está abaixo do mínimo de {min} {currency}.' },
+  'End date must be after start date.': {
+    es: 'La fecha de fin debe ser posterior a la de inicio.', fr: 'La date de fin doit être après la date de début.', de: 'Das Enddatum muss nach dem Startdatum liegen.', pt: 'A data de término deve ser depois da data de início.' },
+  'Duration of ~{months} months exceeds the {max}-month maximum.': {
+    es: 'Una duración de ~{months} meses supera el máximo de {max} meses.', fr: 'Une durée de ~{months} mois dépasse le maximum de {max} mois.',
+    de: 'Eine Dauer von ~{months} Monaten überschreitet das Maximum von {max} Monaten.', pt: 'A duração de ~{months} meses passa do máximo de {max} meses.' },
+  'Duration of ~{months} months is below the usual {min}-month minimum.': {
+    es: 'Una duración de ~{months} meses está por debajo del mínimo habitual de {min} meses.', fr: 'Une durée de ~{months} mois est inférieure au minimum habituel de {min} mois.',
+    de: 'Eine Dauer von ~{months} Monaten liegt unter dem üblichen Minimum von {min} Monaten.', pt: 'A duração de ~{months} meses está abaixo do mínimo habitual de {min} meses.' },
+  '{country} requires placement through a recognised agency/sponsor.': {
+    es: '{country} exige tramitar la estancia con una agencia o patrocinador reconocido.', fr: '{country} exige un placement via une agence ou un sponsor reconnu.',
+    de: '{country} verlangt die Vermittlung über eine anerkannte Agentur oder einen Sponsor.', pt: '{country} exige que a estadia seja feita por uma agência ou patrocinador reconhecido.' },
 };
 
 /** Translate English text into lang, filling {placeholders} from vars. */
 export function t(lang, text, vars = {}) {
   const s = DICT[text]?.[lang] || text;
   return s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
+}
+
+/** A country's name in lang, e.g. countryName('de', 'US') is "Vereinigte Staaten". */
+export function countryName(lang, code, fallback = code) {
+  if (!lang || lang === 'en' || !code) return fallback;
+  try { return new Intl.DisplayNames([lang], { type: 'region' }).of(code) || fallback; } catch { return fallback; }
+}
+/** A language's name in lang ("en" in German is "Englisch"). */
+export function languageName(lang, code) {
+  try { return new Intl.DisplayNames([lang || 'en'], { type: 'language' }).of(code) || code; } catch { return code; }
 }

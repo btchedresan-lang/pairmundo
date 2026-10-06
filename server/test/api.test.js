@@ -196,7 +196,13 @@ test('corrected program rules: Norway closed to non-EU, NL max 25, UK closed, Au
   assert.ok(au.issues.some((i) => i.level === 'warning' && /stalled/.test(i.text)));
   const ap = { user: { id: 1, country: 'PH' }, profile: { nationality: 'PH', birth_date: '2004-01-01', languages: [{ code: 'en' }], preferred_countries: ['NO'] } };
   const m = scoreMatch(ap, { user: { id: 2, country: 'NO' }, profile: { start_date: '2027-01-01' } }, no);
-  assert.ok(m.score <= 20 && m.warnings.some((w) => /no au pair route/.test(w)));
+  assert.ok(m.score <= 20 && m.warnings.some((w) => /Norway only has an au pair route for EU\/EEA citizens/.test(w)));
+  // The same checks in the person's language, with country and language names translated.
+  const es = scoreMatch(ap, { user: { id: 2, country: 'NO' }, profile: { start_date: '2027-01-01', required_languages: ['en'] } }, no, null, 'es');
+  assert.ok(es.reasons.includes('Habla inglés'), JSON.stringify(es.reasons));
+  assert.ok(es.warnings.includes('Noruega solo tiene vía de au pair para ciudadanos de la UE/EEE'), JSON.stringify(es.warnings));
+  const de = checkCompliance(nl, { ...base, weekly_hours: 40, birth_date: '2004-01-01', nationality: 'BR' }, 'de');
+  assert.ok(de.issues.some((i) => i.text === '40 Std./Woche überschreitet das Maximum von 30 Std.'), JSON.stringify(de.issues));
 });
 
 test('program corrections reach an existing database unless an admin edited the row', () => {

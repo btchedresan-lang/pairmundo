@@ -29,10 +29,10 @@ export default function Register() {
       {err ? <Alert level="error" text={err} /> : null}
       <Button title={tr('Create account')} onPress={submit} loading={busy} />
       <T small muted style={{ textAlign: 'center' }}>
-        {tr('By creating an account you agree to the')}{' '}
-        <T small style={{ color: C.primary }} onPress={() => Linking.openURL(`${getBase()}/terms`)}>{tr('Terms of Use')}</T>
-        {` ${tr('and')} `}
-        <T small style={{ color: C.primary }} onPress={() => Linking.openURL(`${getBase()}/privacy`)}>{tr('Privacy Policy')}</T>.
+        {tr('By creating an account you agree to the {terms} and the {privacy}.').split(/(\{terms\}|\{privacy\})/).map((part, i) => (
+          part === '{terms}' ? <T key={i} small style={{ color: C.primary }} onPress={() => Linking.openURL(`${getBase()}/terms`)}>{tr('Terms of Use')}</T>
+            : part === '{privacy}' ? <T key={i} small style={{ color: C.primary }} onPress={() => Linking.openURL(`${getBase()}/privacy`)}>{tr('Privacy Policy')}</T>
+              : part))}
       </T>
       <T small muted style={{ textAlign: 'center' }}>{tr("We'll email you a code to confirm your address. Then add photos: profiles with photos get far more matches.")}</T>
     </Screen>

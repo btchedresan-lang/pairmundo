@@ -379,7 +379,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     let match = null;
     if (me.role !== u.role && me.role !== 'admin') {
       const [ap, fam] = me.role === 'aupair' ? [me, u] : [u, me];
-      match = scoreMatch({ user: ap, profile: getProfile(ap) }, { user: fam, profile: getProfile(fam) }, getProgram(fam.country), ratingSummary(ap.id));
+      match = scoreMatch({ user: ap, profile: getProfile(ap) }, { user: fam, profile: getProfile(fam) }, getProgram(fam.country), ratingSummary(ap.id), req.user.lang);
     }
     const req_ = db.prepare(`SELECT id, from_user, status FROM match_requests WHERE
         ((from_user = ? AND to_user = ?) OR (from_user = ? AND to_user = ?)) ORDER BY id DESC LIMIT 1`).get(me.id, u.id, u.id, me.id);
@@ -448,7 +448,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       const [ap, fam] = me.role === 'aupair'
         ? [{ user: me, profile: myProfile }, { user: u, profile }]
         : [{ user: u, profile }, { user: me, profile: myProfile }];
-      const match = scoreMatch(ap, fam, getProgram(fam.user.country), ratingSummary(ap.user.id));
+      const match = scoreMatch(ap, fam, getProgram(fam.user.country), ratingSummary(ap.user.id), me.lang);
       const likesYou = !!db.prepare("SELECT 1 FROM match_requests WHERE from_user = ? AND to_user = ? AND status = 'pending'").get(u.id, me.id);
       return { user: publicUser(u), profile, rating, match, likes_you: likesYou };
     });
@@ -537,7 +537,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
         const [ap, fam] = me.role === 'aupair' ? [{ user: me, profile: myProfile }, { user: u, profile }] : [{ user: u, profile }, { user: me, profile: myProfile }];
         const sw = db.prepare('SELECT direction FROM swipes WHERE user_id = ? AND target_id = ?').get(u.id, me.id);
         return { request_id: u.request_id, message: u.message, created_at: u.created_at, super: sw?.direction === 'super',
-          user: publicUser(u), profile, rating: ratingSummary(u.id), match: scoreMatch(ap, fam, getProgram(fam.user.country), ratingSummary(ap.user.id)) };
+          user: publicUser(u), profile, rating: ratingSummary(u.id), match: scoreMatch(ap, fam, getProgram(fam.user.country), ratingSummary(ap.user.id), req.user.lang) };
       }),
     };
   }));
@@ -742,7 +742,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const other = getUser(b.other_user_id);
     const { ap, fam } = placementParties(other, req.user);
     const apProfile = getProfile(ap);
-    return checkCompliance(getProgram(fam.country), { ...b, birth_date: apProfile?.birth_date, nationality: apProfile?.nationality });
+    return checkCompliance(getProgram(fam.country), { ...b, birth_date: apProfile?.birth_date, nationality: apProfile?.nationality }, req.user.lang);
   }));
 
   api.post('/placements', requireRole('aupair', 'family'), wrap((req, res) => {
@@ -758,7 +758,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const open = db.prepare(`SELECT 1 FROM placements WHERE aupair_id = ? AND family_id = ? AND status IN ('proposed','confirmed','active')`).get(ap.id, fam.id);
     if (open) throw new HttpError(409, 'There is already an open placement between you.');
     const program = getProgram(fam.country);
-    const compliance = checkCompliance(program, { birth_date: getProfile(ap)?.birth_date, nationality: getProfile(ap)?.nationality, start_date: b.start_date, end_date: b.end_date, weekly_hours: weekly, pocket_money: money });
+    const compliance = checkCompliance(program, { birth_date: getProfile(ap)?.birth_date, nationality: getProfile(ap)?.nationality, start_date: b.start_date, end_date: b.end_date, weekly_hours: weekly, pocket_money: money }, req.user.lang);
     if (!compliance.ok) { res.status(422); return { error: 'This placement breaks the country program rules.', compliance }; }
     const id = tx(db, () => {
       const r = db.prepare(`INSERT INTO placements (aupair_id, family_id, country, start_date, end_date, weekly_hours, pocket_money,
@@ -792,7 +792,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       ...p,
       aupair: publicUser(ap), family: publicUser(fam),
       program: program ? { code: program.code, name: program.name, currency: program.currency, visa: program.visa } : null,
-      compliance: checkCompliance(program, { ...p, birth_date: getProfile(ap)?.birth_date, nationality: getProfile(ap)?.nationality }),
+      compliance: checkCompliance(program, { ...p, birth_date: getProfile(ap)?.birth_date, nationality: getProfile(ap)?.nationality }, me.lang),
       tasks: db.prepare('SELECT * FROM placement_tasks WHERE placement_id = ? ORDER BY sort').all(p.id),
       my_review: myReview ? { ...myReview, criteria: json.parse(myReview.criteria, {}) } : null,
       can_review: me.role !== 'admin' && ['active', 'completed'].includes(p.status) && !myReview,

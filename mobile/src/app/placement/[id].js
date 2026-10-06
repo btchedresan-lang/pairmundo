@@ -3,7 +3,7 @@ import { Pressable, Text, View } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { api } from '../../api';
 import { useAuth } from '../../auth';
-import { cname, CRIT_LABEL, fmtDate, statusLabel, statusTone } from '../../data';
+import { cname, country, CRIT_LABEL, fmtDate, statusLabel, statusTone } from '../../data';
 import { tr } from '../../i18n';
 import { Alert, Button, Card, Chip, ComplianceBox, Field, Loading, Screen, StarInput, Stars, T } from '../../components/ui';
 import { C, useTheme } from '../../theme';
@@ -38,7 +38,7 @@ export default function Placement() {
           [tr('Confirmed'), `${p.aupair_confirmed ? '✓' : '○'} ${tr('au pair')} · ${p.family_confirmed ? '✓' : '○'} ${tr('family')}`]].map(([k, v]) => (
           <View key={k} style={{ flexDirection: 'row', gap: 10 }}><T small muted style={{ width: 100 }}>{k}</T><T small style={{ flex: 1 }}>{String(v)}</T></View>
         ))}
-        {p.program ? <Pressable onPress={() => router.push(`/programs/${p.program.code}`)}><T small style={{ color: C.primary }}>{tr('Open the {name} program guide', { name: p.program.name })} →</T></Pressable> : null}
+        {p.program ? <Pressable onPress={() => router.push(`/programs/${p.program.code}`)}><T small style={{ color: C.primary }}>{tr('Open the {name} program guide', { name: country(p.program.code) })} →</T></Pressable> : null}
       </Card>
       <View style={{ gap: 8 }}>
         {p.status === 'proposed' && !myConfirmed ? <Button title={tr('Confirm placement')} onPress={() => act(() => api(`/placements/${id}/confirm`, { method: 'POST' }))} /> : null}
