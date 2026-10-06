@@ -7,6 +7,7 @@ import { useAuth } from '../../auth';
 import { firstName, fmtTime } from '../../data';
 import { Alert, Empty, Loading, Photo, T } from '../../components/ui';
 import { C, useTheme } from '../../theme';
+import { tr } from '../../i18n';
 
 export default function Matches() {
   const t = useTheme();
@@ -23,7 +24,7 @@ export default function Matches() {
       refreshControl={<RefreshControl refreshing={false} onRefresh={load} />}
       ListHeaderComponent={<View style={{ padding: 16, gap: 10 }}>
         {error ? <Alert level="error" text={error} /> : null}
-        <T h2>New matches</T>
+        <T h2>{tr('New matches')}</T>
         {convs.length ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 14 }}>
             {convs.map((c) => (
@@ -36,10 +37,10 @@ export default function Matches() {
               </Pressable>
             ))}
           </ScrollView>
-        ) : <T muted>No matches yet. Swipe right on people you like!</T>}
-        <T h2 style={{ marginTop: 10 }}>Messages</T>
+        ) : <T muted>{tr('No matches yet. Swipe right on people you like!')}</T>}
+        <T h2 style={{ marginTop: 10 }}>{tr('Messages')}</T>
       </View>}
-      ListEmptyComponent={convs.length ? <Empty icon="👋" title="Say hi to your new matches" text="Tap a photo above to start chatting." /> : null}
+      ListEmptyComponent={convs.length ? <Empty icon="👋" title={tr('Say hi to your new matches')} text={tr('Tap a photo above to start chatting.')} /> : null}
       renderItem={({ item: c }) => (
         <Pressable onPress={() => router.push(`/chat/${c.id}`)} style={({ pressed }) => ({ flexDirection: 'row', gap: 12, alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: pressed ? t.soft : 'transparent' })}>
           <Photo user={c.other} rounded style={{ width: 56, height: 56 }} />

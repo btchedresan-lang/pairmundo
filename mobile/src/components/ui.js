@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { C, useTheme } from '../theme';
 import { imageUrl } from '../api';
 import { initials } from '../data';
+import { tr } from '../i18n';
 
 export function Screen({ children, scroll = true, padded = true, style }) {
   const t = useTheme();
@@ -91,7 +92,7 @@ export function Photo({ user, uri, style, rounded }) {
 }
 
 export function Stars({ value, size = 15 }) {
-  if (value == null) return <T small muted>No reviews yet</T>;
+  if (value == null) return <T small muted>{tr('No reviews yet')}</T>;
   const n = Math.round(value);
   return <Text style={{ color: C.gold, fontSize: size }}>{'★'.repeat(n)}{'☆'.repeat(5 - n)} <Text style={{ fontWeight: '700' }}>{value}</Text></Text>;
 }
@@ -100,7 +101,7 @@ export function StarInput({ value, onChange }) {
   return (
     <View style={{ flexDirection: 'row', gap: 4 }}>
       {[1, 2, 3, 4, 5].map((n) => (
-        <Pressable key={n} onPress={() => onChange(n)} hitSlop={6} accessibilityLabel={`${n} stars`}>
+        <Pressable key={n} onPress={() => onChange(n)} hitSlop={6} accessibilityLabel={tr('{n} stars', { n })}>
           <Text style={{ fontSize: 28, color: n <= (value || 0) ? C.gold : '#d0d5dd' }}>★</Text>
         </Pressable>
       ))}
@@ -131,8 +132,8 @@ export function ComplianceBox({ compliance }) {
   if (!compliance) return null;
   return (
     <View style={{ gap: 6 }}>
-      {compliance.issues.map((i, k) => <Alert key={k} level={i.level} text={i.text} />)}
-      {compliance.ok ? <Alert level="ok" text="Meets the program rules on file." /> : null}
+      {compliance.issues.map((i, k) => <Alert key={k} level={i.level} text={tr(i.text)} />)}
+      {compliance.ok ? <Alert level="ok" text={tr('Meets the program rules on file.')} /> : null}
     </View>
   );
 }

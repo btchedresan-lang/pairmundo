@@ -4,6 +4,7 @@ import { api } from '../../api';
 import { useAuth } from '../../auth';
 import { cname } from '../../data';
 import { Alert, Button, Card, ComplianceBox, Field, Loading, Screen, T } from '../../components/ui';
+import { tr } from '../../i18n';
 
 const addMonths = (iso, m) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCMonth(d.getUTCMonth() + m); d.setUTCDate(d.getUTCDate() - 1); return d.toISOString().slice(0, 10); };
 
@@ -43,15 +44,15 @@ export default function NewPlacement() {
   };
   return (
     <Screen>
-      <T h2>With {other.user.name}</T>
-      <T muted>{`Country: ${cname(country)}. You both confirm before it's final.`}</T>
-      <Field label="Start date (YYYY-MM-DD)" value={f.start_date} onChangeText={set('start_date')} />
-      <Field label="End date (YYYY-MM-DD)" value={f.end_date} onChangeText={set('end_date')} />
-      <Field label="Hours per week" value={f.weekly_hours} onChangeText={set('weekly_hours')} keyboardType="numeric" />
-      <Field label="Pocket money per month (local currency)" value={f.pocket_money} onChangeText={set('pocket_money')} keyboardType="numeric" />
-      <Card><T bold>Program check</T>{compliance ? <ComplianceBox compliance={compliance} /> : <T muted>Checking…</T>}</Card>
+      <T h2>{tr('With {name}', { name: other.user.name })}</T>
+      <T muted>{tr("Country: {country}. You both confirm before it's final.", { country: cname(country) })}</T>
+      <Field label={tr('Start date (YYYY-MM-DD)')} value={f.start_date} onChangeText={set('start_date')} />
+      <Field label={tr('End date (YYYY-MM-DD)')} value={f.end_date} onChangeText={set('end_date')} />
+      <Field label={tr('Hours per week')} value={f.weekly_hours} onChangeText={set('weekly_hours')} keyboardType="numeric" />
+      <Field label={tr('Pocket money per month (local currency)')} value={f.pocket_money} onChangeText={set('pocket_money')} keyboardType="numeric" />
+      <Card><T bold>{tr('Program check')}</T>{compliance ? <ComplianceBox compliance={compliance} /> : <T muted>{tr('Checking…')}</T>}</Card>
       {error ? <Alert level="error" text={error} /> : null}
-      <Button title="Send proposal" onPress={submit} loading={busy} disabled={compliance && !compliance.ok} />
+      <Button title={tr('Send proposal')} onPress={submit} loading={busy} disabled={compliance && !compliance.ok} />
     </Screen>
   );
 }

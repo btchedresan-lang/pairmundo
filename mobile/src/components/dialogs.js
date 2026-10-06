@@ -1,10 +1,11 @@
 import { Alert as RNAlert, Platform } from 'react-native';
+import { tr } from '../i18n';
 
 /** Yes/no question. Resolves true when the person confirms. */
-export function confirmAsync(title, message, okText = 'OK', destructive = false) {
+export function confirmAsync(title, message, okText = tr('OK'), destructive = false) {
   if (Platform.OS === 'web') return Promise.resolve(!!globalThis.confirm?.(message ? `${title}\n\n${message}` : title));
   return new Promise((resolve) => RNAlert.alert(title, message, [
-    { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+    { text: tr('Cancel'), style: 'cancel', onPress: () => resolve(false) },
     { text: okText, style: destructive ? 'destructive' : 'default', onPress: () => resolve(true) },
   ], { cancelable: true, onDismiss: () => resolve(false) }));
 }
@@ -18,6 +19,6 @@ export function chooseAsync(title, options) {
   }
   return new Promise((resolve) => RNAlert.alert(title, undefined, [
     ...options.map((o) => ({ text: o.label, style: o.destructive ? 'destructive' : 'default', onPress: () => resolve(o.key) })),
-    { text: 'Cancel', style: 'cancel', onPress: () => resolve(null) },
+    { text: tr('Cancel'), style: 'cancel', onPress: () => resolve(null) },
   ], { cancelable: true, onDismiss: () => resolve(null) }));
 }
