@@ -9,6 +9,10 @@ import { tr } from '../i18n';
 import { Alert, Photo, T } from './ui';
 import { C, useTheme } from '../theme';
 
+// Resolves true when the member taps Yes.
+const ask = (title) => (Platform.OS === 'web' ? Promise.resolve(!!globalThis.confirm?.(title))
+  : new Promise((done) => RNAlert.alert(title, undefined, [{ text: tr('Cancel'), style: 'cancel', onPress: () => done(false) }, { text: tr('Yes'), onPress: () => done(true) }], { cancelable: true, onDismiss: () => done(false) })));
+
 const confirm = (title, onYes) => (Platform.OS === 'web' ? (globalThis.confirm?.(title) && onYes())
   : RNAlert.alert(title, undefined, [{ text: tr('Cancel'), style: 'cancel' }, { text: tr('OK'), style: 'destructive', onPress: onYes }]));
 
@@ -25,7 +29,12 @@ export function PhotoGrid({ photos, onChange }) {
     try {
       // Shrink and re-encode on the phone so uploads are fast and under the server's 5 MB limit.
       const small = await manipulateAsync(res.assets[0].uri, [{ resize: { width: 1080 } }], { compress: 0.8, format: SaveFormat.JPEG, base64: true });
-      const r = await api('/me/photos', { method: 'POST', body: { data_url: `data:image/jpeg;base64,${small.base64}` } });
+      const body = { data_url: `data:image/jpeg;base64,${small.base64}` };
+      const r = await api('/me/photos', { method: 'POST', body }).catch(async (e) => {
+        // The photo shows children: post it only once the member confirms they have permission.
+        if (e.data?.code !== 'child_permission' || !(await ask(tr("This photo shows children. Are you their parent or guardian, or do you have their parents' permission to post it?")))) throw e;
+        return api('/me/photos', { method: 'POST', body: { ...body, child_permission: true } });
+      });
       onChange(r.photos);
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
   };

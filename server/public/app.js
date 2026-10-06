@@ -735,7 +735,7 @@ views.profile = async () => {
   ${u.role === 'family' && pass && (pass.required || pass.active) ? `<div class="card spread"><span>💛 <strong>Family Pass</strong> · ${pass.active ? tr('active until {date}', { date: fmtDate(pass.ends_at) }) : tr('not active')}</span>
     <a class="btn sm" href="#/family-pass">${pass.active ? tr('Details') : tr('Get it')}</a></div>` : ''}
   ${!u.verification?.id ? `<a class="alert info nudge" href="#/account">🪪 ${tr('Verify your ID to get the ID verified badge on your profile.')}</a>` : ''}
-  <div class="card"><h2>${tr('Photos')}</h2><p class="muted small">${isAp ? tr('Your first photo is what people see when they swipe. Add up to 6; clear, smiling, recent photos work best. Photos of children aren\'t allowed.') : tr('Your first photo is what people see when they swipe. Add up to 6; clear, smiling, recent photos work best, and a photo of the adults in the family plus your home helps. Photos of children aren\'t allowed.')}</p>
+  <div class="card"><h2>${tr('Photos')}</h2><p class="muted small">${isAp ? tr('Your first photo is what people see when they swipe. Add up to 6; clear, smiling, recent photos work best. Photos with children need their parents\' permission.') : tr('Your first photo is what people see when they swipe. Add up to 6; clear, smiling, recent photos work best, and a family photo plus your home helps.')}</p>
     <div class="photo-grid" id="photoGrid"></div></div>
   <form id="f"><div class="card"><h2>${tr('Basics')}</h2><div class="form-grid">
       <div class="field"><label>${tr('Name')}</label><input name="name" value="${esc(u.name)}" required></div>
@@ -842,7 +842,12 @@ function renderPhotoGrid(photos) {
     const file = input.files[0]; if (!file) return;
     const slot = input.closest('.photo-slot'); slot.innerHTML = `<span>${tr('Uploading…')}</span>`;
     try {
-      const r = await api('/me/photos', { method: 'POST', body: { data_url: await resizeImage(file) } });
+      const body = { data_url: await resizeImage(file) };
+      const r = await api('/me/photos', { method: 'POST', body }).catch((e) => {
+        // The photo shows children: post it only once the member confirms they have permission.
+        if (e.data?.code !== 'child_permission' || !confirm(tr("This photo shows children. Are you their parent or guardian, or do you have their parents' permission to post it?"))) throw e;
+        return api('/me/photos', { method: 'POST', body: { ...body, child_permission: true } });
+      });
       me.user.photos = r.photos; renderPhotoGrid(r.photos); toast(tr('Photo added'));
     } catch (e) { toast(e.message); renderPhotoGrid(photos); }
   };

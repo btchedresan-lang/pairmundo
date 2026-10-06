@@ -190,8 +190,11 @@ test('swiping: mutual like makes a match, pass hides, undo restores, photos uplo
   assert.deepEqual((await call(ap.token, 'GET', '/me')).body.user.photos, [first]);
   photoVerdict = { verdict: 'review', category: 'child_in_photo', note: 'A child in the background.' };
   r = await call(ap.token, 'POST', '/me/photos', { data_url: `data:image/png;base64,${png}` });
-  assert.equal(r.status, 400, 'photos of children are refused even when sent to review');
-  assert.match(r.body.error, /children/);
+  assert.equal(r.status, 400, 'photos of children need the parents\' permission');
+  assert.equal(r.body.code, 'child_permission');
+  r = await call(ap.token, 'POST', '/me/photos', { data_url: `data:image/png;base64,${png}`, child_permission: true });
+  assert.equal(r.status, 201, 'and go live once it is confirmed');
+  r = await call(ap.token, 'PUT', '/me/photos', { photos: [first] });
   photoVerdict = { verdict: 'review', category: 'contact_details', note: 'Shows a phone number.' };
   r = await call(ap.token, 'POST', '/me/photos', { data_url: `data:image/png;base64,${png}` });
   assert.equal(r.status, 201);

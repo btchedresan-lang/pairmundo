@@ -315,7 +315,6 @@
   "Photo-first profiles from families and au pairs worldwide. Swipe right on the ones you like; when it's mutual, you're matched and can chat. Program rules, verification and two-way reviews are built in.": "Perfiles con fotos de familias y au pairs de todo el mundo. Desliza a la derecha en los que te gusten; si es mutuo, hay match y podéis chatear. Las normas de cada programa, la verificación y las valoraciones mutuas vienen incluidas.",
   "Photos": "Fotos",
   "Photos must be under 5 MB.": "Las fotos deben pesar menos de 5 MB.",
-  "Photos showing children aren't allowed on PairMundo. Please choose a photo without children.": "En PairMundo no se permiten fotos en las que aparezcan niños. Elige una foto sin niños, por favor.",
   "Pick a conversation.": "Elige una conversación.",
   "Placement checklist": "Lista de la estancia",
   "Placement: {aupair} with {family}": "Estancia: {aupair} con {family}",
@@ -524,8 +523,6 @@
   "Your email": "Tu correo",
   "Your email is confirmed.": "Tu correo está confirmado.",
   "Your experience": "Tu experiencia",
-  "Your first photo is what people see when they swipe. Add up to 6; clear, smiling, recent photos work best, and a photo of the adults in the family plus your home helps. Photos of children aren't allowed.": "Tu primera foto es lo que la gente ve al deslizar. Añade hasta 6; funcionan mejor las fotos nítidas, sonrientes y recientes, y ayuda una foto de los adultos de la familia y otra de vuestra casa. No se permiten fotos de niños.",
-  "Your first photo is what people see when they swipe. Add up to 6; clear, smiling, recent photos work best. Photos of children aren't allowed.": "Tu primera foto es lo que la gente ve al deslizar. Añade hasta 6; funcionan mejor las fotos nítidas, sonrientes y recientes. No se permiten fotos de niños.",
   "Your last check didn't go through. Try again with a clear, well-lit photo of your document.": "Tu última verificación no se pudo completar. Inténtalo de nuevo con una foto nítida y bien iluminada de tu documento.",
   "Your password": "Tu contraseña",
   "Your profile is hidden right now, so nobody can find you. You can show it again in your profile settings.": "Ahora mismo tu perfil está oculto, así que nadie puede encontrarte. Puedes volver a mostrarlo en los ajustes de tu perfil.",
@@ -581,5 +578,9 @@
   "{n} years old": "{n} años",
   "{n}% match": "{n} % de compatibilidad",
   "{week} per week": "{week} por semana",
-  "{week} per week, {day} per day": "{week} por semana, {day} al día"
+  "{week} per week, {day} per day": "{week} por semana, {day} al día",
+  "Your first photo is what people see when they swipe. Add up to 6; clear, smiling, recent photos work best, and a family photo plus your home helps.": "Tu primera foto es lo que la gente ve al deslizar. Sube hasta 6; funcionan mejor las fotos claras, sonrientes y recientes, y ayuda una foto familiar y otra de tu casa.",
+  "This photo shows children. Are you their parent or guardian, or do you have their parents' permission to post it?": "Esta foto muestra a niños. ¿Eres su madre, padre o tutor, o tienes el permiso de sus padres para publicarla?",
+  "Your first photo is what people see when they swipe. Add up to 6; clear, smiling, recent photos work best. Photos with children need their parents' permission.": "Tu primera foto es lo que la gente ve al deslizar. Sube hasta 6; funcionan mejor las fotos claras, sonrientes y recientes. Las fotos con niños necesitan el permiso de sus padres.",
+  "This photo shows children. Please confirm you are their parent or guardian, or have their parents' permission, to post it.": "Esta foto muestra a niños. Confirma que eres su madre, padre o tutor, o que tienes el permiso de sus padres, para publicarla."
 }

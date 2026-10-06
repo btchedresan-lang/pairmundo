@@ -43,7 +43,6 @@
   "Au pair lives in": "Au pairen bor i",
   "Au pair must speak": "Au pairen måste tala",
   "Au pairs never pay. Swiping and matching are free for everyone.": "Au pairer betalar aldrig. Att svepa och matcha är gratis för alla.",
-  "Au pairs want to see who they would live with. A friendly photo of the adults in the family works best.": "Au pairer vill se vilka de ska bo med. Ett vänligt foto på de vuxna i familjen fungerar bäst.",
   "Australia": "Australien",
   "Austria": "Österrike",
   "Available": "Tillgänglig",
@@ -267,7 +266,6 @@
   "Philippines": "Filippinerna",
   "Photos": "Foton",
   "Photos must be under 5 MB.": "Foton måste vara mindre än 5 MB.",
-  "Photos showing children aren't allowed on PairMundo. Please choose a photo without children.": "Foton som visar barn är inte tillåtna på PairMundo. Välj ett foto utan barn.",
   "Placement": "Vistelse",
   "Placements": "Vistelser",
   "Pocket money": "Fickpengar",
@@ -448,8 +446,6 @@
   "Your ID is already verified.": "Din ID-handling är redan verifierad.",
   "Your email is confirmed.": "Din e-post är bekräftad.",
   "Your experience": "Din erfarenhet",
-  "Your first photo is what people see when they swipe. Clear, smiling, recent photos work best, and a photo of the adults in the family helps. Photos of children aren't allowed.": "Ditt första foto är det andra ser när de sveper. Tydliga, glada och aktuella foton fungerar bäst, och ett foto på de vuxna i familjen hjälper. Foton på barn är inte tillåtna.",
-  "Your first photo is what people see when they swipe. Clear, smiling, recent photos work best. Photos of children aren't allowed.": "Ditt första foto är det andra ser när de sveper. Tydliga, glada och aktuella foton fungerar bäst. Foton på barn är inte tillåtna.",
   "Your last check didn't go through. Try again with a clear, well-lit photo of your document.": "Din senaste kontroll gick inte igenom. Försök igen med ett skarpt och väl upplyst foto av ditt dokument.",
   "Your password": "Ditt lösenord",
   "Your profile is hidden right now, so nobody can find you. You can show it again in your profile settings.": "Din profil är dold just nu, så ingen kan hitta dig. Du kan visa den igen i dina profilinställningar.",
@@ -486,5 +482,10 @@
   "{n} years": "{n} år",
   "{n} yrs": "{n} år",
   "{n} yrs childcare": "{n} år barnomsorg",
-  "{score}% match": "{score} % match"
+  "{score}% match": "{score} % match",
+  "This photo shows children. Are you their parent or guardian, or do you have their parents' permission to post it?": "Det här fotot visar barn. Är du deras förälder eller vårdnadshavare, eller har du deras föräldrars tillåtelse att lägga upp det?",
+  "This photo shows children. Please confirm you are their parent or guardian, or have their parents' permission, to post it.": "Det här fotot visar barn. Bekräfta att du är deras förälder eller vårdnadshavare, eller har deras föräldrars tillåtelse, för att lägga upp det.",
+  "Your first photo is what people see when they swipe. Clear, smiling, recent photos work best. Photos with children need their parents' permission.": "Ditt första foto är det andra ser när de sveper. Tydliga, glada och aktuella foton fungerar bäst. Foton med barn kräver föräldrarnas tillåtelse.",
+  "Au pairs want to see who they would live with. A friendly family photo works best.": "Au pairer vill se vilka de ska bo med. Ett vänligt familjefoto fungerar bäst.",
+  "Your first photo is what people see when they swipe. Clear, smiling, recent photos work best, and a family photo helps.": "Ditt första foto är det andra ser när de sveper. Tydliga, glada och aktuella foton fungerar bäst, och ett familjefoto hjälper."
 }
