@@ -1090,6 +1090,23 @@ views.notifications = async () => {
 };
 
 // ---------- admin ----------
+async function adminBackup() {
+  const box = document.getElementById('backupInfo'); if (!box) return;
+  const show = (b) => {
+    const last = b.last ? `Last backup: ${fmtTime(b.last.at)}, ${Math.round(b.last.bytes / 1024)} KB, in <code>${esc(b.bucket)}</code> (keeps ${b.keep_days} days).` : 'No backup since the server started; the first one runs a minute after start-up, then daily.';
+    box.className = '';
+    box.innerHTML = b.enabled
+      ? `<p class="small">${last}</p>${b.last_error ? `<div class="alert error small">Last try failed at ${fmtTime(b.last_error.at)}: ${esc(b.last_error.message)}</div>` : ''}<button class="btn sm" id="backupNow">Back up now</button>`
+      : `<div class="alert warning small">${esc(b.problem)}</div>`;
+    const btn = document.getElementById('backupNow');
+    if (btn) btn.onclick = async () => {
+      btn.disabled = true; btn.textContent = 'Backing up…';
+      try { show(await api('/admin/backup', { method: 'POST' })); toast('Backup saved'); }
+      catch (e) { toast(e.message); btn.disabled = false; btn.textContent = 'Back up now'; }
+    };
+  };
+  try { show(await api('/admin/backup')); } catch (e) { box.textContent = e.message; }
+}
 views.admin = async ([tab = 'overview']) => {
   if (me.user.role !== 'admin') return go('#/');
   const tabs = { overview: 'Overview', users: 'Users & verification', reports: 'Reports', programs: 'Program rules', placements: 'Placements', waitlist: 'Waitlist' };
@@ -1099,10 +1116,12 @@ views.admin = async ([tab = 'overview']) => {
     const s = await api('/admin/stats');
     const tiles = [['Au pairs', s.aupairs], ['Host families', s.families], ['Awaiting ID check', s.pending_verification], ['Pending requests', s.open_requests],
       ['Matches', s.matches], ['Active placements', s.placements_active], ['Completed placements', s.placements_completed], ['Reviews', s.reviews], ['Open reports', s.open_reports], ['On the waitlist', s.waitlist]];
-    return render(`${head}<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(170px,1fr))">${tiles.map(([k, v]) =>
+    render(`${head}<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(170px,1fr))">${tiles.map(([k, v]) =>
       `<div class="card"><div class="muted small">${k}</div><div style="font-size:1.8rem;font-weight:800">${v}</div></div>`).join('')}</div>
       <div class="card"><h2>Members by country</h2><table><tr><th>Country</th><th>Role</th><th>Members</th></tr>
-      ${s.by_country.map((r) => `<tr><td>${cname(r.country) || '—'}</td><td>${r.role === 'aupair' ? 'Au pair' : 'Family'}</td><td>${r.n}</td></tr>`).join('')}</table></div>`);
+      ${s.by_country.map((r) => `<tr><td>${cname(r.country) || '—'}</td><td>${r.role === 'aupair' ? 'Au pair' : 'Family'}</td><td>${r.n}</td></tr>`).join('')}</table></div>
+      <div class="card" id="backupCard"><h2>Database backups</h2><div id="backupInfo" class="muted">Loading…</div></div>`);
+    return adminBackup();
   }
   if (tab === 'users') {
     const { users } = await api('/admin/users');

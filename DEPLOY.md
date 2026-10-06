@@ -38,6 +38,18 @@ Until it is set up, photos are kept on the Render disk, which is fine for a star
 
 New photos then go to R2. Photos uploaded before stay on the disk and keep working.
 
+## Database backups
+
+Accounts, matches and messages live in one SQLite file on the Render disk. With backups on, the server copies it to a private R2 bucket every night and keeps the last 30 days (`backups/pairmundo-YYYY-MM-DD.db.gz`).
+
+1. In Cloudflare **R2**, create a second bucket called `pairmundo-backups`. Leave its public access **off**. The photo bucket is public, so backups must not go there.
+2. In **R2** → **Manage API tokens**, edit the `pairmundo-server` token so it can also read and write `pairmundo-backups`. (Or create a new token covering both buckets and put its keys in `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`.)
+3. In Render → **Environment**, set `BACKUP_BUCKET` to `pairmundo-backups`, then save.
+
+Admin → Overview shows the last backup and has a **Back up now** button. The first backup runs a minute after each start-up, then once a day.
+
+To restore: download a backup from the bucket in Cloudflare, unzip it (`gunzip pairmundo-2026-10-06.db.gz`), stop the service, replace the database file on the disk (`/var/data/pairmundo.db`) with it using Render's Shell, delete any `pairmundo.db-wal` and `pairmundo.db-shm` files next to it, and start the service again.
+
 ## ID check
 
 People can verify their passport or ID card with a selfie through Stripe Identity (about $1.50 per check). It stays off until these are set in Render → Environment:
