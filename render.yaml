@@ -43,6 +43,9 @@ services:
         sync: false
       - key: S3_PUBLIC_URL
         sync: false
+      # Optional automatic photo check with Claude. Leave empty to keep it off.
+      - key: ANTHROPIC_API_KEY
+        sync: false
       # Optional nightly database backups to a second, private bucket (uses the S3_* endpoint and keys above).
       - key: BACKUP_BUCKET
         sync: false

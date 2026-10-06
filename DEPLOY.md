@@ -38,6 +38,15 @@ Until it is set up, photos are kept on the Render disk, which is fine for a star
 
 New photos then go to R2. Photos uploaded before stay on the disk and keep working.
 
+## Photo check
+
+Each uploaded profile photo can be checked automatically by Claude (Anthropic) before it goes live. Clear violations (nudity, sexual content, gore, hate symbols) are refused with a message asking for a different photo. Unclear cases, and photos showing a child, go live and appear in Admin → Reports for you to decide. It stays off until the key is set:
+
+1. Create an account at [console.anthropic.com](https://console.anthropic.com), add a payment method, and create an API key under **API keys**.
+2. In Render → **Environment**, set `ANTHROPIC_API_KEY` to the key, then save.
+
+Each check costs a fraction of a cent. `MODERATION_MODEL` can name a different Claude model. If the check can't be reached, photos are allowed and the error shows in the logs.
+
 ## Database backups
 
 Accounts, matches and messages live in one SQLite file on the Render disk. With backups on, the server copies it to a private R2 bucket every night and keeps the last 30 days (`backups/pairmundo-YYYY-MM-DD.db.gz`).
