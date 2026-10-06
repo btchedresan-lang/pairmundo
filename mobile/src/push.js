@@ -5,6 +5,7 @@ import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import { api } from './api';
+import { tr } from './i18n';
 
 const supported = Platform.OS !== 'web';
 let currentToken = null;
@@ -23,7 +24,7 @@ export async function registerForPush() {
   if (!projectId) return null;
   try {
     if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('default', { name: 'Matches and messages', importance: Notifications.AndroidImportance.HIGH });
+      await Notifications.setNotificationChannelAsync('default', { name: tr('Matches and messages'), importance: Notifications.AndroidImportance.HIGH });
     }
     let { status } = await Notifications.getPermissionsAsync();
     if (status !== 'granted') ({ status } = await Notifications.requestPermissionsAsync());

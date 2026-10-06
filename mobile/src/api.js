@@ -1,11 +1,8 @@
 // API client for the PairMundo server (the Express app in ../server).
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
-import * as SecureStore from 'expo-secure-store';
-
-const store = Platform.OS === 'web'
-  ? { get: async (k) => globalThis.localStorage?.getItem(k) ?? null, set: async (k, v) => globalThis.localStorage?.setItem(k, v), del: async (k) => globalThis.localStorage?.removeItem(k) }
-  : { get: (k) => SecureStore.getItemAsync(k), set: (k, v) => SecureStore.setItemAsync(k, v), del: (k) => SecureStore.deleteItemAsync(k) };
+import { getLang, tr } from './i18n';
+import { store } from './storage';
 
 /** Default server: the configured URL, else the computer running the Expo dev server, on port 3000. */
 function defaultBase() {
@@ -50,13 +47,13 @@ export async function api(path, { method = 'GET', body } = {}) {
   try {
     res = await fetch(`${base}/api${path}`, {
       method,
-      headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      headers: { 'Accept-Language': getLang(), ...(body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch {
-    throw new ApiError(`Can't reach the server at ${base}. Check it's running and that your phone is on the same Wi-Fi.`, 0);
+    throw new ApiError(tr("Can't reach the server at {base}. Check it's running and that your phone is on the same Wi-Fi.", { base }), 0);
   }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(data.error || `Request failed (${res.status})`, res.status, data);
+  if (!res.ok) throw new ApiError(data.error ? tr(data.error) : tr('Request failed ({status})', { status: res.status }), res.status, data);
   return data;
 }

@@ -1,7 +1,9 @@
 import { useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { Animated, Dimensions, PanResponder, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Dimensions, PanResponder, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Text } from './Text';
 import { C } from '../theme';
-import { COUNTRIES, fmtDate, flag, LANGS } from '../data';
+import { country, fmtDate, flag, langName } from '../data';
+import { tr, trn } from '../i18n';
 import { LinearGradient } from 'expo-linear-gradient';
 import { imageUrl } from '../api';
 import { Photo } from './ui';
@@ -39,23 +41,23 @@ export function Gallery({ user, style, onPressInfo, children }) {
 export function CardCaption({ r, onPress }) {
   const u = r.user; const p = r.profile || {};
   const age = u.role === 'aupair' ? p.age : null;
-  const kids = p.children?.length ? `${p.children.length} ${p.children.length === 1 ? 'child' : 'kids'} (${p.children.map((c) => c.age).join(', ')})` : '';
-  const langs = u.role === 'aupair' ? (p.languages || []).map((l) => LANGS[l.code] || l.code) : (p.languages || []).map((l) => LANGS[l] || l);
+  const kids = p.children?.length ? `${trn(p.children.length, '{n} child', '{n} kids')} (${p.children.map((c) => c.age).join(', ')})` : '';
+  const langs = (p.languages || []).map((l) => langName(u.role === 'aupair' ? l.code : l));
   const sub = u.role === 'aupair'
-    ? [p.childcare_years ? `${p.childcare_years} yrs childcare` : '', p.available_from ? `from ${fmtDate(p.available_from)}` : ''].filter(Boolean).join(' · ')
-    : [kids, p.start_date ? `starts ${fmtDate(p.start_date)}` : ''].filter(Boolean).join(' · ');
+    ? [p.childcare_years ? tr('{n} yrs childcare', { n: p.childcare_years }) : '', p.available_from ? tr('from {date}', { date: fmtDate(p.available_from) }) : ''].filter(Boolean).join(' · ')
+    : [kids, p.start_date ? tr('starts {date}', { date: fmtDate(p.start_date) }) : ''].filter(Boolean).join(' · ');
   return (
     <Pressable onPress={onPress} style={styles.caption}>
       <Text style={styles.name} numberOfLines={2}>{u.name}{age ? <Text style={{ fontWeight: '400' }}>  {age}</Text> : null}{u.verification?.id ? '  ✔' : ''}</Text>
-      <Text style={styles.sub}>{flag(u.country)} {[u.city, COUNTRIES[u.country]].filter(Boolean).join(', ')}</Text>
+      <Text style={styles.sub}>{flag(u.country)} {[u.city, country(u.country)].filter(Boolean).join(', ')}</Text>
       {sub ? <Text style={styles.sub}>{sub}</Text> : null}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
         {langs.slice(0, 3).map((l) => <Text key={l} style={styles.glass}>{l}</Text>)}
         {r.rating?.avg ? <Text style={styles.glass}>★ {r.rating.avg}</Text> : null}
-        {u.role === 'aupair' && p.drivers_license ? <Text style={styles.glass}>🚗 Driver</Text> : null}
+        {u.role === 'aupair' && p.drivers_license ? <Text style={styles.glass}>🚗 {tr('Driver')}</Text> : null}
       </View>
-      {r.match?.reasons?.length ? <Text style={styles.reason}>✓ {r.match.reasons[0]}</Text> : null}
-      {r.match?.warnings?.length ? <Text style={styles.warning}>⚠ {r.match.warnings[0]}</Text> : null}
+      {r.match?.reasons?.length ? <Text style={styles.reason}>✓ {tr(r.match.reasons[0])}</Text> : null}
+      {r.match?.warnings?.length ? <Text style={styles.warning}>⚠ {tr(r.match.warnings[0])}</Text> : null}
     </Pressable>
   );
 }
@@ -121,13 +123,13 @@ export function SwipeDeck({ cards, onSwipe, onOpen, ref }) {
             style={[styles.card, isTop ? { transform: [{ translateX: pos.x }, { translateY: pos.y }, { rotate }] } : { transform: [{ scale: nextScale }] }]}>
             <Gallery user={r.user} style={StyleSheet.absoluteFill} onPressInfo={() => onOpen(r)} />
             <Shade />
-            {r.match ? <Text style={[styles.badge, { right: 14 }, r.match.score >= 75 && { backgroundColor: C.like }]}>{r.match.score}% match</Text> : null}
-            {r.likes_you ? <Text style={[styles.badge, { left: 14, backgroundColor: '#ffd43b', color: '#5c3c00' }]}>💛 Likes you</Text> : null}
+            {r.match ? <Text style={[styles.badge, { right: 14 }, r.match.score >= 75 && { backgroundColor: C.like }]}>{tr('{score}% match', { score: r.match.score })}</Text> : null}
+            {r.likes_you ? <Text style={[styles.badge, { left: 14, backgroundColor: '#ffd43b', color: '#5c3c00' }]}>💛 {tr('Likes you')}</Text> : null}
             <CardCaption r={r} onPress={() => onOpen(r)} />
             {isTop ? <>
-              <Stamp label="LIKE" color={C.like} opacity={likeO} style={{ left: 22, transform: [{ rotate: '-16deg' }] }} />
-              <Stamp label="NOPE" color={C.nope} opacity={nopeO} style={{ right: 22, transform: [{ rotate: '16deg' }] }} />
-              <Stamp label="SUPER" color={C.super} opacity={superO} style={{ alignSelf: 'center', top: '42%', transform: [{ rotate: '-6deg' }] }} />
+              <Stamp label={tr('LIKE')} color={C.like} opacity={likeO} style={{ left: 22, transform: [{ rotate: '-16deg' }] }} />
+              <Stamp label={tr('NOPE')} color={C.nope} opacity={nopeO} style={{ right: 22, transform: [{ rotate: '16deg' }] }} />
+              <Stamp label={tr('SUPER')} color={C.super} opacity={superO} style={{ alignSelf: 'center', top: '42%', transform: [{ rotate: '-6deg' }] }} />
             </> : null}
           </Animated.View>
         );

@@ -27,8 +27,12 @@ module.exports = {
       'expo-image',
       'expo-secure-store',
       ['expo-notifications', { color: brand.primary }],
+      // The app's languages (src/i18n.js). Lets iOS and Android offer a per-app language setting.
+      ['expo-localization', { supportedLocales: ['en', 'es', 'fr', 'de', 'pt'] }],
       ['expo-image-picker', { photosPermission: `${brand.name} needs your photos so you can add them to your profile.` }],
     ],
+    // Translated iOS permission prompts.
+    locales: { es: './assets/locales/es.json', fr: './assets/locales/fr.json', de: './assets/locales/de.json', pt: './assets/locales/pt.json' },
     extra: {
       // Leave empty to use the computer running `expo start` (port 3000). Set it to your hosted API for real users.
       // The live server by default; set EXPO_PUBLIC_API_URL (or use ⚙ Server on the sign-in screen) to point at another one.

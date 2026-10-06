@@ -196,7 +196,13 @@ test('corrected program rules: Norway closed to non-EU, NL max 25, UK closed, Au
   assert.ok(au.issues.some((i) => i.level === 'warning' && /stalled/.test(i.text)));
   const ap = { user: { id: 1, country: 'PH' }, profile: { nationality: 'PH', birth_date: '2004-01-01', languages: [{ code: 'en' }], preferred_countries: ['NO'] } };
   const m = scoreMatch(ap, { user: { id: 2, country: 'NO' }, profile: { start_date: '2027-01-01' } }, no);
-  assert.ok(m.score <= 20 && m.warnings.some((w) => /no au pair route/.test(w)));
+  assert.ok(m.score <= 20 && m.warnings.some((w) => /Norway only has an au pair route for EU\/EEA citizens/.test(w)));
+  // The same checks in the person's language, with country and language names translated.
+  const es = scoreMatch(ap, { user: { id: 2, country: 'NO' }, profile: { start_date: '2027-01-01', required_languages: ['en'] } }, no, null, 'es');
+  assert.ok(es.reasons.includes('Habla inglés'), JSON.stringify(es.reasons));
+  assert.ok(es.warnings.includes('Noruega solo tiene vía de au pair para ciudadanos de la UE/EEE'), JSON.stringify(es.warnings));
+  const de = checkCompliance(nl, { ...base, weekly_hours: 40, birth_date: '2004-01-01', nationality: 'BR' }, 'de');
+  assert.ok(de.issues.some((i) => i.text === '40 Std./Woche überschreitet das Maximum von 30 Std.'), JSON.stringify(de.issues));
 });
 
 test('program corrections reach an existing database unless an admin edited the row', () => {
@@ -340,4 +346,31 @@ test('sign-in ignores capital letters and spaces in the email', async () => {
   assert.equal(login.status, 200, JSON.stringify(login.body));
   const again = await call(null, 'POST', '/auth/register', { email: 'CASEY@test.io', password: 'password123', role: 'aupair', name: 'Dup', country: 'PE' });
   assert.equal(again.status, 409);
+});
+
+test('emails and notifications use the language of each person’s app', async () => {
+  const lang = (l) => ({ 'Content-Type': 'application/json', 'Accept-Language': l });
+  const res = await fetch(`${base}/auth/register`, { method: 'POST', headers: lang('es-MX,es;q=0.9,en;q=0.8'),
+    body: JSON.stringify({ email: 'es@test.io', password: 'password123', role: 'aupair', name: 'Lucía', country: 'MX' }) });
+  const es = await res.json();
+  assert.equal(res.status, 201);
+  const mail = outbox.findLast((m) => m.to === 'es@test.io');
+  assert.match(mail.subject, /^Tu código de PairMundo: \d{6}$/);
+  assert.match(mail.text, /Tu código de confirmación es \d{6}/);
+  await call(es.token, 'POST', '/auth/verify-email', { code: lastCode('es@test.io') });
+
+  // A German-speaking family; the server learns its language from the app's requests.
+  const de = await register('de@test.io', 'family', 'DE', 'Familie Weber');
+  await fetch(`${base}/me`, { headers: { ...lang('de-DE'), Authorization: `Bearer ${de.token}` } });
+
+  await call(de.token, 'POST', '/swipe', { target_id: es.user.id, direction: 'like' });
+  await call(es.token, 'POST', '/swipe', { target_id: de.id, direction: 'like' });
+  const texts = async (token) => (await call(token, 'GET', '/notifications')).body.notifications.map((n) => n.text);
+  assert.ok((await texts(es.token)).includes('Le gustas a alguien nuevo. Descubre quién en Likes.'));
+  assert.ok((await texts(de.token)).includes('Es ist ein Match! Lucía mag dich auch.'));
+  // Someone whose app sends no supported language gets English.
+  const en = await register('en@test.io', 'family', 'US', 'The Browns');
+  await call(en.token, 'POST', '/swipe', { target_id: es.user.id, direction: 'super' });
+  await call(es.token, 'POST', '/swipe', { target_id: en.id, direction: 'like' });
+  assert.ok((await texts(en.token)).includes("It's a match! Lucía liked you back."));
 });
