@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { Text, TextInput } from './Text';
+import { HEADING, Text, TextInput } from './Text';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { C, useTheme } from '../theme';
@@ -19,7 +19,7 @@ export function Screen({ children, scroll = true, padded = true, style }) {
 export function T({ style, muted, small, bold, h1, h2, children, ...rest }) {
   const t = useTheme();
   return (
-    <Text style={[{ color: muted ? t.muted : t.ink, fontSize: h1 ? 26 : h2 ? 19 : small ? 13 : 15, fontWeight: h1 || h2 || bold ? '700' : '400' }, style]} {...rest}>
+    <Text style={[{ color: muted ? t.muted : t.ink, fontSize: h1 ? 28 : h2 ? 21 : small ? 13 : 15, ...(h1 || h2 ? { fontFamily: HEADING } : { fontWeight: bold ? '700' : '400' }) }, style]} {...rest}>
       {children}
     </Text>
   );

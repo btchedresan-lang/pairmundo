@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { Alert as RNAlert, Dimensions, Platform, View } from 'react-native';
-import { Text } from '../../components/Text';
+import { HEADING, Text } from '../../components/Text';
 import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { api } from '../../api';
 import { useAuth } from '../../auth';
@@ -81,7 +81,7 @@ export default function UserProfile() {
           <Shade />
           {d.match ? <Text style={{ position: 'absolute', top: 22, right: 14, backgroundColor: d.match.score >= 75 ? C.like : 'rgba(0,0,0,0.55)', color: '#fff', fontWeight: '700', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, overflow: 'hidden' }}>{tr('{score}% match', { score: d.match.score })}</Text> : null}
           <View style={{ position: 'absolute', left: 16, right: 16, bottom: 16 }} pointerEvents="none">
-            <Text style={{ color: '#fff', fontSize: 30, fontWeight: '800' }}>{u.name}{u.role === 'aupair' && p.age ? <Text style={{ fontWeight: '400' }}>  {p.age}</Text> : null}{u.verification.id ? '  ✔' : ''}</Text>
+            <Text style={{ color: '#fff', fontSize: 33, fontFamily: HEADING }}>{u.name}{u.role === 'aupair' && p.age ? <Text style={{ opacity: 0.85 }}>  {p.age}</Text> : null}{u.verification.id ? '  ✔' : ''}</Text>
             <Text style={{ color: '#fff', fontSize: 15 }}>{u.role === 'aupair' ? tr('Au pair') : tr('Host family')} · {flag(u.country)} {[u.city, country(u.country)].filter(Boolean).join(', ')}</Text>
             <Text style={{ color: '#fff', fontSize: 14, opacity: 0.9 }}>{d.rating.count ? `★ ${d.rating.avg} (${trn(d.rating.count, '{n} review', '{n} reviews')}) · ` : ''}{trn(d.placements_completed, '{n} completed placement', '{n} completed placements')}</Text>
           </View>

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
-import { Text } from '../components/Text';
+import { HEADING_BOLD, Text } from '../components/Text';
 import { Link } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../auth';
@@ -34,7 +34,7 @@ export default function Login() {
       <Screen padded={false}>
         <LinearGradient colors={[C.primary, C.primary2]} style={{ paddingTop: 90, paddingBottom: 40, paddingHorizontal: 24, alignItems: 'center', gap: 8 }}>
           <Text style={{ fontSize: 52 }}>🌍</Text>
-          <Text style={{ color: '#fff', fontSize: 32, fontWeight: '900' }}>{brand.name}</Text>
+          <Text style={{ color: '#fff', fontSize: 38, fontFamily: HEADING_BOLD }}>{brand.name}</Text>
           <Text style={{ color: '#fff', fontSize: 16, opacity: 0.95, textAlign: 'center' }}>{tr(brand.tagline)}</Text>
         </LinearGradient>
         <View style={{ padding: 20, gap: 14 }}>

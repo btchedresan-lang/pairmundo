@@ -1,6 +1,6 @@
 import { useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Animated, Dimensions, PanResponder, Platform, Pressable, StyleSheet, View } from 'react-native';
-import { Text } from './Text';
+import { HEADING, Text } from './Text';
 import { C } from '../theme';
 import { country, fmtDate, flag, langName } from '../data';
 import { tr, trn } from '../i18n';
@@ -48,7 +48,7 @@ export function CardCaption({ r, onPress }) {
     : [kids, p.start_date ? tr('starts {date}', { date: fmtDate(p.start_date) }) : ''].filter(Boolean).join(' · ');
   return (
     <Pressable onPress={onPress} style={styles.caption}>
-      <Text style={styles.name} numberOfLines={2}>{u.name}{age ? <Text style={{ fontWeight: '400' }}>  {age}</Text> : null}{u.verification?.id ? '  ✔' : ''}</Text>
+      <Text style={styles.name} numberOfLines={2}>{u.name}{age ? <Text style={{ opacity: 0.85 }}>  {age}</Text> : null}{u.verification?.id ? '  ✔' : ''}</Text>
       <Text style={styles.sub}>{flag(u.country)} {[u.city, country(u.country)].filter(Boolean).join(', ')}</Text>
       {sub ? <Text style={styles.sub}>{sub}</Text> : null}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
@@ -145,7 +145,7 @@ const styles = StyleSheet.create({
   bars: { position: 'absolute', top: 8, left: 8, right: 8, flexDirection: 'row', gap: 4 },
   bar: { flex: 1, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.4)' },
   caption: { position: 'absolute', left: 0, right: 0, bottom: 0, padding: 18 },
-  name: { color: '#fff', fontSize: 28, fontWeight: '800', textShadowColor: 'rgba(0,0,0,0.5)', textShadowRadius: 6 },
+  name: { color: '#fff', fontSize: 31, fontFamily: HEADING, textShadowColor: 'rgba(0,0,0,0.5)', textShadowRadius: 6 },
   sub: { color: '#fff', opacity: 0.95, fontSize: 15, marginTop: 2, textShadowColor: 'rgba(0,0,0,0.6)', textShadowRadius: 4 },
   glass: { color: '#fff', backgroundColor: 'rgba(255,255,255,0.22)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, fontSize: 13, overflow: 'hidden' },
   reason: { color: '#8ce99a', marginTop: 8, fontSize: 14 },
