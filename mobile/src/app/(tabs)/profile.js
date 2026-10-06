@@ -73,7 +73,7 @@ export default function MyProfile() {
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <T h2>{tr('Photos')}</T>
         </View>
-        <T small muted>{isAp ? tr('Your first photo is what people see when they swipe. Clear, smiling, recent photos work best.') : tr('Your first photo is what people see when they swipe. Clear, smiling, recent photos work best, and a family photo helps.')}</T>
+        <T small muted>{isAp ? tr("Your first photo is what people see when they swipe. Clear, smiling, recent photos work best. Photos of children aren't allowed.") : tr("Your first photo is what people see when they swipe. Clear, smiling, recent photos work best, and a photo of the adults in the family helps. Photos of children aren't allowed.")}</T>
         <PhotoGrid photos={me.user.photos || []} onChange={(photos) => setMe((m) => ({ ...m, user: { ...m.user, photos, photo_url: photos[0] || null } }))} />
       </Card>
 
