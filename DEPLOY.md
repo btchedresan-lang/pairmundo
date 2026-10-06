@@ -47,6 +47,15 @@ People can verify their passport or ID card with a selfie through Stripe Identit
 
 Stripe asks you to activate Identity once (Stripe → Identity) before live checks work.
 
+## Family Pass
+
+Families pay €79 once for 90 days of messaging and seeing who liked them; au pairs stay free. Two switches in Render → Environment:
+
+- `FAMILY_PASS` = `on` makes families need the pass. Leave it out and everything stays free.
+- Payment on the website uses the same `STRIPE_SECRET_KEY` as the ID check. Add the event `checkout.session.completed` to the same Stripe webhook so a pass starts even if someone closes the page after paying.
+
+Turn on payments first, then `FAMILY_PASS`, so families are never locked out with no way to pay. An admin can also give a family free days from the admin page.
+
 ## Pointing the phone app at the live server
 
 Build the app with `EXPO_PUBLIC_API_URL=https://your-render-address` (or `https://api.pairmundo.com` once the domain is set up). See `mobile/README.md`.

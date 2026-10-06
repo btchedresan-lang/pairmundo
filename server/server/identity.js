@@ -15,9 +15,9 @@ function form(obj, prefix = '', out = new URLSearchParams()) {
   return out;
 }
 
-export function createIdentity({ secretKey = process.env.STRIPE_SECRET_KEY, fetchImpl = fetch } = {}) {
-  if (!secretKey) return null;
-  const call = async (method, path, body) => {
+/** A minimal Stripe API caller: call('POST', '/checkout/sessions', { ... }). */
+export function stripeApi(secretKey, fetchImpl = fetch) {
+  return async (method, path, body) => {
     const res = await fetchImpl(`${API}${path}`, {
       method, headers: { Authorization: `Bearer ${secretKey}`, ...(body ? { 'Content-Type': 'application/x-www-form-urlencoded' } : {}) },
       body: body ? form(body).toString() : undefined,
@@ -26,6 +26,11 @@ export function createIdentity({ secretKey = process.env.STRIPE_SECRET_KEY, fetc
     if (!res.ok) throw new Error(`Stripe ${res.status}: ${data.error?.message || 'request failed'}`);
     return data;
   };
+}
+
+export function createIdentity({ secretKey = process.env.STRIPE_SECRET_KEY, fetchImpl = fetch } = {}) {
+  if (!secretKey) return null;
+  const call = stripeApi(secretKey, fetchImpl);
   return {
     /** Starts a check and returns { id, url, status }; url is Stripe's page to open on the phone. */
     async start(user, returnUrl) {
@@ -58,4 +63,33 @@ export function verifyWebhook(rawBody, header, secret, toleranceSec = 300) {
   const ok = sigs.some((s) => s.length === expected.length && timingSafeEqual(Buffer.from(s), Buffer.from(expected)));
   if (!ok) return null;
   try { return JSON.parse(rawBody); } catch { return null; }
+}
+
+/**
+ * Family Pass card payments on the website through Stripe Checkout (a one-off payment, no subscription).
+ * Off without STRIPE_SECRET_KEY.
+ */
+export function createCheckout({ secretKey = process.env.STRIPE_SECRET_KEY, fetchImpl = fetch } = {}) {
+  if (!secretKey) return null;
+  const call = stripeApi(secretKey, fetchImpl);
+  return {
+    /** Returns { id, url } for Stripe's payment page. */
+    async start(user, { amount, currency, name, successUrl, cancelUrl }) {
+      const s = await call('POST', '/checkout/sessions', {
+        mode: 'payment',
+        line_items: { 0: { quantity: 1, price_data: { currency, unit_amount: amount, product_data: { name } } } },
+        customer_email: user.email,
+        client_reference_id: String(user.id),
+        metadata: { user_id: String(user.id), product: 'family_pass' },
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+      });
+      return { id: s.id, url: s.url };
+    },
+    /** { paid, userId } for a finished payment page. */
+    async result(id) {
+      const s = await call('GET', `/checkout/sessions/${encodeURIComponent(id)}`);
+      return { paid: s.payment_status === 'paid', userId: Number(s.metadata?.user_id || s.client_reference_id) || null };
+    },
+  };
 }
