@@ -653,7 +653,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (req.user.id_verified) throw new HttpError(409, 'Your ID is already verified.');
     const today = db.prepare("SELECT COUNT(*) n FROM id_checks WHERE user_id = ? AND created_at > datetime('now', '-1 day')").get(req.user.id).n;
     if (today >= ID_CHECKS_PER_DAY) throw new HttpError(429, 'You have started several ID checks today. Try again tomorrow.');
-    const s = await identity.start(req.user, `${publicBase()}/id-check-done`);
+    // The website gets people back to its own Account page; the apps use a page that points back to the app.
+    const s = await identity.start(req.user, req.body?.from === 'web' ? `${publicBase()}/#/account` : `${publicBase()}/id-check-done`);
     db.prepare('INSERT INTO id_checks (session_id, user_id, status) VALUES (?,?,?)').run(s.id, req.user.id, s.status || 'requires_input');
     return { url: s.url };
   }));
