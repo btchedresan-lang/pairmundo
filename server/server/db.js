@@ -190,6 +190,7 @@ CREATE TABLE IF NOT EXISTS waitlist (
   role TEXT,                                      -- aupair | family, if they said
   country TEXT,
   lang TEXT,
+  source TEXT,                                    -- which flyer or ad brought them (?src= on the website link)
   token TEXT NOT NULL UNIQUE,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -275,6 +276,7 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
   // Accounts created before email verification existed count as verified.
   if (!cols.includes('lang')) db.exec('ALTER TABLE users ADD COLUMN lang TEXT');
   if (!cols.includes('email_verified')) db.exec('ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0; UPDATE users SET email_verified = 1');
+  if (!db.prepare('PRAGMA table_info(waitlist)').all().some((c) => c.name === 'source')) db.exec('ALTER TABLE waitlist ADD COLUMN source TEXT');
   const pcols = db.prepare('PRAGMA table_info(country_programs)').all().map((c) => c.name);
   if (!pcols.includes('status')) {
     db.exec(`ALTER TABLE country_programs ADD COLUMN status TEXT NOT NULL DEFAULT 'open';

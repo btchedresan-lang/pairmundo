@@ -245,8 +245,10 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const role = ['aupair', 'family'].includes(req.body?.role) ? req.body.role : null;
     const country = /^[A-Za-z]{2}$/.test(req.body?.country || '') ? req.body.country.toUpperCase() : null;
     const lang = pickLang(req.get('accept-language')) || 'en';
+    // Flyers and ads link to pairmundo.com/?src=<name>, so the admin can see which ones bring people in.
+    const source = /^[a-z0-9][a-z0-9-]{0,39}$/i.test(req.body?.source || '') ? req.body.source.toLowerCase() : null;
     const token = randomBytes(18).toString('base64url');
-    const added = db.prepare('INSERT OR IGNORE INTO waitlist (email, role, country, lang, token) VALUES (?,?,?,?,?)').run(email, role, country, lang, token).changes;
+    const added = db.prepare('INSERT OR IGNORE INTO waitlist (email, role, country, lang, source, token) VALUES (?,?,?,?,?,?)').run(email, role, country, lang, source, token).changes;
     if (added) {
       const { subject, text } = waitlistEmail(lang, `${publicBase()}/api/waitlist/leave?t=${token}`);
       try { await mailer({ to: email, subject, text }); } catch (e) { console.error('Waitlist email failed:', e.message); }
@@ -1065,15 +1067,16 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     total: db.prepare('SELECT COUNT(*) n FROM waitlist').get().n,
     by_role: db.prepare('SELECT role, COUNT(*) n FROM waitlist GROUP BY role ORDER BY n DESC').all(),
     by_country: db.prepare('SELECT country, COUNT(*) n FROM waitlist GROUP BY country ORDER BY n DESC').all(),
-    people: db.prepare('SELECT email, role, country, lang, created_at FROM waitlist ORDER BY created_at DESC, rowid DESC LIMIT 500').all(),
+    by_source: db.prepare('SELECT source, COUNT(*) n FROM waitlist GROUP BY source ORDER BY n DESC').all(),
+    people: db.prepare('SELECT email, role, country, lang, source, created_at FROM waitlist ORDER BY created_at DESC, rowid DESC LIMIT 500').all(),
   })));
   // The whole list as a spreadsheet file, for emailing everyone at launch.
   api.get('/admin/waitlist.csv', requireRole('admin'), (req, res) => {
     // A leading ' stops spreadsheet apps from running a cell that starts like a formula.
     const cell = (v) => { if (v == null) return ''; let s = String(v); if (/^[=+\-@]/.test(s)) s = `'${s}`; return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
-    const rows = db.prepare('SELECT email, role, country, lang, created_at FROM waitlist ORDER BY created_at').all();
+    const rows = db.prepare('SELECT email, role, country, lang, source, created_at FROM waitlist ORDER BY created_at').all();
     res.set('Content-Disposition', 'attachment; filename="pairmundo-waitlist.csv"').type('text/csv')
-      .send(['email,role,country,language,joined', ...rows.map((r) => [r.email, r.role, r.country, r.lang, r.created_at].map(cell).join(','))].join('\n') + '\n');
+      .send(['email,role,country,language,source,joined', ...rows.map((r) => [r.email, r.role, r.country, r.lang, r.source, r.created_at].map(cell).join(','))].join('\n') + '\n');
   });
   api.get('/admin/backup', requireRole('admin'), wrap(() => backups.status()));
   api.post('/admin/backup', requireRole('admin'), wrap(async () => {

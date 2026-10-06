@@ -372,6 +372,15 @@ function profileCompleteness() {
   return Math.round((checks.filter(Boolean).length / checks.length) * 100);
 }
 
+// Flyers and ads link to pairmundo.com/?src=<name>. Remember it for this visit so the waitlist knows which one worked.
+function adSource() {
+  try {
+    const src = new URLSearchParams(location.search).get('src');
+    if (src) sessionStorage.setItem('src', src);
+    return src || sessionStorage.getItem('src') || undefined;
+  } catch { return undefined; }
+}
+
 function landing() {
   const waitForm = (id) => `<form class="waitlist" id="${id}">
       <input name="email" type="email" required autocomplete="email" placeholder="${tr('Your email')}" aria-label="${tr('Your email')}">
@@ -407,6 +416,13 @@ function landing() {
     .map(([i, t, d]) => `<div class="card feature"><div class="icon">${i}</div><h3>${t}</h3><p class="muted">${d}</p></div>`).join('')}
     </div>
     <section class="card wait-card" style="margin-top:32px"><h2>${tr('Get the app at launch')}</h2>${waitForm('wait2')}<div id="waitMsg2"></div></section>`);
+  // Someone who scanned a flyer came for the waitlist, so take them straight to it.
+  if (new URLSearchParams(location.search).get('src')) {
+    adSource();
+    const card = document.getElementById('wait1');
+    card.scrollIntoView({ block: 'center' });
+    card.querySelector('select').value = new URLSearchParams(location.search).get('role') === 'aupair' ? 'aupair' : 'family';
+  }
   for (const n of [1, 2]) {
     const f = document.getElementById(`wait${n}`);
     f.onsubmit = async (e) => {
@@ -414,7 +430,7 @@ function landing() {
       const $msg = document.getElementById(`waitMsg${n}`);
       f.querySelector('button').disabled = true;
       try {
-        await api('/waitlist', { method: 'POST', body: { ...formData(f), country: (navigator.language.split('-')[1] || '').toUpperCase() || undefined } });
+        await api('/waitlist', { method: 'POST', body: { ...formData(f), country: (navigator.language.split('-')[1] || '').toUpperCase() || undefined, source: adSource() } });
         f.hidden = true;
         $msg.innerHTML = `<div class="alert ok">✓ ${tr("You're on the list! Check your inbox for a confirmation email.")}</div>`;
       } catch (err) { f.querySelector('button').disabled = false; $msg.innerHTML = `<div class="alert error">${esc(err.message)}</div>`; }
@@ -1156,9 +1172,10 @@ views.admin = async ([tab = 'overview']) => {
     const role = (r) => (r === 'aupair' ? 'Au pair' : r === 'family' ? 'Family' : '—');
     return render(`${head}<div class="spread"><p><strong>${w.total}</strong> people want to hear when the apps launch.</p><a class="btn sm" href="/api/admin/waitlist.csv">⬇ Download as a spreadsheet (CSV)</a></div>
       <div class="cols-2"><div class="card"><h2>By role</h2><table>${w.by_role.map((r) => `<tr><td>${role(r.role)}</td><td>${r.n}</td></tr>`).join('')}</table></div>
-      <div class="card"><h2>By browser region</h2><table>${w.by_country.map((r) => `<tr><td>${cname(r.country) || '—'}</td><td>${r.n}</td></tr>`).join('')}</table></div></div>
-      <div class="card table-wrap"><h2>Latest</h2><table><tr><th>Email</th><th>Role</th><th>Region</th><th>Language</th><th>Joined</th></tr>
-      ${w.people.map((p) => `<tr><td>${esc(p.email)}</td><td>${role(p.role)}</td><td>${cname(p.country) || '—'}</td><td>${esc(LANGUAGES[p.lang] || p.lang)}</td><td>${fmtTime(p.created_at)}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">Nobody yet.</td></tr>'}</table></div>`);
+      <div class="card"><h2>By browser region</h2><table>${w.by_country.map((r) => `<tr><td>${cname(r.country) || '—'}</td><td>${r.n}</td></tr>`).join('')}</table></div>
+      <div class="card"><h2>By flyer or ad</h2><table>${w.by_source.map((r) => `<tr><td>${esc(r.source || 'Website')}</td><td>${r.n}</td></tr>`).join('')}</table></div></div>
+      <div class="card table-wrap"><h2>Latest</h2><table><tr><th>Email</th><th>Role</th><th>Region</th><th>Language</th><th>Source</th><th>Joined</th></tr>
+      ${w.people.map((p) => `<tr><td>${esc(p.email)}</td><td>${role(p.role)}</td><td>${cname(p.country) || '—'}</td><td>${esc(LANGUAGES[p.lang] || p.lang)}</td><td>${esc(p.source || '—')}</td><td>${fmtTime(p.created_at)}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">Nobody yet.</td></tr>'}</table></div>`);
   }
   if (tab === 'placements') {
     const { placements } = await api('/placements');
