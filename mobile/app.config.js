@@ -26,6 +26,8 @@ module.exports = {
       'expo-router',
       'expo-image',
       'expo-secure-store',
+      // Launch screen: the white PairMundo mark on the brand blue.
+      ['expo-splash-screen', { image: './assets/splash-icon.png', imageWidth: 180, resizeMode: 'contain', backgroundColor: brand.primary }],
       ['expo-notifications', { color: brand.primary }],
       // The app's languages (src/i18n.js). Lets iOS and Android offer a per-app language setting.
       ['expo-localization', { supportedLocales: ['en', 'es', 'fr', 'de', 'pt'] }],
