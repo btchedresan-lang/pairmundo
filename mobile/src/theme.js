@@ -1,8 +1,8 @@
 import { useColorScheme } from 'react-native';
 import brand from '../brand.json';
 
-const light = { bg: '#f6f7fb', card: '#ffffff', ink: '#1d2433', muted: '#667085', line: '#e4e7ec', soft: '#fff0f4' };
-const dark = { bg: '#11141b', card: '#1a1f2a', ink: '#e8eaf0', muted: '#98a2b3', line: '#2a3140', soft: '#2a1a22' };
+const light = { bg: '#f6f7fb', card: '#ffffff', ink: '#1d2433', muted: '#667085', line: '#e4e7ec', soft: '#edf2ff' };
+const dark = { bg: '#11141b', card: '#1a1f2a', ink: '#e8eaf0', muted: '#98a2b3', line: '#2a3140', soft: '#1e2645' };
 
 export const C = {
   primary: brand.primary, primary2: brand.primaryDark,

@@ -1,4 +1,4 @@
-:root { --ink: #1d1d1f; --muted: #5f6368; --bg: #fff; --line: #e6e6e6; --primary: #fd3a73; }
+:root { --ink: #1d1d1f; --muted: #5f6368; --bg: #fff; --line: #e6e6e6; --primary: #3b5bdb; }
 @media (prefers-color-scheme: dark) { :root { --ink: #f2f2f2; --muted: #a8a8a8; --bg: #141414; --line: #2c2c2c; } }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }

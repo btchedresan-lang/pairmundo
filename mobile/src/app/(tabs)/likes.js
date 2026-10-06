@@ -24,7 +24,7 @@ export default function Likes() {
         <T h2>{trn(locked.count, '{n} person likes you', '{n} people like you')}</T>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
           {Array.from({ length: Math.min(Math.max(locked.count, 2), 4) }, (_, i) => (
-            <LinearGradient key={i} colors={['#ffd6e2', '#ffe7d6']} style={{ width: '47%', aspectRatio: 3 / 4, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }}>
+            <LinearGradient key={i} colors={['#dbe4ff', '#e7ecff']} style={{ width: '47%', aspectRatio: 3 / 4, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }}>
               <Text style={{ fontSize: 40, opacity: 0.6 }}>{i < locked.count ? '💛' : '🔒'}</Text>
             </LinearGradient>
           ))}
