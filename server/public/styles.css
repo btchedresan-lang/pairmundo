@@ -233,3 +233,13 @@ th { color: var(--muted); font-weight: 600; font-size: .8rem; text-transform: up
 .foot a { color: var(--muted); }
 .foot select { width: auto; padding: 4px 8px; font-size: .85rem; display: inline-block; }
 @media (max-width: 720px) { body.has-tabs .foot { padding-bottom: 110px; } }
+
+/* Landing page: waitlist and how it works */
+.wait-card { max-width: 640px; margin: 8px auto 0; text-align: center; }
+.waitlist { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 12px; }
+.waitlist input { flex: 1 1 220px; max-width: 300px; }
+.waitlist select { flex: 0 1 180px; width: auto; }
+.step-n { width: 36px; height: 36px; border-radius: 50%; background: var(--brand); color: var(--brand-ink); display: flex;
+  align-items: center; justify-content: center; font-weight: 800; }
+.center { text-align: center; }
+.waitlist[hidden] { display: none; }

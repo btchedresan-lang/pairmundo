@@ -6,7 +6,7 @@ import { json, tx } from './db.js';
 import { hashPassword, verifyPassword, createSession, sessionMiddleware, requireAuth, requireRole, rateLimit } from './auth.js';
 import { scoreMatch, checkCompliance, ageOn } from './matching.js';
 import { PROGRAMS, REVIEW_CRITERIA, PLACEMENT_TASKS } from './programs.js';
-import { createMailer, codeEmail } from './mailer.js';
+import { createMailer, codeEmail, waitlistEmail } from './mailer.js';
 import { pickLang, t as translate } from './i18n.js';
 import { createCheckout, createIdentity, verifyWebhook } from './identity.js';
 import { createRevenueCat, storeName, webhookAuthorized } from './revenuecat.js';
@@ -234,6 +234,30 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
 
   // ---------- auth ----------
   const authLimit = rateLimit({ windowMs: 60000, max: Number(process.env.AUTH_RATE_LIMIT || 30) });
+
+  // ---------- waitlist ----------
+  // Anyone can ask to hear when the apps launch. Joining twice changes nothing, and the answer is the same either
+  // way, so the form can't be used to find out who is on the list.
+  api.post('/waitlist', authLimit, wrap(async (req) => {
+    const email = normEmail(req.body?.email);
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || email.length > 254) throw bad('Enter a valid email.');
+    const role = ['aupair', 'family'].includes(req.body?.role) ? req.body.role : null;
+    const country = /^[A-Za-z]{2}$/.test(req.body?.country || '') ? req.body.country.toUpperCase() : null;
+    const lang = pickLang(req.get('accept-language')) || 'en';
+    const token = randomBytes(18).toString('base64url');
+    const added = db.prepare('INSERT OR IGNORE INTO waitlist (email, role, country, lang, token) VALUES (?,?,?,?,?)').run(email, role, country, lang, token).changes;
+    if (added) {
+      const { subject, text } = waitlistEmail(lang, `${publicBase()}/api/waitlist/leave?t=${token}`);
+      try { await mailer({ to: email, subject, text }); } catch (e) { console.error('Waitlist email failed:', e.message); }
+    }
+    return { ok: true };
+  }));
+  api.get('/waitlist/leave', wrap((req, res) => {
+    const gone = db.prepare('DELETE FROM waitlist WHERE token = ?').run(String(req.query.t || '')).changes;
+    const lang = pickLang(req.get('accept-language')) || 'en';
+    res.type('html').send(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/legal.css"><main><h1>PairMundo</h1><p>${
+      translate(lang, gone ? "You're off the list. We won't email you about the launch." : 'This link was already used, or the address is not on the list.')}</p><p><a href="/">pairmundo.com</a></p></main>`);
+  }));
 
   api.post('/auth/register', authLimit, wrap((req, res) => {
     const { password, role, name, country, city } = req.body || {};
@@ -1036,6 +1060,20 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   }));
 
   // ---------- admin ----------
+  api.get('/admin/waitlist', requireRole('admin'), wrap(() => ({
+    total: db.prepare('SELECT COUNT(*) n FROM waitlist').get().n,
+    by_role: db.prepare('SELECT role, COUNT(*) n FROM waitlist GROUP BY role ORDER BY n DESC').all(),
+    by_country: db.prepare('SELECT country, COUNT(*) n FROM waitlist GROUP BY country ORDER BY n DESC').all(),
+    people: db.prepare('SELECT email, role, country, lang, created_at FROM waitlist ORDER BY created_at DESC, rowid DESC LIMIT 500').all(),
+  })));
+  // The whole list as a spreadsheet file, for emailing everyone at launch.
+  api.get('/admin/waitlist.csv', requireRole('admin'), (req, res) => {
+    // A leading ' stops spreadsheet apps from running a cell that starts like a formula.
+    const cell = (v) => { if (v == null) return ''; let s = String(v); if (/^[=+\-@]/.test(s)) s = `'${s}`; return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+    const rows = db.prepare('SELECT email, role, country, lang, created_at FROM waitlist ORDER BY created_at').all();
+    res.set('Content-Disposition', 'attachment; filename="pairmundo-waitlist.csv"').type('text/csv')
+      .send(['email,role,country,language,joined', ...rows.map((r) => [r.email, r.role, r.country, r.lang, r.created_at].map(cell).join(','))].join('\n') + '\n');
+  });
   api.get('/admin/stats', requireRole('admin'), wrap(() => {
     const n = (q, ...a) => db.prepare(q).get(...a).n;
     return {
@@ -1048,6 +1086,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       placements_completed: n("SELECT COUNT(*) n FROM placements WHERE status = 'completed'"),
       reviews: n('SELECT COUNT(*) n FROM reviews'),
       open_reports: n("SELECT COUNT(*) n FROM reports WHERE status = 'open'"),
+      waitlist: n('SELECT COUNT(*) n FROM waitlist'),
       by_country: db.prepare("SELECT country, role, COUNT(*) n FROM users WHERE role != 'admin' GROUP BY country, role ORDER BY n DESC").all(),
     };
   }));

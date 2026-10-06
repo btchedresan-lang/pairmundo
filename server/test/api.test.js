@@ -589,3 +589,38 @@ test('Family Pass in-app purchase: checked with RevenueCat, counted once, refund
     assert.equal((await call2(fam.token, 'GET', '/family-pass')).body.active, false);
   } finally { srv.close(); delete process.env.REVENUECAT_WEBHOOK_AUTH; }
 });
+
+test('waitlist: join once, email in their language, leave by link, admin sees it and downloads it', async () => {
+  const join = (body, lang = 'en') => fetch(`${base}/waitlist`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept-Language': lang }, body: JSON.stringify(body) });
+  assert.equal((await join({ email: 'nope' })).status, 400);
+  const before = outbox.length;
+  let r = await join({ email: ' Wait@Test.io ', role: 'family', country: 'de' }, 'de-DE');
+  assert.equal(r.status, 200);
+  assert.deepEqual(await r.json(), { ok: true });
+  const mail = outbox.at(-1);
+  assert.equal(mail.to, 'wait@test.io');
+  assert.match(mail.subject, /Liste/);
+  // Joining again looks the same and sends nothing.
+  assert.equal((await join({ email: 'wait@test.io', role: 'aupair' })).status, 200);
+  assert.equal(outbox.length, before + 1);
+  await join({ email: '=cmd@test.io', role: 'aupair' });
+
+  const { hashPassword } = await import('../server/auth.js');
+  testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin2@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin2@test.io', password: 'password123' })).body.token;
+  const w = (await call(admin, 'GET', '/admin/waitlist')).body;
+  assert.equal(w.total, 2);
+  assert.deepEqual(w.people.find((p) => p.email === 'wait@test.io'), { ...w.people.find((p) => p.email === 'wait@test.io'), role: 'family', country: 'DE', lang: 'de' });
+  const fam = await register('waitfam@test.io', 'family', 'DE');
+  assert.equal((await call(fam.token, 'GET', '/admin/waitlist')).status, 403);
+  const csv = await (await fetch(`${base}/admin/waitlist.csv`, { headers: { Authorization: `Bearer ${admin}` } })).text();
+  assert.match(csv, /^email,role,country,language,joined\n/);
+  assert.match(csv, /\n'=cmd@test\.io,aupair,/, 'formula-looking cells are defused');
+
+  // The link in the email removes them, once.
+  const link = mail.text.match(/https?:\/\/\S+/g).at(-1);
+  const leave = (u) => fetch(`${base}/waitlist/leave${new URL(u).search}`).then((x) => x.text());
+  assert.match(await leave(link), /off the list/);
+  assert.match(await leave(link), /already used/);
+  assert.equal((await call(admin, 'GET', '/admin/waitlist')).body.total, 1);
+});

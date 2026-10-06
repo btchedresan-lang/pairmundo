@@ -24,6 +24,13 @@ export function createMailer() {
   };
 }
 
+/** The "you're on the list" email, with a link to leave the list. */
+export const waitlistEmail = (lang, leaveUrl) => {
+  const v = { app: APP_NAME, link: leaveUrl };
+  return { subject: t(lang, "You're on the {app} list", v),
+    text: t(lang, "Thanks for your interest in {app}!\n\nWe'll email you when the iPhone and Android apps are ready. Until then you can already sign up and start matching at https://pairmundo.com.\n\nTo leave the list, open this link: {link}", v) };
+};
+
 /** The code email in the person's language (see i18n.js). */
 export const codeEmail = (purpose, code, lang) => {
   const v = { app: APP_NAME, code };

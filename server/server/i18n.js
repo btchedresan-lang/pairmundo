@@ -49,6 +49,19 @@ const DICT = {
   'Your profile has a new verification badge.': {
     es: 'Tu perfil tiene una nueva insignia de verificación.', fr: 'Votre profil a un nouveau badge de vérification.',
     de: 'Dein Profil hat ein neues Verifizierungsabzeichen.', pt: 'Seu perfil ganhou um novo selo de verificação.' },
+  "You're on the {app} list": {
+    es: 'Estás en la lista de {app}', fr: 'Vous êtes sur la liste {app}', de: 'Du stehst auf der {app}-Liste', pt: 'Você está na lista do {app}' },
+  "Thanks for your interest in {app}!\n\nWe'll email you when the iPhone and Android apps are ready. Until then you can already sign up and start matching at https://pairmundo.com.\n\nTo leave the list, open this link: {link}": {
+    es: '¡Gracias por tu interés en {app}!\n\nTe escribiremos cuando las apps para iPhone y Android estén listas. Mientras tanto, ya puedes registrarte y empezar a hacer match en https://pairmundo.com.\n\nPara salir de la lista, abre este enlace: {link}',
+    fr: "Merci de votre intérêt pour {app} !\n\nNous vous écrirons quand les applications iPhone et Android seront prêtes. En attendant, vous pouvez déjà vous inscrire et commencer à matcher sur https://pairmundo.com.\n\nPour quitter la liste, ouvrez ce lien : {link}",
+    de: 'Danke für dein Interesse an {app}!\n\nWir schreiben dir, sobald die Apps für iPhone und Android fertig sind. Bis dahin kannst du dich schon auf https://pairmundo.com anmelden und matchen.\n\nUm die Liste zu verlassen, öffne diesen Link: {link}',
+    pt: 'Obrigado pelo seu interesse no {app}!\n\nVamos te avisar por e-mail quando os apps para iPhone e Android estiverem prontos. Enquanto isso, você já pode se cadastrar e começar a dar match em https://pairmundo.com.\n\nPara sair da lista, abra este link: {link}' },
+  "You're off the list. We won't email you about the launch.": {
+    es: 'Ya no estás en la lista. No te escribiremos sobre el lanzamiento.', fr: "Vous ne faites plus partie de la liste. Nous ne vous écrirons pas au sujet du lancement.",
+    de: 'Du bist nicht mehr auf der Liste. Wir schreiben dir nicht zum Start.', pt: 'Você saiu da lista. Não vamos mandar e-mails sobre o lançamento.' },
+  'This link was already used, or the address is not on the list.': {
+    es: 'Este enlace ya se usó o la dirección no está en la lista.', fr: "Ce lien a déjà été utilisé, ou l'adresse ne figure pas sur la liste.",
+    de: 'Dieser Link wurde schon benutzt, oder die Adresse steht nicht auf der Liste.', pt: 'Este link já foi usado ou o endereço não está na lista.' },
   'Your {app} code: {code}': {
     es: 'Tu código de {app}: {code}', fr: 'Votre code {app} : {code}', de: 'Dein {app}-Code: {code}', pt: 'Seu código do {app}: {code}' },
   "Welcome to {app}!\n\nYour confirmation code is {code}. Enter it in the app to confirm your email. It expires in 30 minutes.\n\nIf you didn't sign up, you can ignore this email.": {

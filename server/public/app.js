@@ -373,13 +373,28 @@ function profileCompleteness() {
 }
 
 function landing() {
+  const waitForm = (id) => `<form class="waitlist" id="${id}">
+      <input name="email" type="email" required autocomplete="email" placeholder="${tr('Your email')}" aria-label="${tr('Your email')}">
+      <select name="role" aria-label="${tr('I am')}"><option value="family">${tr('A host family')}</option><option value="aupair">${tr('An au pair')}</option></select>
+      <button class="btn">${tr('Notify me')}</button></form>`;
   render(`
     <section class="hero">
+      <span class="chip">📱 ${tr('iPhone and Android apps coming soon')}</span>
       <h1>${tr('Swipe. Match. Welcome your au pair.')}</h1>
       <p>${tr("Photo-first profiles from families and au pairs worldwide. Swipe right on the ones you like; when it's mutual, you're matched and can chat. Program rules, verification and two-way reviews are built in.")}</p>
       <div class="row" style="justify-content:center"><a class="btn" href="#/register?role=family">${tr("I'm a host family")}</a>
       <a class="btn secondary" href="#/register?role=aupair">${tr('I want to be an au pair')}</a></div>
+      <p class="small muted" style="margin-top:12px">${tr('Free for au pairs. Swiping and matching are free for everyone.')}</p>
     </section>
+    <section class="card wait-card"><h2>${tr('Be the first to get the app')}</h2>
+      <p class="muted">${tr("Leave your email and we'll tell you the day PairMundo arrives on the App Store and Google Play. No spam, and you can leave the list anytime.")}</p>
+      ${waitForm('wait1')}<div id="waitMsg1"></div></section>
+    <h2 class="center" style="margin:36px 0 16px">${tr('How it works')}</h2>
+    <div class="grid steps">${[['1', tr('Create your profile'), tr('Add photos, languages, dates and what you are looking for. It takes about ten minutes.')],
+    ['2', tr('Swipe and match'), tr('Like the profiles that fit. When the feeling is mutual, chat opens and you can get to know each other.')],
+    ['3', tr('Plan the placement'), tr('Agree on dates, hours and pocket money. PairMundo checks them against the country rules and keeps a checklist for both of you.')]]
+    .map(([n, t, d]) => `<div class="card feature"><div class="step-n">${n}</div><h3>${t}</h3><p class="muted">${d}</p></div>`).join('')}</div>
+    <h2 class="center" style="margin:36px 0 16px">${tr('Why families and au pairs choose PairMundo')}</h2>
     <div class="grid">
       ${[['🔥', tr('Swipe to match'), tr("Swipe right to like, left to pass, up to super like. When you both like each other it's a match.")],
     ['🎯', tr('Smart matching'), tr('A match score that weighs languages, dates, childcare experience, destination wishes and program eligibility, with the reasons shown.')],
@@ -387,9 +402,24 @@ function landing() {
     ['🛂', tr('Program rules built in'), tr('Age limits, maximum hours and minimum pocket money for each country are checked before a placement can be agreed.')],
     ['💬', tr('Safe messaging'), tr('Chat opens only when you match, so nobody can message you out of the blue. Report anything suspicious in one click.')],
     ['✅', tr('Placement checklist'), tr('Contract, visa, insurance, travel, language course and check-ins tracked for both sides.')],
-    ['🛡️', tr('Verified profiles'), tr('Members can verify their ID with a passport or ID card and a selfie, and program staff check references and backgrounds. The badges show on every profile.')]]
+    ['🛡️', tr('Verified profiles'), tr('Members can verify their ID with a passport or ID card and a selfie, and program staff check references and backgrounds. The badges show on every profile.')],
+    ['🌍', tr('In your language'), tr('PairMundo speaks English, Spanish, French, German and Portuguese, and so do the emails it sends you.')]]
     .map(([i, t, d]) => `<div class="card feature"><div class="icon">${i}</div><h3>${t}</h3><p class="muted">${d}</p></div>`).join('')}
-    </div>`);
+    </div>
+    <section class="card wait-card" style="margin-top:32px"><h2>${tr('Get the app at launch')}</h2>${waitForm('wait2')}<div id="waitMsg2"></div></section>`);
+  for (const n of [1, 2]) {
+    const f = document.getElementById(`wait${n}`);
+    f.onsubmit = async (e) => {
+      e.preventDefault();
+      const $msg = document.getElementById(`waitMsg${n}`);
+      f.querySelector('button').disabled = true;
+      try {
+        await api('/waitlist', { method: 'POST', body: { ...formData(f), country: (navigator.language.split('-')[1] || '').toUpperCase() || undefined } });
+        f.hidden = true;
+        $msg.innerHTML = `<div class="alert ok">✓ ${tr("You're on the list! Check your inbox for a confirmation email.")}</div>`;
+      } catch (err) { f.querySelector('button').disabled = false; $msg.innerHTML = `<div class="alert error">${esc(err.message)}</div>`; }
+    };
+  }
 }
 
 views.login = () => {
@@ -1055,13 +1085,13 @@ views.notifications = async () => {
 // ---------- admin ----------
 views.admin = async ([tab = 'overview']) => {
   if (me.user.role !== 'admin') return go('#/');
-  const tabs = { overview: 'Overview', users: 'Users & verification', reports: 'Reports', programs: 'Program rules', placements: 'Placements' };
+  const tabs = { overview: 'Overview', users: 'Users & verification', reports: 'Reports', programs: 'Program rules', placements: 'Placements', waitlist: 'Waitlist' };
   const head = `<h1>Program administration</h1><div class="row" style="margin-bottom:16px">${Object.entries(tabs).map(([k, v]) =>
     `<a class="btn ${k === tab ? '' : 'ghost'} sm" href="#/admin/${k}">${v}</a>`).join('')}</div>`;
   if (tab === 'overview') {
     const s = await api('/admin/stats');
     const tiles = [['Au pairs', s.aupairs], ['Host families', s.families], ['Awaiting ID check', s.pending_verification], ['Pending requests', s.open_requests],
-      ['Matches', s.matches], ['Active placements', s.placements_active], ['Completed placements', s.placements_completed], ['Reviews', s.reviews], ['Open reports', s.open_reports]];
+      ['Matches', s.matches], ['Active placements', s.placements_active], ['Completed placements', s.placements_completed], ['Reviews', s.reviews], ['Open reports', s.open_reports], ['On the waitlist', s.waitlist]];
     return render(`${head}<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(170px,1fr))">${tiles.map(([k, v]) =>
       `<div class="card"><div class="muted small">${k}</div><div style="font-size:1.8rem;font-weight:800">${v}</div></div>`).join('')}</div>
       <div class="card"><h2>Members by country</h2><table><tr><th>Country</th><th>Role</th><th>Members</th></tr>
@@ -1094,6 +1124,15 @@ views.admin = async ([tab = 'overview']) => {
       views.admin(['reports']);
     }; });
     return;
+  }
+  if (tab === 'waitlist') {
+    const w = await api('/admin/waitlist');
+    const role = (r) => (r === 'aupair' ? 'Au pair' : r === 'family' ? 'Family' : '—');
+    return render(`${head}<div class="spread"><p><strong>${w.total}</strong> people want to hear when the apps launch.</p><a class="btn sm" href="/api/admin/waitlist.csv">⬇ Download as a spreadsheet (CSV)</a></div>
+      <div class="cols-2"><div class="card"><h2>By role</h2><table>${w.by_role.map((r) => `<tr><td>${role(r.role)}</td><td>${r.n}</td></tr>`).join('')}</table></div>
+      <div class="card"><h2>By browser region</h2><table>${w.by_country.map((r) => `<tr><td>${cname(r.country) || '—'}</td><td>${r.n}</td></tr>`).join('')}</table></div></div>
+      <div class="card table-wrap"><h2>Latest</h2><table><tr><th>Email</th><th>Role</th><th>Region</th><th>Language</th><th>Joined</th></tr>
+      ${w.people.map((p) => `<tr><td>${esc(p.email)}</td><td>${role(p.role)}</td><td>${cname(p.country) || '—'}</td><td>${esc(LANGUAGES[p.lang] || p.lang)}</td><td>${fmtTime(p.created_at)}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">Nobody yet.</td></tr>'}</table></div>`);
   }
   if (tab === 'placements') {
     const { placements } = await api('/placements');
