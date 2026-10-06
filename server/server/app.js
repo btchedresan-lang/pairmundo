@@ -7,6 +7,7 @@ import { hashPassword, verifyPassword, createSession, sessionMiddleware, require
 import { scoreMatch, checkCompliance, ageOn } from './matching.js';
 import { PROGRAMS, REVIEW_CRITERIA, PLACEMENT_TASKS } from './programs.js';
 import { createMailer, codeEmail } from './mailer.js';
+import { pickLang, t as translate } from './i18n.js';
 import { createPusher, isPushToken } from './push.js';
 import { createStorage } from './storage.js';
 
@@ -77,6 +78,12 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     next();
   });
   app.use(sessionMiddleware(db));
+  // Remember which language each person's app uses, so their notifications and emails match it.
+  app.use((req, res, next) => {
+    const lang = req.user && pickLang(req.get('accept-language'));
+    if (lang && lang !== req.user.lang) { db.prepare('UPDATE users SET lang = ? WHERE id = ?').run(lang, req.user.id); req.user.lang = lang; }
+    next();
+  });
 
   // ---------- helpers ----------
   const getProgram = (code) => {
@@ -143,7 +150,9 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       });
     }).catch((e) => console.error('Push failed:', e.message));
   };
-  const notify = (userId, kind, text, link = null) => {
+  /** Tell someone about something, in their language. text is English with {placeholders} filled from vars. */
+  const notify = (userId, kind, english, vars, link = null) => {
+    const text = translate(db.prepare('SELECT lang FROM users WHERE id = ?').get(userId)?.lang, english, vars);
     db.prepare('INSERT INTO notifications (user_id, kind, text, link) VALUES (?,?,?,?)').run(userId, kind, text, link);
     push(userId, text, link);
   };
@@ -185,7 +194,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     db.prepare(`INSERT INTO email_codes (user_id, purpose, code_hash, expires_at, attempts) VALUES (?,?,?,?,0)
       ON CONFLICT(user_id, purpose) DO UPDATE SET code_hash = excluded.code_hash, expires_at = excluded.expires_at, attempts = 0`)
       .run(user.id, purpose, hashCode(code), expires);
-    Promise.resolve(mailer({ to: user.email, ...codeEmail(purpose, code) })).catch((e) => console.error('Email failed:', e.message));
+    Promise.resolve(mailer({ to: user.email, ...codeEmail(purpose, code, user.lang) })).catch((e) => console.error('Email failed:', e.message));
   };
   /** Checks a code and uses it up. Wrong guesses count; after a few the code stops working. */
   const useCode = (userId, purpose, code) => {
@@ -226,8 +235,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (!str(name)) throw bad('Name is required.');
     if (db.prepare('SELECT 1 FROM users WHERE lower(trim(email)) = ?').get(email)) throw new HttpError(409, 'An account with this email already exists.');
     const user = tx(db, () => {
-      const r = db.prepare('INSERT INTO users (email, password_hash, role, name, country, city) VALUES (?,?,?,?,?,?)')
-        .run(email, hashPassword(String(password)), role, str(name, 120), str(country, 2)?.toUpperCase() ?? null, str(city, 120));
+      const r = db.prepare('INSERT INTO users (email, password_hash, role, name, country, city, lang) VALUES (?,?,?,?,?,?,?)')
+        .run(email, hashPassword(String(password)), role, str(name, 120), str(country, 2)?.toUpperCase() ?? null, str(city, 120), pickLang(req.get('accept-language')));
       const id = Number(r.lastInsertRowid);
       db.prepare(`INSERT INTO ${role === 'aupair' ? 'aupair_profiles' : 'family_profiles'} (user_id) VALUES (?)`).run(id);
       return getUser(id);
@@ -484,13 +493,13 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     }
     if (theirs) {
       const c = acceptRequest(theirs);
-      notify(t.id, 'match', `It's a match! ${me.name} liked you back.`, `#/messages/${c.id}`);
+      notify(t.id, 'match', "It's a match! {name} liked you back.", { name: me.name }, `#/messages/${c.id}`);
       return { matched: true, conversation_id: c.id, other: publicUser(t) };
     }
     const mine = db.prepare("SELECT id FROM match_requests WHERE from_user = ? AND to_user = ? AND status IN ('pending','accepted')").get(me.id, t.id);
     if (!mine) {
       db.prepare('INSERT INTO match_requests (from_user, to_user, message) VALUES (?, ?, ?)').run(me.id, t.id, str(message, 2000));
-      notify(t.id, 'like', direction === 'super' ? `${me.name} super liked you! ⭐` : 'Someone new liked you. See who in Likes.', '#/likes');
+      notify(t.id, 'like', direction === 'super' ? '{name} super liked you! ⭐' : 'Someone new liked you. See who in Likes.', { name: me.name }, '#/likes');
     }
     return { matched: false };
   }));
@@ -603,7 +612,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (open) throw new HttpError(409, 'You already have an open request with this person.');
     const r = db.prepare('INSERT INTO match_requests (from_user, to_user, message) VALUES (?, ?, ?)')
       .run(req.user.id, to.id, str(req.body?.message, 2000));
-    notify(to.id, 'request', `${req.user.name} is interested in matching with you.`, '#/requests');
+    notify(to.id, 'request', '{name} is interested in matching with you.', { name: req.user.name }, '#/requests');
     res.status(201);
     return { id: Number(r.lastInsertRowid) };
   }));
@@ -634,7 +643,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       if (status === 'accepted') acceptRequest(r);
       else db.prepare("UPDATE match_requests SET status = 'declined', responded_at = datetime('now') WHERE id = ?").run(r.id);
       db.prepare('INSERT OR REPLACE INTO swipes (user_id, target_id, direction) VALUES (?,?,?)').run(me, r.from_user, status === 'accepted' ? 'like' : 'pass');
-      if (status === 'accepted') notify(r.from_user, 'match', `It's a match! ${req.user.name} liked you back.`, '#/matches');
+      if (status === 'accepted') notify(r.from_user, 'match', "It's a match! {name} liked you back.", { name: req.user.name }, '#/matches');
     } else throw bad('Unknown action.');
     return { ok: true };
   }));
@@ -765,7 +774,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       });
       return pid;
     });
-    notify(other.id, 'placement', `${req.user.name} proposed a placement. Review and confirm it.`, `#/placements/${id}`);
+    notify(other.id, 'placement', '{name} proposed a placement. Review and confirm it.', { name: req.user.name }, `#/placements/${id}`);
     res.status(201);
     return { id, compliance };
   }));
@@ -812,7 +821,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const fresh = db.prepare('SELECT * FROM placements WHERE id = ?').get(p.id);
     if (fresh.aupair_confirmed && fresh.family_confirmed) {
       db.prepare("UPDATE placements SET status = 'confirmed' WHERE id = ?").run(p.id);
-      for (const uid of [p.aupair_id, p.family_id]) notify(uid, 'placement', 'Your placement is confirmed. Work through the checklist together.', `#/placements/${p.id}`);
+      for (const uid of [p.aupair_id, p.family_id]) notify(uid, 'placement', 'Your placement is confirmed. Work through the checklist together.', {}, `#/placements/${p.id}`);
     }
     return placementView(db.prepare('SELECT * FROM placements WHERE id = ?').get(p.id), req.user);
   }));
@@ -824,9 +833,9 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (!(TRANSITIONS[p.status] || []).includes(next)) throw bad(`Cannot move a ${p.status} placement to ${next}.`);
     db.prepare('UPDATE placements SET status = ? WHERE id = ?').run(next, p.id);
     const other = req.user.id === p.aupair_id ? p.family_id : p.aupair_id;
-    notify(other, 'placement', `Placement is now ${next}.`, `#/placements/${p.id}`);
+    notify(other, 'placement', next === 'cancelled' ? 'Your placement was cancelled.' : `Your placement is now ${next}.`, {}, `#/placements/${p.id}`);
     if (next === 'completed') {
-      for (const uid of [p.aupair_id, p.family_id]) notify(uid, 'review', 'Your placement ended. Leave a review to help the community.', `#/placements/${p.id}`);
+      for (const uid of [p.aupair_id, p.family_id]) notify(uid, 'review', 'Your placement ended. Leave a review to help the community.', {}, `#/placements/${p.id}`);
     }
     return placementView(db.prepare('SELECT * FROM placements WHERE id = ?').get(p.id), req.user);
   }));
@@ -859,7 +868,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const reviewee = revieweeIsAupair ? p.aupair_id : p.family_id;
     const r = db.prepare('INSERT INTO reviews (placement_id, reviewer_id, reviewee_id, overall, criteria, comment) VALUES (?,?,?,?,?,?)')
       .run(p.id, req.user.id, reviewee, overall, JSON.stringify(criteria), str(b.comment, 3000));
-    notify(reviewee, 'review', `${req.user.name} left you a review. It appears once you review them too, or ${REVIEW_REVEAL_DAYS} days after the placement ends.`, `#/placements/${p.id}`);
+    notify(reviewee, 'review', '{name} left you a review. It appears once you review them too, or {days} days after the placement ends.', { name: req.user.name, days: REVIEW_REVEAL_DAYS }, `#/placements/${p.id}`);
     res.status(201);
     return { id: Number(r.lastInsertRowid) };
   }));
@@ -925,7 +934,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (!sets.length) throw bad('Nothing to change.');
     db.prepare(`UPDATE users SET ${sets.map((k) => `${map[k]} = ?`).join(', ')} WHERE id = ?`).run(...sets.map((k) => (req.body[k] ? 1 : 0)), u.id);
     if (req.body.suspended) db.prepare('DELETE FROM sessions WHERE user_id = ?').run(u.id);
-    if (sets.some((k) => k !== 'suspended' && req.body[k])) notify(u.id, 'verification', 'Your profile has a new verification badge.', '#/profile');
+    if (sets.some((k) => k !== 'suspended' && req.body[k])) notify(u.id, 'verification', 'Your profile has a new verification badge.', {}, '#/profile');
     return { ...publicUser(getUser(u.id)), suspended: !!getUser(u.id).suspended };
   }));
   api.get('/admin/reports', requireRole('admin'), wrap(() => ({

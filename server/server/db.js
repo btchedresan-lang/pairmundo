@@ -239,6 +239,7 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
   const cols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
   if (!cols.includes('photos')) db.exec("ALTER TABLE users ADD COLUMN photos TEXT NOT NULL DEFAULT '[]'");
   // Accounts created before email verification existed count as verified.
+  if (!cols.includes('lang')) db.exec('ALTER TABLE users ADD COLUMN lang TEXT');
   if (!cols.includes('email_verified')) db.exec('ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0; UPDATE users SET email_verified = 1');
   const pcols = db.prepare('PRAGMA table_info(country_programs)').all().map((c) => c.name);
   if (!pcols.includes('status')) {

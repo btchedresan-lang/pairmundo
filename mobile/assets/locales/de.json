@@ -1,0 +1,5 @@
+{
+  "ios": {
+    "NSPhotoLibraryUsageDescription": "PairMundo braucht Zugriff auf deine Fotos, damit du sie zu deinem Profil hinzufügen kannst."
+  }
+}

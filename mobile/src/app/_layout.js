@@ -8,6 +8,7 @@ import { AuthProvider, useAuth } from '../auth';
 import { Loading } from '../components/ui';
 import { C, useTheme } from '../theme';
 import { screenForLink } from '../push';
+import { LanguageProvider, tr, useLanguage } from '../i18n';
 
 /** Tapping a notification opens the chat, placement or tab it is about. */
 function NotificationOpener() {
@@ -23,30 +24,32 @@ function NotificationOpener() {
 
 function RootStack() {
   const { me, ready } = useAuth();
+  const { lang } = useLanguage();
   const t = useTheme();
   if (!ready) return <Loading />;
   const signedIn = !!me;
   return (
     <>
     {signedIn && Platform.OS !== 'web' ? <NotificationOpener /> : null}
-    <Stack screenOptions={{ headerTintColor: C.primary, headerStyle: { backgroundColor: t.card }, headerTitleStyle: { color: t.ink }, contentStyle: { backgroundColor: t.bg }, headerBackButtonDisplayMode: 'minimal' }}>
+    {/* Keyed by language so every screen redraws in the new one. */}
+    <Stack key={lang} screenOptions={{ headerTintColor: C.primary, headerStyle: { backgroundColor: t.card }, headerTitleStyle: { color: t.ink }, contentStyle: { backgroundColor: t.bg }, headerBackButtonDisplayMode: 'minimal' }}>
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Protected guard={!signedIn}>
         <Stack.Screen name="login" options={{ headerShown: false }} />
-        <Stack.Screen name="register" options={{ title: 'Create account' }} />
-        <Stack.Screen name="forgot" options={{ title: 'Forgot password' }} />
+        <Stack.Screen name="register" options={{ title: tr('Create account') }} />
+        <Stack.Screen name="forgot" options={{ title: tr('Forgot password') }} />
       </Stack.Protected>
       <Stack.Protected guard={signedIn}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="user/[id]" options={{ title: '' }} />
-        <Stack.Screen name="chat/[id]" options={{ title: 'Chat' }} />
-        <Stack.Screen name="placement/[id]" options={{ title: 'Placement' }} />
-        <Stack.Screen name="new-placement/[id]" options={{ title: 'Propose placement', presentation: 'modal' }} />
-        <Stack.Screen name="verify-email" options={{ title: 'Confirm email' }} />
-        <Stack.Screen name="account" options={{ title: 'Account and safety' }} />
+        <Stack.Screen name="chat/[id]" options={{ title: tr('Chat') }} />
+        <Stack.Screen name="placement/[id]" options={{ title: tr('Placement') }} />
+        <Stack.Screen name="new-placement/[id]" options={{ title: tr('Propose placement'), presentation: 'modal' }} />
+        <Stack.Screen name="verify-email" options={{ title: tr('Confirm email') }} />
+        <Stack.Screen name="account" options={{ title: tr('Account and safety') }} />
       </Stack.Protected>
-      <Stack.Screen name="programs/index" options={{ title: 'Country programs' }} />
-      <Stack.Screen name="programs/[code]" options={{ title: 'Program' }} />
+      <Stack.Screen name="programs/index" options={{ title: tr('Country programs') }} />
+      <Stack.Screen name="programs/[code]" options={{ title: tr('Program') }} />
     </Stack>
     </>
   );
@@ -55,10 +58,12 @@ function RootStack() {
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
-      <AuthProvider>
-        <StatusBar style="auto" />
-        <RootStack />
-      </AuthProvider>
+      <LanguageProvider>
+        <AuthProvider>
+          <StatusBar style="auto" />
+          <RootStack />
+        </AuthProvider>
+      </LanguageProvider>
     </SafeAreaProvider>
   );
 }

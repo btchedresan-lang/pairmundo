@@ -5,15 +5,17 @@ import * as ImagePicker from 'expo-image-picker';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { api, getBase } from '../../api';
 import { useAuth } from '../../auth';
-import { AGE_GROUPS, LANGS, SKILLS } from '../../data';
+import { AGE_GROUPS, cname, langName, SKILLS } from '../../data';
+import { tr, trMap } from '../../i18n';
 import { Alert, Button, Card, ChoiceChips, Field, Photo, Screen, T } from '../../components/ui';
 import { CountryPicker } from '../../components/pickers';
 import { brand, C, useTheme } from '../../theme';
 
-const TOP_LANGS = Object.fromEntries(['en', 'es', 'fr', 'de', 'it', 'pt', 'nl', 'sv', 'da', 'no', 'pl', 'zh', 'vi', 'tl', 'af'].map((k) => [k, LANGS[k]]));
-const DESTINATIONS = { US: '🇺🇸 USA', DE: '🇩🇪 Germany', FR: '🇫🇷 France', NL: '🇳🇱 Netherlands', DK: '🇩🇰 Denmark', SE: '🇸🇪 Sweden', ES: '🇪🇸 Spain', CH: '🇨🇭 Switzerland', BE: '🇧🇪 Belgium', IE: '🇮🇪 Ireland', AU: '🇦🇺 Australia' };
+const TOP_LANGS = ['en', 'es', 'fr', 'de', 'it', 'pt', 'nl', 'sv', 'da', 'no', 'pl', 'zh', 'vi', 'tl', 'af'];
+const DESTINATIONS = ['US', 'DE', 'FR', 'NL', 'DK', 'SE', 'ES', 'CH', 'BE', 'IE', 'AU'];
+const labels = (codes, name) => Object.fromEntries(codes.map((k) => [k, name(k)]));
 const confirm = (title, onYes) => (Platform.OS === 'web' ? (globalThis.confirm?.(title) && onYes())
-  : RNAlert.alert(title, undefined, [{ text: 'Cancel', style: 'cancel' }, { text: 'OK', style: 'destructive', onPress: onYes }]));
+  : RNAlert.alert(title, undefined, [{ text: tr('Cancel'), style: 'cancel' }, { text: tr('OK'), style: 'destructive', onPress: onYes }]));
 
 function PhotoGrid({ photos, onChange }) {
   const t = useTheme();
@@ -42,15 +44,15 @@ function PhotoGrid({ photos, onChange }) {
             return (
               <View key={p} style={slot}>
                 <Photo uri={p} style={{ width: '100%', height: '100%' }} />
-                {i === 0 ? <Text style={{ position: 'absolute', top: 6, left: 6, backgroundColor: C.primary, color: '#fff', fontSize: 11, fontWeight: '700', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, overflow: 'hidden' }}>Main</Text>
-                  : <Pressable onPress={() => save([p, ...photos.filter((x) => x !== p)])} style={[dot, { left: 6 }]} accessibilityLabel="Make main photo"><Text style={{ color: C.gold }}>★</Text></Pressable>}
-                <Pressable onPress={() => confirm('Remove this photo?', () => save(photos.filter((x) => x !== p)))} style={[dot, { right: 6 }]} accessibilityLabel="Remove photo"><Text style={{ color: C.nope, fontWeight: '800' }}>✕</Text></Pressable>
+                {i === 0 ? <Text style={{ position: 'absolute', top: 6, left: 6, backgroundColor: C.primary, color: '#fff', fontSize: 11, fontWeight: '700', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, overflow: 'hidden' }}>{tr('Main')}</Text>
+                  : <Pressable onPress={() => save([p, ...photos.filter((x) => x !== p)])} style={[dot, { left: 6 }]} accessibilityLabel={tr('Make main photo')}><Text style={{ color: C.gold }}>★</Text></Pressable>}
+                <Pressable onPress={() => confirm(tr('Remove this photo?'), () => save(photos.filter((x) => x !== p)))} style={[dot, { right: 6 }]} accessibilityLabel={tr('Remove photo')}><Text style={{ color: C.nope, fontWeight: '800' }}>✕</Text></Pressable>
               </View>
             );
           }
           return (
             <Pressable key={`empty-${i}`} onPress={i === photos.length && !busy ? add : undefined} style={[slot, { alignItems: 'center', justifyContent: 'center' }]}>
-              {i === photos.length ? (busy ? <ActivityIndicator color={C.primary} /> : <><Text style={{ fontSize: 28, color: C.primary }}>＋</Text><T small muted>Add photo</T></>) : null}
+              {i === photos.length ? (busy ? <ActivityIndicator color={C.primary} /> : <><Text style={{ fontSize: 28, color: C.primary }}>＋</Text><T small muted>{tr('Add photo')}</T></>) : null}
             </Pressable>
           );
         })}
@@ -100,7 +102,7 @@ export default function MyProfile() {
     });
     try {
       await api('/me', { method: 'PUT', body: { name: f.name, country: f.country, city: f.city, profile } });
-      await refresh(); setMsg({ level: 'ok', text: 'Profile saved' });
+      await refresh(); setMsg({ level: 'ok', text: tr('Profile saved') });
     } catch (e) { setMsg({ level: 'error', text: e.message }); } finally { setBusy(false); }
   };
 
@@ -114,57 +116,57 @@ export default function MyProfile() {
     <Screen>
       <Card>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <T h2>Photos</T>
-          <Pressable onPress={() => router.push(`/user/${me.user.id}`)}><T small style={{ color: C.primary }}>Preview my card →</T></Pressable>
+          <T h2>{tr('Photos')}</T>
+          <Pressable onPress={() => router.push(`/user/${me.user.id}`)}><T small style={{ color: C.primary }}>{tr('Preview my card')} →</T></Pressable>
         </View>
-        <T small muted>Your first photo is what people see when they swipe. Clear, smiling, recent photos work best{isAp ? '' : ', and a family photo helps'}.</T>
+        <T small muted>{isAp ? tr('Your first photo is what people see when they swipe. Clear, smiling, recent photos work best.') : tr('Your first photo is what people see when they swipe. Clear, smiling, recent photos work best, and a family photo helps.')}</T>
         <PhotoGrid photos={me.user.photos || []} onChange={(photos) => setMe((m) => ({ ...m, user: { ...m.user, photos, photo_url: photos[0] || null } }))} />
       </Card>
 
       <Card>
-        <T h2>Basics</T>
-        <Field label="Name" value={f.name} onChangeText={set('name')} />
-        <CountryPicker label="Country you live in" value={f.country} onChange={set('country')} />
-        <Field label="City" value={f.city} onChangeText={set('city')} />
-        <Field label={isAp ? 'About me' : 'About our family'} multiline value={f.bio} onChangeText={set('bio')} />
-        {toggle('Show me in Discover', 'visible')}
+        <T h2>{tr('Basics')}</T>
+        <Field label={tr('Name')} value={f.name} onChangeText={set('name')} />
+        <CountryPicker label={tr('Country you live in')} value={f.country} onChange={set('country')} />
+        <Field label={tr('City')} value={f.city} onChangeText={set('city')} />
+        <Field label={isAp ? tr('About me') : tr('About our family')} multiline value={f.bio} onChangeText={set('bio')} />
+        {toggle(tr('Show me in Discover'), 'visible')}
       </Card>
 
       {isAp ? (
         <Card>
-          <T h2>Au pair details</T>
-          <Field label="Date of birth (YYYY-MM-DD)" value={f.birth_date} onChangeText={set('birth_date')} placeholder="2003-04-12" />
-          <CountryPicker label="Nationality" value={f.nationality} onChange={set('nationality')} />
-          <Field label="Years of childcare experience" value={f.childcare_years} onChangeText={set('childcare_years')} keyboardType="decimal-pad" />
-          <Field label="Available from (YYYY-MM-DD)" value={f.available_from} onChangeText={set('available_from')} />
-          <Field label="Stay length (months)" value={f.duration_months} onChangeText={set('duration_months')} keyboardType="number-pad" />
-          {toggle("I have a driver's license", 'drivers_license')}
-          <ChoiceChips label="Languages I speak" options={TOP_LANGS} value={f.languages} onChange={set('languages')} multi />
-          <ChoiceChips label="Experience with" options={AGE_GROUPS} value={f.age_groups} onChange={set('age_groups')} multi />
-          <ChoiceChips label="Skills" options={SKILLS} value={f.skills} onChange={set('skills')} multi />
-          <ChoiceChips label="Where I'd like to go (empty = anywhere)" options={DESTINATIONS} value={f.preferred_countries} onChange={set('preferred_countries')} multi />
+          <T h2>{tr('Au pair details')}</T>
+          <Field label={tr('Date of birth (YYYY-MM-DD)')} value={f.birth_date} onChangeText={set('birth_date')} placeholder="2003-04-12" />
+          <CountryPicker label={tr('Nationality')} value={f.nationality} onChange={set('nationality')} />
+          <Field label={tr('Years of childcare experience')} value={f.childcare_years} onChangeText={set('childcare_years')} keyboardType="decimal-pad" />
+          <Field label={tr('Available from (YYYY-MM-DD)')} value={f.available_from} onChangeText={set('available_from')} />
+          <Field label={tr('Stay length (months)')} value={f.duration_months} onChangeText={set('duration_months')} keyboardType="number-pad" />
+          {toggle(tr("I have a driver's license"), 'drivers_license')}
+          <ChoiceChips label={tr('Languages I speak')} options={labels(TOP_LANGS, langName)} value={f.languages} onChange={set('languages')} multi />
+          <ChoiceChips label={tr('Experience with')} options={trMap(AGE_GROUPS)} value={f.age_groups} onChange={set('age_groups')} multi />
+          <ChoiceChips label={tr('Skills')} options={trMap(SKILLS)} value={f.skills} onChange={set('skills')} multi />
+          <ChoiceChips label={tr("Where I'd like to go (empty = anywhere)")} options={labels(DESTINATIONS, cname)} value={f.preferred_countries} onChange={set('preferred_countries')} multi />
         </Card>
       ) : (
         <Card>
-          <T h2>Family details</T>
-          <Field label="Children's ages (comma separated)" value={f.children} onChangeText={set('children')} placeholder="2, 6" />
-          <Field label="Start date (YYYY-MM-DD)" value={f.start_date} onChangeText={set('start_date')} />
-          <Field label="Stay length (months)" value={f.duration_months} onChangeText={set('duration_months')} keyboardType="number-pad" />
-          <Field label="Hours per week" value={f.weekly_hours} onChangeText={set('weekly_hours')} keyboardType="number-pad" />
-          <Field label="Pocket money per month (local currency)" value={f.pocket_money} onChangeText={set('pocket_money')} keyboardType="number-pad" />
-          {toggle('We need a driver', 'needs_driver')}
-          {toggle('We have pets', 'has_pets')}
-          <ChoiceChips label="Languages at home" options={TOP_LANGS} value={f.languages} onChange={set('languages')} multi />
-          <ChoiceChips label="Au pair must speak" options={TOP_LANGS} value={f.required_languages} onChange={set('required_languages')} multi />
+          <T h2>{tr('Family details')}</T>
+          <Field label={tr("Children's ages (comma separated)")} value={f.children} onChangeText={set('children')} placeholder="2, 6" />
+          <Field label={tr('Start date (YYYY-MM-DD)')} value={f.start_date} onChangeText={set('start_date')} />
+          <Field label={tr('Stay length (months)')} value={f.duration_months} onChangeText={set('duration_months')} keyboardType="number-pad" />
+          <Field label={tr('Hours per week')} value={f.weekly_hours} onChangeText={set('weekly_hours')} keyboardType="number-pad" />
+          <Field label={tr('Pocket money per month (local currency)')} value={f.pocket_money} onChangeText={set('pocket_money')} keyboardType="number-pad" />
+          {toggle(tr('We need a driver'), 'needs_driver')}
+          {toggle(tr('We have pets'), 'has_pets')}
+          <ChoiceChips label={tr('Languages at home')} options={labels(TOP_LANGS, langName)} value={f.languages} onChange={set('languages')} multi />
+          <ChoiceChips label={tr('Au pair must speak')} options={labels(TOP_LANGS, langName)} value={f.required_languages} onChange={set('required_languages')} multi />
         </Card>
       )}
 
       {msg ? <Alert level={msg.level} text={msg.text} /> : null}
-      <Button title="Save profile" onPress={save} loading={busy} />
-      <Button title="🛂 Country au pair rules" kind="ghost" onPress={() => router.push('/programs')} />
-      <Button title="🔒 Account and safety" kind="ghost" onPress={() => router.push('/account')} />
-      <Button title="Sign out" kind="ghost" onPress={signOut} />
-      <T small muted style={{ textAlign: 'center' }}>{brand.name} · connected to {getBase()}</T>
+      <Button title={tr('Save profile')} onPress={save} loading={busy} />
+      <Button title={`🛂 ${tr('Country au pair rules')}`} kind="ghost" onPress={() => router.push('/programs')} />
+      <Button title={`🔒 ${tr('Account and safety')}`} kind="ghost" onPress={() => router.push('/account')} />
+      <Button title={tr('Sign out')} kind="ghost" onPress={signOut} />
+      <T small muted style={{ textAlign: 'center' }}>{brand.name} · {tr('connected to {server}', { server: getBase() })}</T>
     </Screen>
   );
 }

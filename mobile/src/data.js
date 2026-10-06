@@ -1,3 +1,5 @@
+import { getLang, tr } from './i18n';
+
 export const COUNTRIES = {
   AR: 'Argentina', AT: 'Austria', AU: 'Australia', BE: 'Belgium', BR: 'Brazil', CA: 'Canada', CH: 'Switzerland', CN: 'China', CO: 'Colombia',
   CZ: 'Czechia', DE: 'Germany', DK: 'Denmark', ES: 'Spain', FI: 'Finland', FR: 'France', GB: 'United Kingdom', GH: 'Ghana', GR: 'Greece',
@@ -16,11 +18,16 @@ export const CRIT_LABEL = { reliability: 'Reliability', childcare: 'Childcare', 
   adaptability: 'Adaptability', respect: 'Respect', accommodation: 'Accommodation', fair_hours: 'Fair hours', support: 'Support' };
 
 export const flag = (cc) => (cc && cc.length === 2 ? String.fromCodePoint(...[...cc.toUpperCase()].map((c) => 127397 + c.charCodeAt(0))) : '');
-export const cname = (cc) => (cc ? `${flag(cc)} ${COUNTRIES[cc] || cc}` : '');
+/** Country, language and other labels in the app's language. */
+export const country = (cc) => (COUNTRIES[cc] ? tr(COUNTRIES[cc]) : cc || '');
+export const langName = (code) => (LANGS[code] ? tr(LANGS[code]) : code);
+export const cname = (cc) => (cc ? `${flag(cc)} ${country(cc)}` : '');
 export const initials = (name) => String(name || '?').split(/\s+/).filter((w) => !/^(the|family|familie|famille|familia|familien)$/i.test(w))
   .map((w) => w[0]).slice(0, 2).join('').toUpperCase();
 const parse = (d) => new Date(d.length === 10 ? `${d}T00:00:00` : d.replace(' ', 'T') + (/[zZ]|[+-]\d\d:?\d\d$/.test(d) ? '' : 'Z'));
-export const fmtDate = (d) => (d ? parse(d).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '');
-export const fmtTime = (d) => (d ? parse(d).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '');
+export const fmtDate = (d) => (d ? parse(d).toLocaleDateString(getLang(), { year: 'numeric', month: 'short', day: 'numeric' }) : '');
+export const fmtTime = (d) => (d ? parse(d).toLocaleString(getLang(), { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '');
 export const firstName = (name) => { const w = String(name || '').split(' '); return /^(the)$/i.test(w[0]) ? w[1] : w[0]; };
+export const STATUSES = { proposed: 'Proposed', confirmed: 'Confirmed', active: 'Active', completed: 'Completed', cancelled: 'Cancelled' };
+export const statusLabel = (s) => (STATUSES[s] ? tr(STATUSES[s]) : s);
 export const statusTone = (s) => (s === 'proposed' ? 'warn' : ['confirmed', 'active'].includes(s) ? 'ok' : undefined);

@@ -341,3 +341,30 @@ test('sign-in ignores capital letters and spaces in the email', async () => {
   const again = await call(null, 'POST', '/auth/register', { email: 'CASEY@test.io', password: 'password123', role: 'aupair', name: 'Dup', country: 'PE' });
   assert.equal(again.status, 409);
 });
+
+test('emails and notifications use the language of each person’s app', async () => {
+  const lang = (l) => ({ 'Content-Type': 'application/json', 'Accept-Language': l });
+  const res = await fetch(`${base}/auth/register`, { method: 'POST', headers: lang('es-MX,es;q=0.9,en;q=0.8'),
+    body: JSON.stringify({ email: 'es@test.io', password: 'password123', role: 'aupair', name: 'Lucía', country: 'MX' }) });
+  const es = await res.json();
+  assert.equal(res.status, 201);
+  const mail = outbox.findLast((m) => m.to === 'es@test.io');
+  assert.match(mail.subject, /^Tu código de PairMundo: \d{6}$/);
+  assert.match(mail.text, /Tu código de confirmación es \d{6}/);
+  await call(es.token, 'POST', '/auth/verify-email', { code: lastCode('es@test.io') });
+
+  // A German-speaking family; the server learns its language from the app's requests.
+  const de = await register('de@test.io', 'family', 'DE', 'Familie Weber');
+  await fetch(`${base}/me`, { headers: { ...lang('de-DE'), Authorization: `Bearer ${de.token}` } });
+
+  await call(de.token, 'POST', '/swipe', { target_id: es.user.id, direction: 'like' });
+  await call(es.token, 'POST', '/swipe', { target_id: de.id, direction: 'like' });
+  const texts = async (token) => (await call(token, 'GET', '/notifications')).body.notifications.map((n) => n.text);
+  assert.ok((await texts(es.token)).includes('Le gustas a alguien nuevo. Descubre quién en Likes.'));
+  assert.ok((await texts(de.token)).includes('Es ist ein Match! Lucía mag dich auch.'));
+  // Someone whose app sends no supported language gets English.
+  const en = await register('en@test.io', 'family', 'US', 'The Browns');
+  await call(en.token, 'POST', '/swipe', { target_id: es.user.id, direction: 'super' });
+  await call(es.token, 'POST', '/swipe', { target_id: en.id, direction: 'like' });
+  assert.ok((await texts(en.token)).includes("It's a match! Lucía liked you back."));
+});

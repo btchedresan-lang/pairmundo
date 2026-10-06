@@ -7,6 +7,7 @@ import { fmtTime } from '../../data';
 import { Alert, Loading, Photo, useInsets } from '../../components/ui';
 import { chooseAsync, confirmAsync } from '../../components/dialogs';
 import { C, useTheme } from '../../theme';
+import { tr } from '../../i18n';
 
 export default function Chat() {
   const { id } = useLocalSearchParams();
@@ -44,13 +45,13 @@ export default function Chat() {
 
   const menu = async () => {
     const pick = await chooseAsync(other.name, [
-      { key: 'report', label: 'Report and block', destructive: true },
-      { key: 'block', label: 'Block', destructive: true },
+      { key: 'report', label: tr('Report and block'), destructive: true },
+      { key: 'block', label: tr('Block'), destructive: true },
     ]);
     if (!pick) return;
-    if (!(await confirmAsync(`Block ${other.name}?`, pick === 'report'
-      ? 'We will send this chat to our safety team. You will no longer see each other.'
-      : "You won't see each other anywhere in the app. They aren't told.", 'Block', true))) return;
+    if (!(await confirmAsync(tr('Block {name}?', { name: other.name }), pick === 'report'
+      ? tr('We will send this chat to our safety team. You will no longer see each other.')
+      : tr("You won't see each other anywhere in the app. They aren't told."), tr('Block'), true))) return;
     try {
       await api(`/users/${other.id}/block`, { method: 'POST', body: pick === 'report' ? { reason: `Reported from chat ${id}` } : {} });
       refresh().catch(() => {});
@@ -65,11 +66,11 @@ export default function Chat() {
         <Pressable onPress={() => router.push(`/user/${other.id}`)} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Photo user={other} rounded style={{ width: 32, height: 32 }} /><Text style={{ color: t.ink, fontWeight: '700', fontSize: 16 }}>{other.name}</Text>
         </Pressable>) : null,
-      headerRight: () => other ? <Pressable onPress={menu} accessibilityLabel="Report or block" hitSlop={10}><Text style={{ color: C.primary, fontSize: 22, fontWeight: '800', paddingHorizontal: 6 }}>⋯</Text></Pressable> : null }} />
+      headerRight: () => other ? <Pressable onPress={menu} accessibilityLabel={tr('Report or block')} hitSlop={10}><Text style={{ color: C.primary, fontSize: 22, fontWeight: '800', paddingHorizontal: 6 }}>⋯</Text></Pressable> : null }} />
       {error ? <View style={{ padding: 12 }}><Alert level="error" text={error} /></View> : null}
       <FlatList ref={list} data={msgs} keyExtractor={(m) => String(m.id)} contentContainerStyle={{ padding: 14, gap: 8 }}
         onContentSizeChange={() => list.current?.scrollToEnd({ animated: true })}
-        ListEmptyComponent={<Text style={{ color: t.muted, textAlign: 'center', marginTop: 40 }}>You matched! Say hello 👋</Text>}
+        ListEmptyComponent={<Text style={{ color: t.muted, textAlign: 'center', marginTop: 40 }}>{tr('You matched! Say hello')} 👋</Text>}
         renderItem={({ item: m }) => {
           const mine = m.sender_id === me.user.id;
           return (
@@ -81,10 +82,10 @@ export default function Chat() {
           );
         }} />
       <View style={{ flexDirection: 'row', gap: 8, padding: 10, paddingBottom: insets.bottom + 10, borderTopWidth: 1, borderColor: t.line, backgroundColor: t.card }}>
-        <TextInput value={text} onChangeText={setText} placeholder="Type a message" placeholderTextColor={t.muted} multiline
+        <TextInput value={text} onChangeText={setText} placeholder={tr('Type a message')} placeholderTextColor={t.muted} multiline
           onSubmitEditing={send} blurOnSubmit={false} returnKeyType="send"
           style={{ flex: 1, maxHeight: 120, borderWidth: 1, borderColor: t.line, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 9, color: t.ink, backgroundColor: t.bg }} />
-        <Pressable onPress={send} accessibilityLabel="Send" style={{ backgroundColor: C.primary, borderRadius: 22, width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
+        <Pressable onPress={send} accessibilityLabel={tr('Send')} style={{ backgroundColor: C.primary, borderRadius: 22, width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
           <Text style={{ color: '#fff', fontSize: 18, fontWeight: '800' }}>➤</Text>
         </Pressable>
       </View>
