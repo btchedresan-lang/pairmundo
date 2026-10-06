@@ -40,7 +40,7 @@ New photos then go to R2. Photos uploaded before stay on the disk and keep worki
 
 ## Photo check
 
-Each uploaded profile photo can be checked automatically by Claude (Anthropic) before it goes live. Clear violations (nudity, sexual content, gore, hate symbols) are refused with a message asking for a different photo. Unclear cases, and photos showing a child, go live and appear in Admin → Reports for you to decide. It stays off until the key is set:
+Each uploaded profile photo can be checked automatically by Claude (Anthropic) before it goes live. Clear violations (nudity, sexual content, gore, hate symbols) and any photo showing a child are refused with a message asking for a different photo. Unclear cases go live and appear in Admin → Reports for you to decide. It stays off until the key is set:
 
 1. Create an account at [console.anthropic.com](https://console.anthropic.com), add a payment method, and create an API key under **API keys**.
 2. In Render → **Environment**, set `ANTHROPIC_API_KEY` to the key, then save.

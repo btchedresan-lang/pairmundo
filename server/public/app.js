@@ -29,7 +29,7 @@ const CRIT_LABEL = { reliability: 'Reliability', childcare: 'Childcare', communi
 // ---------- languages ----------
 // Text is written in English and wrapped in tr(); /locales/<lang>.json maps it to a translation.
 // Missing text shows in English. `npm run i18n` (in server/) lists what's missing.
-const LANGUAGES = { en: 'English', es: 'Español', fr: 'Français', de: 'Deutsch', pt: 'Português' };
+const LANGUAGES = { en: 'English', es: 'Español', fr: 'Français', de: 'Deutsch', pt: 'Português', sv: 'Svenska' };
 const browserLang = () => (navigator.languages || [navigator.language]).map((l) => String(l).slice(0, 2).toLowerCase()).find((c) => c in LANGUAGES) || 'en';
 const savedLang = () => { try { return localStorage.getItem('lang'); } catch { return null; } };
 let LANG = LANGUAGES[savedLang()] ? savedLang() : browserLang();
@@ -412,7 +412,7 @@ function landing() {
     ['💬', tr('Safe messaging'), tr('Chat opens only when you match, so nobody can message you out of the blue. Report anything suspicious in one click.')],
     ['✅', tr('Placement checklist'), tr('Contract, visa, insurance, travel, language course and check-ins tracked for both sides.')],
     ['🛡️', tr('Verified profiles'), tr('Members can verify their ID with a passport or ID card and a selfie, and program staff check references and backgrounds. The badges show on every profile.')],
-    ['🌍', tr('In your language'), tr('PairMundo speaks English, Spanish, French, German and Portuguese, and so do the emails it sends you.')]]
+    ['🌍', tr('In your language'), tr('PairMundo speaks English, Swedish, Spanish, French, German and Portuguese, and so do the emails it sends you.')]]
     .map(([i, t, d]) => `<div class="card feature"><div class="icon">${i}</div><h3>${t}</h3><p class="muted">${d}</p></div>`).join('')}
     </div>
     <section class="card wait-card" style="margin-top:32px"><h2>${tr('Get the app at launch')}</h2>${waitForm('wait2')}<div id="waitMsg2"></div></section>`);
@@ -735,7 +735,7 @@ views.profile = async () => {
   ${u.role === 'family' && pass && (pass.required || pass.active) ? `<div class="card spread"><span>💛 <strong>Family Pass</strong> · ${pass.active ? tr('active until {date}', { date: fmtDate(pass.ends_at) }) : tr('not active')}</span>
     <a class="btn sm" href="#/family-pass">${pass.active ? tr('Details') : tr('Get it')}</a></div>` : ''}
   ${!u.verification?.id ? `<a class="alert info nudge" href="#/account">🪪 ${tr('Verify your ID to get the ID verified badge on your profile.')}</a>` : ''}
-  <div class="card"><h2>${tr('Photos')}</h2><p class="muted small">${isAp ? tr('Your first photo is what people see when they swipe. Add up to 6; clear, smiling, recent photos work best, and one with kids (with permission) helps.') : tr('Your first photo is what people see when they swipe. Add up to 6; clear, smiling, recent photos work best, and a family photo plus your home helps.')}</p>
+  <div class="card"><h2>${tr('Photos')}</h2><p class="muted small">${isAp ? tr('Your first photo is what people see when they swipe. Add up to 6; clear, smiling, recent photos work best. Photos of children aren\'t allowed.') : tr('Your first photo is what people see when they swipe. Add up to 6; clear, smiling, recent photos work best, and a photo of the adults in the family plus your home helps. Photos of children aren\'t allowed.')}</p>
     <div class="photo-grid" id="photoGrid"></div></div>
   <form id="f"><div class="card"><h2>${tr('Basics')}</h2><div class="form-grid">
       <div class="field"><label>${tr('Name')}</label><input name="name" value="${esc(u.name)}" required></div>

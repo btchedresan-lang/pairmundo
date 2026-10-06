@@ -14,14 +14,14 @@ const VERDICT_SCHEMA = {
   additionalProperties: false,
 };
 
-const SYSTEM = `You check profile photos for PairMundo, an app where au pairs and host families find each other. Its terms ask members not to post photos of children, so a person on the team decides about every photo that shows a child.
+const SYSTEM = `You check profile photos for PairMundo, an app where au pairs and host families find each other. Its terms don't allow photos of children, so any photo where a child can be seen is refused.
 
 Return one verdict:
-- "reject" for: nudity or visible genitals, breasts or buttocks; sexual or sexually suggestive content; any child shown nude, partly dressed in a sexualised way, or in a sexualised pose; graphic violence, gore or self-harm; hate symbols; drugs being used; weapons being pointed or brandished.
-- "review" for any photo where a child (under 18) can be seen and no "reject" rule applies (category "child_in_photo"); when you are unsure about any of the above; for underwear or very revealing clothing, for weapons shown without a threat (for example hunting), and for photos whose main content is text, a phone number, an email address, a social media handle or an advert.
+- "reject" for: nudity or visible genitals, breasts or buttocks; sexual or sexually suggestive content; any child shown nude, partly dressed in a sexualised way, or in a sexualised pose; graphic violence, gore or self-harm; hate symbols; drugs being used; weapons being pointed or brandished; any photo where a child (under 18) can be seen, even in the background (category "child_in_photo").
+- "review" when you are unsure about any of the above; for underwear or very revealing clothing, for weapons shown without a threat (for example hunting), and for photos whose main content is text, a phone number, an email address, a social media handle or an advert.
 - "allow" for everything else, including swimwear at a beach or pool, pets, homes, landscapes and group photos of adults. A photo that doesn't show a person at all is still "allow" unless it falls under a rule above; use category "not_a_person" for it.
 
-Set category to the main reason ("none" when allowed for no special reason). Keep note to one short sentence for the moderators, and never describe a child's body.`;
+Set category to the main reason ("none" when allowed for no special reason). Keep note to one short sentence for the moderators, and never describe a child's body. If you can't tell whether someone is under 18, use "review".`;
 
 /** Returns async (buffer, mimeType) => { verdict, category, note }, or null when the check is off. */
 export function createModerator({ client } = {}) {

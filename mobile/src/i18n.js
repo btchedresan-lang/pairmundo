@@ -7,10 +7,11 @@ import de from './locales/de.json';
 import es from './locales/es.json';
 import fr from './locales/fr.json';
 import pt from './locales/pt.json';
+import sv from './locales/sv.json';
 
 /** Each language in its own name, as shown in the language switch. */
-export const LANGUAGES = { en: 'English', es: 'Español', fr: 'Français', de: 'Deutsch', pt: 'Português' };
-const DICTS = { de, es, fr, pt };
+export const LANGUAGES = { en: 'English', es: 'Español', fr: 'Français', de: 'Deutsch', pt: 'Português', sv: 'Svenska' };
+const DICTS = { de, es, fr, pt, sv };
 
 const phoneLang = () => {
   try { return getLocales().map((l) => l.languageCode).find((c) => c in LANGUAGES) || 'en'; } catch { return 'en'; }

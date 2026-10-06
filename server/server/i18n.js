@@ -2,7 +2,9 @@
 // Each person gets them in the language their app uses (saved from the Accept-Language header), else English.
 // The app's own screens are translated in mobile/src/locales.
 
-export const LANGS = ['en', 'es', 'fr', 'de', 'pt'];
+import { readFileSync } from 'node:fs';
+
+export const LANGS = ['en', 'es', 'fr', 'de', 'pt', 'sv'];
 
 /** The first supported language in an Accept-Language header such as "es-MX,es;q=0.9,en;q=0.8". */
 export function pickLang(header) {
@@ -13,7 +15,7 @@ export function pickLang(header) {
   return null;
 }
 
-const DICT = {
+export const DICT = {
   "It's a match! {name} liked you back.": {
     es: '¡Es un match! A {name} también le gustas.', fr: "C'est un match ! {name} vous a aussi liké.",
     de: 'Es ist ein Match! {name} mag dich auch.', pt: 'Deu match! {name} também curtiu você.' },
@@ -147,6 +149,10 @@ const DICT = {
     es: '{country} exige tramitar la estancia con una agencia o patrocinador reconocido.', fr: '{country} exige un placement via une agence ou un sponsor reconnu.',
     de: '{country} verlangt die Vermittlung über eine anerkannte Agentur oder einen Sponsor.', pt: '{country} exige que a estadia seja feita por uma agência ou patrocinador reconhecido.' },
 };
+
+// Swedish lives in its own file, keyed by the same English text.
+const SV = JSON.parse(readFileSync(new URL('./locales/sv.json', import.meta.url), 'utf8'));
+for (const [en, sv] of Object.entries(SV)) if (DICT[en]) DICT[en].sv = sv;
 
 /** Translate English text into lang, filling {placeholders} from vars. */
 export function t(lang, text, vars = {}) {

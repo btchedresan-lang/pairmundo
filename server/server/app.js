@@ -725,8 +725,10 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const keep = (list) => list.filter((p) => storage.owns(p) || p.startsWith('http'));
     if (keep(photosOf(getUser(req.user.id))).length >= MAX_PHOTOS) throw bad(`You can have up to ${MAX_PHOTOS} photos.`);
     const check = moderator ? await moderator(buf, real) : null;
-    if (check?.verdict === 'reject') {
+    // Photos of children are never allowed (see the Terms), whatever the verdict says.
+    if (check?.verdict === 'reject' || check?.category === 'child_in_photo') {
       console.log(`Photo rejected for user ${req.user.id}: ${check.category}`);
+      if (check.category === 'child_in_photo') throw bad("Photos showing children aren't allowed on PairMundo. Please choose a photo without children.");
       throw bad("This photo can't be used on PairMundo. Please choose a different one.");
     }
     const url = await storage.save(`${req.user.id}-${randomBytes(8).toString('hex')}.${PHOTO_TYPES[real]}`, buf, real);
