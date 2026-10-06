@@ -29,7 +29,7 @@ const CRIT_LABEL = { reliability: 'Reliability', childcare: 'Childcare', communi
 // ---------- languages ----------
 // Text is written in English and wrapped in tr(); /locales/<lang>.json maps it to a translation.
 // Missing text shows in English. `npm run i18n` (in server/) lists what's missing.
-const LANGUAGES = { en: 'English', es: 'Español', fr: 'Français', de: 'Deutsch', pt: 'Português' };
+const LANGUAGES = { en: 'English', es: 'Español', fr: 'Français', de: 'Deutsch', pt: 'Português', sv: 'Svenska' };
 const browserLang = () => (navigator.languages || [navigator.language]).map((l) => String(l).slice(0, 2).toLowerCase()).find((c) => c in LANGUAGES) || 'en';
 const savedLang = () => { try { return localStorage.getItem('lang'); } catch { return null; } };
 let LANG = LANGUAGES[savedLang()] ? savedLang() : browserLang();
