@@ -12,6 +12,7 @@ import { createCheckout, createIdentity, verifyWebhook } from './identity.js';
 import { createRevenueCat, storeName, webhookAuthorized } from './revenuecat.js';
 import { createPusher, isPushToken } from './push.js';
 import { createStorage } from './storage.js';
+import { createModerator } from './moderation.js';
 import { createBackups } from './backup.js';
 
 const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
@@ -61,7 +62,7 @@ export function seedPrograms(db) {
   }
 }
 
-export function createApp(db, { mailer = createMailer(), pusher = createPusher(), storage, identity = createIdentity(), checkout = createCheckout(), revenuecat = createRevenueCat(), backups = createBackups(db) } = {}) {
+export function createApp(db, { mailer = createMailer(), pusher = createPusher(), storage, identity = createIdentity(), checkout = createCheckout(), revenuecat = createRevenueCat(), backups = createBackups(db), moderator = createModerator() } = {}) {
   const UPLOAD_DIR = process.env.UPLOAD_DIR || 'data/uploads';
   storage ??= createStorage({ dir: UPLOAD_DIR });
   seedPrograms(db);
@@ -721,7 +722,18 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (!real) throw bad('That file is not a valid image.');
     const keep = (list) => list.filter((p) => storage.owns(p) || p.startsWith('http'));
     if (keep(photosOf(getUser(req.user.id))).length >= MAX_PHOTOS) throw bad(`You can have up to ${MAX_PHOTOS} photos.`);
+    const check = moderator ? await moderator(buf, real) : null;
+    if (check?.verdict === 'reject') {
+      console.log(`Photo rejected for user ${req.user.id}: ${check.category}`);
+      throw bad("This photo can't be used on PairMundo. Please choose a different one.");
+    }
     const url = await storage.save(`${req.user.id}-${randomBytes(8).toString('hex')}.${PHOTO_TYPES[real]}`, buf, real);
+    if (check?.verdict === 'review') {
+      // Goes live, and admins get a report to look at. Filed by the first admin, since nobody reported it.
+      const admin = db.prepare("SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1").get();
+      db.prepare('INSERT INTO reports (reporter_id, target_user_id, reason) VALUES (?,?,?)')
+        .run(admin?.id ?? req.user.id, req.user.id, `Automatic photo check (${check.category}): ${check.note} Photo: ${url}`);
+    }
     // Read the list again after the upload, in case another upload finished meanwhile.
     const photos = [...keep(photosOf(getUser(req.user.id))), url];
     setPhotos(req.user.id, photos);

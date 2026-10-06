@@ -8,12 +8,14 @@ import { PROGRAMS } from '../server/programs.js';
 let server; let base; let testDb;
 const outbox = [];
 const pushed = []; let pushReply = null;
+let photoVerdict = null;
 const lastCode = (to) => [...outbox].reverse().find((m) => m.to === to)?.text.match(/\b(\d{6})\b/)[1];
 before(async () => {
   process.env.AUTH_RATE_LIMIT = '1000';
   process.env.UPLOAD_DIR = (await import('node:fs')).mkdtempSync((await import('node:os')).tmpdir() + '/aupair-test-');
   testDb = openDb(':memory:');
-  const app = createApp(testDb, { mailer: async (m) => { outbox.push(m); }, pusher: async (msgs) => { pushed.push(...msgs); return pushReply ? msgs.map(pushReply) : msgs.map(() => ({ status: 'ok' })); } });
+  const app = createApp(testDb, { mailer: async (m) => { outbox.push(m); }, pusher: async (msgs) => { pushed.push(...msgs); return pushReply ? msgs.map(pushReply) : msgs.map(() => ({ status: 'ok' })); },
+    moderator: async () => photoVerdict ?? { verdict: 'allow', category: 'none', note: '' } });
   await new Promise((r) => { server = app.listen(0, r); });
   base = `http://127.0.0.1:${server.address().port}/api`;
 });
@@ -179,6 +181,21 @@ test('swiping: mutual like makes a match, pass hides, undo restores, photos uplo
   r = await call(ap.token, 'PUT', '/me/photos', { photos: [first] });
   assert.deepEqual(r.body.photos, [first]);
   assert.equal((await call(fam.token, 'GET', `/users/${ap.id}`)).body.user.photo_url, first);
+
+  // Photo check: a rejected photo is refused; one to review goes live and files a report for the admins
+  photoVerdict = { verdict: 'reject', category: 'nudity', note: 'Nude photo.' };
+  r = await call(ap.token, 'POST', '/me/photos', { data_url: `data:image/png;base64,${png}` });
+  assert.equal(r.status, 400);
+  assert.match(r.body.error, /can't be used/);
+  assert.deepEqual((await call(ap.token, 'GET', '/me')).body.user.photos, [first]);
+  photoVerdict = { verdict: 'review', category: 'contact_details', note: 'Shows a phone number.' };
+  r = await call(ap.token, 'POST', '/me/photos', { data_url: `data:image/png;base64,${png}` });
+  assert.equal(r.status, 201);
+  const report = testDb.prepare('SELECT * FROM reports WHERE target_user_id = ? ORDER BY id DESC').get(ap.id);
+  assert.match(report.reason, /^Automatic photo check \(contact_details\): Shows a phone number\. Photo: /);
+  assert.ok(report.reason.endsWith(r.body.photos[1]));
+  photoVerdict = null;
+  await call(ap.token, 'PUT', '/me/photos', { photos: [first] });
 });
 
 test('corrected program rules: Norway closed to non-EU, NL max 25, UK closed, Australia paused', () => {
