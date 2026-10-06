@@ -3,6 +3,7 @@ import { KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
 import { HEADING_BOLD, Text } from '../components/Text';
 import { Link } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Image } from 'expo-image';
 import { useAuth } from '../auth';
 import { getBase, isLocalServer, setBase } from '../api';
 import { Alert, Button, Field, Screen, T } from '../components/ui';
@@ -33,7 +34,7 @@ export default function Login() {
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen padded={false}>
         <LinearGradient colors={[C.primary, C.primary2]} style={{ paddingTop: 90, paddingBottom: 40, paddingHorizontal: 24, alignItems: 'center', gap: 8 }}>
-          <Text style={{ fontSize: 52 }}>🌍</Text>
+          <Image source={require('../../assets/logo-white.png')} style={{ width: 76, height: 72 }} contentFit="contain" accessibilityIgnoresInvertColors />
           <Text style={{ color: '#fff', fontSize: 38, fontFamily: HEADING_BOLD }}>{brand.name}</Text>
           <Text style={{ color: '#fff', fontSize: 16, opacity: 0.95, textAlign: 'center' }}>{tr(brand.tagline)}</Text>
         </LinearGradient>
