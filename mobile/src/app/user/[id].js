@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
-import { Alert as RNAlert, Dimensions, Platform, Text, View } from 'react-native';
+import { Alert as RNAlert, Dimensions, Platform, View } from 'react-native';
+import { Text } from '../../components/Text';
 import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { api } from '../../api';
 import { useAuth } from '../../auth';

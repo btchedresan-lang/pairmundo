@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, View } from 'react-native';
+import { Text } from '../../components/Text';
 import { router, useFocusEffect } from 'expo-router';
 import { api } from '../../api';
 import { COUNTRIES, flag } from '../../data';

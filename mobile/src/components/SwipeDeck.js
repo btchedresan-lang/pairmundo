@@ -1,5 +1,6 @@
 import { useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { Animated, Dimensions, PanResponder, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Dimensions, PanResponder, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Text } from './Text';
 import { C } from '../theme';
 import { COUNTRIES, fmtDate, flag, LANGS } from '../data';
 import { LinearGradient } from 'expo-linear-gradient';

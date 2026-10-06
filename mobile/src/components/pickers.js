@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { FlatList, Modal, Pressable, Text, TextInput, View } from 'react-native';
+import { FlatList, Modal, Pressable, View } from 'react-native';
+import { Text, TextInput } from './Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { C, useTheme } from '../theme';
 import { COUNTRIES, flag } from '../data';

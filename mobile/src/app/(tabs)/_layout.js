@@ -1,4 +1,4 @@
-import { Text } from 'react-native';
+import { font, Text } from '../../components/Text';
 import { Tabs } from 'expo-router/js-tabs';
 import { useAuth } from '../../auth';
 import { C, useTheme } from '../../theme';
@@ -13,7 +13,8 @@ export default function TabsLayout() {
   const t = useTheme();
   const c = me?.counts || {};
   return (
-    <Tabs screenOptions={{ tabBarActiveTintColor: C.primary, headerTintColor: t.ink, headerStyle: { backgroundColor: t.card },
+    <Tabs screenOptions={{ tabBarActiveTintColor: C.primary, headerTintColor: t.ink, headerStyle: { backgroundColor: t.card }, headerTitleStyle: { fontFamily: font('700') },
+      tabBarLabelStyle: { fontFamily: font('600') },
       tabBarStyle: { backgroundColor: t.card, borderTopColor: t.line }, sceneStyle: { backgroundColor: t.bg } }}>
       <Tabs.Screen name="discover" options={{ title: 'Discover', headerShown: false, tabBarIcon: icon('🔥') }} />
       <Tabs.Screen name="likes" options={{ title: 'Likes', tabBarIcon: icon('💛'), tabBarBadge: c.requests || undefined }} />

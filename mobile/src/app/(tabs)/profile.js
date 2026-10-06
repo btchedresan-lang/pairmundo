@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { ActivityIndicator, Alert as RNAlert, Platform, Pressable, Switch, Text, View } from 'react-native';
+import { ActivityIndicator, Alert as RNAlert, Platform, Pressable, Switch, View } from 'react-native';
+import { Text } from '../../components/Text';
 import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';

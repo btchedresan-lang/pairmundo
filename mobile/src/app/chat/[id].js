@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from 'react-native';
+import { FlatList, KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
+import { Text, TextInput } from '../../components/Text';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { api } from '../../api';
 import { useAuth } from '../../auth';

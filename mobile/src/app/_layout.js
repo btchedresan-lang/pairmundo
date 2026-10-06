@@ -3,11 +3,13 @@ import { Platform } from 'react-native';
 import { Stack, router } from 'expo-router';
 import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
+import { useFonts } from 'expo-font';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from '../auth';
 import { Loading } from '../components/ui';
 import { C, useTheme } from '../theme';
 import { screenForLink } from '../push';
+import { font, FONTS } from '../components/Text';
 
 /** Tapping a notification opens the chat, placement or tab it is about. */
 function NotificationOpener() {
@@ -29,7 +31,7 @@ function RootStack() {
   return (
     <>
     {signedIn && Platform.OS !== 'web' ? <NotificationOpener /> : null}
-    <Stack screenOptions={{ headerTintColor: C.primary, headerStyle: { backgroundColor: t.card }, headerTitleStyle: { color: t.ink }, contentStyle: { backgroundColor: t.bg }, headerBackButtonDisplayMode: 'minimal' }}>
+    <Stack screenOptions={{ headerTintColor: C.primary, headerStyle: { backgroundColor: t.card }, headerTitleStyle: { color: t.ink, fontFamily: font('700') }, contentStyle: { backgroundColor: t.bg }, headerBackButtonDisplayMode: 'minimal' }}>
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Protected guard={!signedIn}>
         <Stack.Screen name="login" options={{ headerShown: false }} />
@@ -53,6 +55,9 @@ function RootStack() {
 }
 
 export default function RootLayout() {
+  // Wait for the app's font so text doesn't jump; if it can't load, carry on with the system font.
+  const [fontsLoaded, fontError] = useFonts(FONTS);
+  if (!fontsLoaded && !fontError) return null;
   return (
     <SafeAreaProvider>
       <AuthProvider>
