@@ -232,6 +232,9 @@ th { color: var(--muted); font-weight: 600; font-size: .8rem; text-transform: up
   .hint { display: none; }
 }
 
+/* Sign out at the bottom of My profile: on phones the tab bar has no room for it. */
+.profile-foot { margin-top: 16px; }
+
 /* Footer with legal links and the language switch */
 .foot { text-align: center; color: var(--muted); font-size: .85rem; padding: 24px 16px 32px; }
 .foot a { color: var(--muted); }
