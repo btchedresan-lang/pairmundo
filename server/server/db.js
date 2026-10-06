@@ -184,6 +184,16 @@ CREATE TABLE IF NOT EXISTS reports (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- People who asked to hear when the apps launch. token makes the unsubscribe link in their email.
+CREATE TABLE IF NOT EXISTS waitlist (
+  email TEXT PRIMARY KEY,
+  role TEXT,                                      -- aupair | family, if they said
+  country TEXT,
+  lang TEXT,
+  token TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Family Pass: paid access for host families (messaging au pairs, seeing who liked them).
 CREATE TABLE IF NOT EXISTS passes (
   id INTEGER PRIMARY KEY,
