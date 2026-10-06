@@ -773,7 +773,8 @@ views.profile = async () => {
       <h3 style="margin-top:16px">${tr('Languages spoken at home')}</h3>${chipSet('languages', LANGS, p.languages)}
       <h3 style="margin-top:16px">${tr('Au pair must speak')}</h3>${chipSet('required_languages', LANGS, p.required_languages)}
       <div id="programHint" style="margin-top:16px"></div></div>`}
-  <div id="err"></div><button class="btn">${tr('Save profile')}</button></form>`);
+  <div id="err"></div><button class="btn">${tr('Save profile')}</button></form>
+  <div class="card spread profile-foot"><a href="#/notifications">🔔 ${tr('Notifications')}</a><a class="btn ghost sm" href="#/logout">${tr('Sign out')}</a></div>`);
 
   renderPhotoGrid(u.photos || []);
   document.querySelectorAll('.chip-toggle').forEach((b) => { b.onclick = () => b.classList.toggle('on'); });
