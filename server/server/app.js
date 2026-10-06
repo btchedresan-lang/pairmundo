@@ -9,6 +9,7 @@ import { PROGRAMS, REVIEW_CRITERIA, PLACEMENT_TASKS } from './programs.js';
 import { createMailer, codeEmail } from './mailer.js';
 import { pickLang, t as translate } from './i18n.js';
 import { createCheckout, createIdentity, verifyWebhook } from './identity.js';
+import { createRevenueCat, storeName, webhookAuthorized } from './revenuecat.js';
 import { createPusher, isPushToken } from './push.js';
 import { createStorage } from './storage.js';
 
@@ -30,7 +31,9 @@ const CODE_MINUTES = 30;
 const CODE_MAX_ATTEMPTS = 5;
 
 /** The Family Pass: what families buy to message au pairs. The price is shown in the app; the stores charge their own listed price. */
-export const FAMILY_PASS = { days: 90, price: '€79', amount: 7900, currency: 'eur' };
+// amount/currency are the website price (Stripe). product_id is the one-off (consumable) in-app product set up in
+// App Store Connect, Google Play and RevenueCat; the stores charge their own listed price.
+export const FAMILY_PASS = { days: 90, price: '€79', amount: 7900, currency: 'eur', product_id: 'family_pass_90' };
 
 class HttpError extends Error {
   constructor(status, message, code) { super(message); this.status = status; this.code = code; }
@@ -57,7 +60,7 @@ export function seedPrograms(db) {
   }
 }
 
-export function createApp(db, { mailer = createMailer(), pusher = createPusher(), storage, identity = createIdentity(), checkout = createCheckout() } = {}) {
+export function createApp(db, { mailer = createMailer(), pusher = createPusher(), storage, identity = createIdentity(), checkout = createCheckout(), revenuecat = createRevenueCat() } = {}) {
   const UPLOAD_DIR = process.env.UPLOAD_DIR || 'data/uploads';
   storage ??= createStorage({ dir: UPLOAD_DIR });
   seedPrograms(db);
@@ -561,7 +564,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   const needsPass = (u) => passRequired() && u.role === 'family' && !activePass(u.id);
   const passView = (u) => {
     const p = activePass(u.id);
-    return { required: passRequired() && u.role === 'family', active: !!p, ends_at: p?.ends_at ?? null, days: FAMILY_PASS.days, price: FAMILY_PASS.price, web_checkout: !!checkout };
+    return { required: passRequired() && u.role === 'family', active: !!p, ends_at: p?.ends_at ?? null, days: FAMILY_PASS.days, price: FAMILY_PASS.price, web_checkout: !!checkout, product_id: FAMILY_PASS.product_id };
   };
   /** Adds a pass, starting when the current one ends. A purchase already counted (same source and ref) is ignored. */
   const grantPass = (userId, source, ref = null, days = FAMILY_PASS.days) => {
@@ -593,6 +596,34 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (r.userId !== req.user.id) throw notFound();
     if (r.paid) grantPass(req.user.id, 'stripe', req.params.id);
     return { paid: r.paid, pass: passView(req.user) };
+  }));
+  // Apple and Google purchases, checked with RevenueCat. The app calls this after buying and for "Restore purchases";
+  // RevenueCat's webhook below does the same thing in the background.
+  const isPassPurchase = (product) => product === FAMILY_PASS.product_id;
+  api.post('/family-pass/sync', requireAuth, wrap(async (req) => {
+    if (!revenuecat) throw new HttpError(503, 'Payments are coming soon.');
+    if (req.user.role !== 'family') throw forbidden('Only families need the Family Pass.');
+    let list;
+    try { list = await revenuecat.purchases(String(req.user.id)); }
+    catch (e) { console.error('RevenueCat check failed:', e.message); throw new HttpError(502, 'We could not check your purchase. Try again in a moment.'); }
+    // A purchase older than one pass that was never counted would only add days nobody expects.
+    const cutoff = Date.now() - FAMILY_PASS.days * 86400000;
+    let added = 0;
+    for (const p of list) if (isPassPurchase(p.product) && (!p.purchasedAt || Date.parse(p.purchasedAt) > cutoff) && grantPass(req.user.id, p.store, p.ref)) added++;
+    return { added, pass: passView(req.user) };
+  }));
+  api.post('/revenuecat/webhook', wrap((req) => {
+    if (!webhookAuthorized(req.get('authorization'))) throw new HttpError(401, 'Not allowed.');
+    const e = req.body?.event || {};
+    const u = getUser(Number(e.app_user_id));
+    if (!u || u.role !== 'family' || !isPassPurchase(e.product_id) || !e.transaction_id) return { received: true };
+    const ref = String(e.transaction_id);
+    if (e.type === 'NON_RENEWING_PURCHASE') grantPass(u.id, storeName(e.store), ref);
+    // A refund ends that pass now (or cancels it if it hadn't started); other passes keep their dates.
+    if (e.type === 'CANCELLATION' || e.type === 'REFUND') {
+      db.prepare("UPDATE passes SET starts_at = MIN(starts_at, datetime('now')), ends_at = MIN(ends_at, datetime('now')) WHERE user_id = ? AND source = ? AND ref = ?").run(u.id, storeName(e.store), ref);
+    }
+    return { received: true };
   }));
 
   // ID check (Stripe Identity). Each check costs money, so a person can start only a few a day.

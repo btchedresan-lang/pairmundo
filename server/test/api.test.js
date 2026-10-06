@@ -532,3 +532,60 @@ test('Family Pass on the website: Stripe Checkout link, and the pass once paid (
     assert.notEqual((await call2(fam.token, 'GET', '/family-pass')).body.ends_at, end1);
   } finally { srv.close(); delete process.env.STRIPE_WEBHOOK_SECRET; }
 });
+
+test('Family Pass in-app purchase: checked with RevenueCat, counted once, refunds end it', async () => {
+  const plain = await register('noiap@test.io', 'family', 'DE');
+  assert.equal((await call(plain.token, 'GET', '/family-pass')).body.product_id, 'family_pass_90');
+  assert.equal((await call(plain.token, 'POST', '/family-pass/sync')).status, 503);
+
+  const bought = new Map(); // app user id -> purchases
+  const recent = new Date(Date.now() - 3600000).toISOString();
+  const revenuecat = { async purchases(id) { return bought.get(id) || []; } };
+  process.env.REVENUECAT_WEBHOOK_AUTH = 'rc_secret_test';
+  const app2 = createApp(openDb(':memory:'), { mailer: async (m) => { outbox.push(m); }, pusher: async (m) => m.map(() => ({ status: 'ok' })), revenuecat });
+  const srv = await new Promise((r) => { const s = app2.listen(0, () => r(s)); });
+  const b2 = `http://127.0.0.1:${srv.address().port}/api`;
+  const call2 = async (token, method, path, body, headers = {}) => {
+    const res = await fetch(b2 + path, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...headers }, body: body ? JSON.stringify(body) : undefined });
+    return { status: res.status, body: await res.json() };
+  };
+  const reg = async (email, role) => (await call2(null, 'POST', '/auth/register', { email, password: 'password123', role, name: email, country: 'DE' })).body;
+  try {
+    const fam = await reg('iap@test.io', 'family');
+    const ap = await reg('iapap@test.io', 'aupair');
+    const id = String(fam.user.id);
+    assert.equal((await call2(ap.token, 'POST', '/family-pass/sync')).status, 403);
+
+    // Nothing bought yet; then a purchase, plus an old one and another product that don't count.
+    let r = await call2(fam.token, 'POST', '/family-pass/sync');
+    assert.equal(r.body.added, 0);
+    assert.equal(r.body.pass.active, false);
+    bought.set(id, [
+      { ref: '1000001', store: 'app_store', product: 'family_pass_90', purchasedAt: recent },
+      { ref: '1000000', store: 'app_store', product: 'family_pass_90', purchasedAt: '2025-01-01T00:00:00Z' },
+      { ref: '1000002', store: 'app_store', product: 'something_else', purchasedAt: recent },
+    ]);
+    r = await call2(fam.token, 'POST', '/family-pass/sync');
+    assert.equal(r.body.added, 1);
+    assert.equal(r.body.pass.active, true);
+    const end1 = r.body.pass.ends_at;
+    assert.equal((await call2(fam.token, 'POST', '/family-pass/sync')).body.added, 0, 'restore does not count it twice');
+
+    // RevenueCat's webhook needs the shared secret, and doesn't count the same purchase again.
+    const hook = (event, auth = 'Bearer rc_secret_test') => call2(null, 'POST', '/revenuecat/webhook', { event }, { Authorization: auth });
+    const ev = { type: 'NON_RENEWING_PURCHASE', app_user_id: id, product_id: 'family_pass_90', transaction_id: '1000001', store: 'APP_STORE' };
+    assert.equal((await hook(ev, 'Bearer wrong')).status, 401);
+    assert.equal((await hook(ev)).status, 200);
+    assert.equal((await call2(fam.token, 'GET', '/family-pass')).body.ends_at, end1);
+
+    // A second purchase on Android adds 90 days after the first.
+    assert.equal((await hook({ ...ev, transaction_id: 'GPA.1234', store: 'PLAY_STORE' })).status, 200);
+    const end2 = (await call2(fam.token, 'GET', '/family-pass')).body.ends_at;
+    assert.ok(new Date(end2.replace(' ', 'T') + 'Z') - new Date(end1.replace(' ', 'T') + 'Z') > 89 * 86400000);
+
+    // Refunding both ends the pass.
+    await hook({ ...ev, type: 'CANCELLATION' });
+    await hook({ ...ev, type: 'CANCELLATION', transaction_id: 'GPA.1234', store: 'PLAY_STORE' });
+    assert.equal((await call2(fam.token, 'GET', '/family-pass')).body.active, false);
+  } finally { srv.close(); delete process.env.REVENUECAT_WEBHOOK_AUTH; }
+});
