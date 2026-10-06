@@ -43,6 +43,7 @@ function RootStack() {
       </Stack.Protected>
       <Stack.Protected guard={signedIn}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="setup" options={{ headerShown: false, gestureEnabled: false }} />
         <Stack.Screen name="user/[id]" options={{ title: '' }} />
         <Stack.Screen name="chat/[id]" options={{ title: tr('Chat') }} />
         <Stack.Screen name="placement/[id]" options={{ title: tr('Placement') }} />
