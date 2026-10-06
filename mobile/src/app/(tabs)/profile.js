@@ -88,7 +88,7 @@ export default function MyProfile() {
   const set = (k) => (v) => setF((x) => ({ ...x, [k]: v }));
   const num = (v) => (v === '' || v == null ? null : Number(v));
 
-  const save = async () => {
+  const save = async ({ quiet } = {}) => {
     setBusy(true); setMsg(null);
     const profile = { bio: f.bio, visible: f.visible };
     if (isAp) Object.assign(profile, {
@@ -103,9 +103,12 @@ export default function MyProfile() {
     });
     try {
       await api('/me', { method: 'PUT', body: { name: f.name, country: f.country, city: f.city, profile } });
-      await refresh(); setMsg({ level: 'ok', text: tr('Profile saved') });
-    } catch (e) { setMsg({ level: 'error', text: e.message }); } finally { setBusy(false); }
+      await refresh(); if (!quiet) setMsg({ level: 'ok', text: tr('Profile saved') });
+      return true;
+    } catch (e) { setMsg({ level: 'error', text: e.message }); return false; } finally { setBusy(false); }
   };
+  // Preview saves first, so it shows the profile exactly as it is after any edits.
+  const preview = async () => { if (await save({ quiet: true })) router.push(`/user/${me.user.id}`); };
 
   const toggle = (label, k) => (
     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -115,10 +118,10 @@ export default function MyProfile() {
 
   return (
     <Screen>
+      <Button title={`👁 ${tr('Preview my profile')}`} kind="secondary" onPress={preview} disabled={busy} />
       <Card>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <T h2>{tr('Photos')}</T>
-          <Pressable onPress={() => router.push(`/user/${me.user.id}`)}><T small style={{ color: C.primary }}>{tr('Preview my card')} →</T></Pressable>
         </View>
         <T small muted>{isAp ? tr('Your first photo is what people see when they swipe. Clear, smiling, recent photos work best.') : tr('Your first photo is what people see when they swipe. Clear, smiling, recent photos work best, and a family photo helps.')}</T>
         <PhotoGrid photos={me.user.photos || []} onChange={(photos) => setMe((m) => ({ ...m, user: { ...m.user, photos, photo_url: photos[0] || null } }))} />
@@ -176,7 +179,7 @@ export default function MyProfile() {
       ) : null}
 
       {msg ? <Alert level={msg.level} text={msg.text} /> : null}
-      <Button title={tr('Save profile')} onPress={save} loading={busy} />
+      <Button title={tr('Save profile')} onPress={() => save()} loading={busy} />
       <Button title={`🛂 ${tr('Country au pair rules')}`} kind="ghost" onPress={() => router.push('/programs')} />
       {!me.user.verification?.id ? <Button title={`🪪 ${tr('Verify my ID')}`} kind="secondary" onPress={() => router.push('/account')} /> : null}
       <Button title={`🔒 ${tr('Account and safety')}`} kind="ghost" onPress={() => router.push('/account')} />

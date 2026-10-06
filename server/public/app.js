@@ -629,14 +629,17 @@ views.u = async ([id]) => {
     ['📅', tr('Start date'), fmtDate(p.start_date)], ['⏳', tr('Stay length'), months], ['⏰', tr('Hours / week'), p.weekly_hours],
     ['💶', tr('Pocket money / month'), p.pocket_money], ['🚗', tr('Needs a driver'), yes(p.needs_driver)], ['🐾', tr('Pets'), yes(p.has_pets)], ['🛏️', tr('Private room'), yes(p.private_room)],
   ];
-  render(`<div class="profile-layout"><div class="profile-left">
+  const preview = mine ? `<div class="alert info preview-note"><div><strong>👁 ${u.role === 'aupair' ? tr('This is how host families see your profile.') : tr('This is how au pairs see your profile.')}</strong>
+      ${p.visible === 0 ? `<div class="small">${tr('Your profile is hidden right now, so nobody can find you. You can show it again in your profile settings.')}</div>` : ''}</div>
+      <a class="btn sm" href="#/profile">${tr('Edit profile')}</a></div>` : '';
+  render(`${preview}<div class="profile-layout"><div class="profile-left">
       <div class="profile-hero">${gallery(u, { cls: 'hero-gallery' })}<div class="card-shade"></div>
         ${d.match ? `<div class="card-score ${d.match.score >= 75 ? 'high' : ''}">${tr('{n}% match', { n: d.match.score })}</div>` : ''}
         <div class="card-info static"><h2>${esc(u.name)}${p.age && u.role === 'aupair' ? ` <span class="age">${p.age}</span>` : ''} ${u.verification.id ? `<span class="tick" title="${tr('ID verified')}">✔</span>` : ''}</h2>
           <div class="sub">${u.role === 'aupair' ? tr('Au pair') : tr('Host family')} · ${flag(u.country)} ${esc([u.city, country(u.country)].filter(Boolean).join(', '))}</div>
           <div class="sub">${d.rating.count ? `★ ${d.rating.avg} (${trn(d.rating.count, '{n} review', '{n} reviews')}) · ` : ''}${trn(d.placements_completed, '{n} completed placement', '{n} completed placements')}</div></div></div>
       ${action}
-      <div class="row center-row small">${!mine ? `<button class="btn ghost sm" id="fav">${d.favorite ? `♥ ${tr('Saved')}` : `♡ ${tr('Save')}`}</button><button class="btn ghost sm" id="report">⚑ ${tr('Report')}</button>${d.blocked ? '' : `<button class="btn ghost sm" id="block">🚫 ${tr('Block')}</button>`}` : `<a class="btn secondary" href="#/profile">${tr('Edit profile')}</a>`}
+      <div class="row center-row small">${!mine ? `<button class="btn ghost sm" id="fav">${d.favorite ? `♥ ${tr('Saved')}` : `♡ ${tr('Save')}`}</button><button class="btn ghost sm" id="report">⚑ ${tr('Report')}</button>${d.blocked ? '' : `<button class="btn ghost sm" id="block">🚫 ${tr('Block')}</button>`}` : ''}
         <button class="btn ghost sm" onclick="history.back()">← ${tr('Back')}</button></div>
     </div><div class="profile-right">
       ${d.match ? `<div class="card"><h3>${tr('Why you match')}</h3>
@@ -712,7 +715,7 @@ views.profile = async () => {
   const chipSet = (name, dict, selected) => `<div class="chips" data-chipset="${name}">${Object.entries(dict).map(([k, v]) =>
     `<button type="button" class="chip chip-toggle ${(selected || []).includes(k) ? 'on' : ''}" data-v="${k}">${esc(tr(v))}</button>`).join('')}</div>`;
   const pass = me.pass;
-  render(`<div class="spread"><h1>${tr('My profile')}</h1><span><a href="#/account">🔒 ${tr('Account and safety')}</a> · <a href="#/u/${u.id}">${tr('See how others see you →')}</a></span></div>
+  render(`<div class="spread"><h1>${tr('My profile')}</h1><span><a href="#/account">🔒 ${tr('Account and safety')}</a> · <button type="button" class="btn secondary sm" id="preview">👁 ${tr('Preview my profile')}</button></span></div>
   ${u.role === 'family' && pass && (pass.required || pass.active) ? `<div class="card spread"><span>💛 <strong>Family Pass</strong> · ${pass.active ? tr('active until {date}', { date: fmtDate(pass.ends_at) }) : tr('not active')}</span>
     <a class="btn sm" href="#/family-pass">${pass.active ? tr('Details') : tr('Get it')}</a></div>` : ''}
   ${!u.verification?.id ? `<a class="alert info nudge" href="#/account">🪪 ${tr('Verify your ID to get the ID verified badge on your profile.')}</a>` : ''}
@@ -780,6 +783,9 @@ views.profile = async () => {
     }).catch(() => {});
   }
 
+  // Preview saves first, so it shows the profile exactly as it is after any edits.
+  let previewAfter = false;
+  document.getElementById('preview').onclick = () => { previewAfter = true; document.getElementById('f').requestSubmit(); };
   document.getElementById('f').onsubmit = async (e) => {
     e.preventDefault();
     const f = e.target; const v = formData(f);
@@ -801,8 +807,9 @@ views.profile = async () => {
     });
     try {
       await api('/me', { method: 'PUT', body: { name: v.name, country: v.country, city: v.city, profile } });
+      if (previewAfter) return go(`#/u/${u.id}`);
       toast(tr('Profile saved')); views.profile();
-    } catch (err) { document.getElementById('err').innerHTML = `<div class="alert error">${esc(err.message)}</div>`; }
+    } catch (err) { previewAfter = false; document.getElementById('err').innerHTML = `<div class="alert error">${esc(err.message)}</div>`; }
   };
 };
 function renderPhotoGrid(photos) {
