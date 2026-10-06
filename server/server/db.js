@@ -184,6 +184,30 @@ CREATE TABLE IF NOT EXISTS reports (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Family Pass: paid access for host families (messaging au pairs, seeing who liked them).
+CREATE TABLE IF NOT EXISTS passes (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  source TEXT NOT NULL,                           -- apple | google | stripe | admin
+  ref TEXT,                                       -- the store's transaction id, so a purchase is counted once
+  starts_at TEXT NOT NULL,
+  ends_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (source, ref)
+);
+CREATE INDEX IF NOT EXISTS passes_user ON passes(user_id, ends_at);
+
+-- Stripe Identity sessions for the ID check. Stripe keeps the documents; we keep the outcome.
+CREATE TABLE IF NOT EXISTS id_checks (
+  session_id TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status TEXT NOT NULL,                           -- requires_input | processing | verified | canceled
+  error TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS id_checks_user ON id_checks(user_id, created_at);
+
 CREATE TABLE IF NOT EXISTS push_tokens (
   token TEXT PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

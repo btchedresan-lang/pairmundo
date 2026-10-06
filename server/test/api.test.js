@@ -5,14 +5,15 @@ import { createApp } from '../server/app.js';
 import { scoreMatch, checkCompliance } from '../server/matching.js';
 import { PROGRAMS } from '../server/programs.js';
 
-let server; let base;
+let server; let base; let testDb;
 const outbox = [];
 const pushed = []; let pushReply = null;
 const lastCode = (to) => [...outbox].reverse().find((m) => m.to === to)?.text.match(/\b(\d{6})\b/)[1];
 before(async () => {
   process.env.AUTH_RATE_LIMIT = '1000';
   process.env.UPLOAD_DIR = (await import('node:fs')).mkdtempSync((await import('node:os')).tmpdir() + '/aupair-test-');
-  const app = createApp(openDb(':memory:'), { mailer: async (m) => { outbox.push(m); }, pusher: async (msgs) => { pushed.push(...msgs); return pushReply ? msgs.map(pushReply) : msgs.map(() => ({ status: 'ok' })); } });
+  testDb = openDb(':memory:');
+  const app = createApp(testDb, { mailer: async (m) => { outbox.push(m); }, pusher: async (msgs) => { pushed.push(...msgs); return pushReply ? msgs.map(pushReply) : msgs.map(() => ({ status: 'ok' })); } });
   await new Promise((r) => { server = app.listen(0, r); });
   base = `http://127.0.0.1:${server.address().port}/api`;
 });
@@ -373,4 +374,218 @@ test('emails and notifications use the language of each person’s app', async (
   await call(en.token, 'POST', '/swipe', { target_id: es.user.id, direction: 'super' });
   await call(es.token, 'POST', '/swipe', { target_id: en.id, direction: 'like' });
   assert.ok((await texts(en.token)).includes("It's a match! Lucía liked you back."));
+});
+
+test('ID check: off without Stripe; with Stripe it gives a link and the badge once verified', async () => {
+  // The shared test app has no Stripe key.
+  const plain = await register('noid@test.io', 'aupair', 'PH');
+  assert.equal((await call(plain.token, 'GET', '/me/id-check')).body.available, false);
+  assert.equal((await call(plain.token, 'POST', '/me/id-check')).status, 503);
+
+  // A second app with a stand-in for Stripe.
+  const sessions = new Map();
+  const identity = {
+    async start(user, returnUrl) { const id = `vs_${sessions.size + 1}`; sessions.set(id, 'requires_input'); return { id, url: `https://verify.stripe.test/${id}?return=${encodeURIComponent(returnUrl)}`, status: 'requires_input' }; },
+    async status(id) { return { status: sessions.get(id), error: null }; },
+  };
+  const { createHmac } = await import('node:crypto');
+  process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test';
+  const app2 = createApp(openDb(':memory:'), { mailer: async (m) => { outbox.push(m); }, pusher: async (m) => m.map(() => ({ status: 'ok' })), identity });
+  const srv = await new Promise((r) => { const s = app2.listen(0, () => r(s)); });
+  const b2 = `http://127.0.0.1:${srv.address().port}/api`;
+  const call2 = async (token, method, path) => {
+    const res = await fetch(b2 + path, { method, headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    return { status: res.status, body: await res.json() };
+  };
+  try {
+    const reg = await (await fetch(`${b2}/auth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'id@test.io', password: 'password123', role: 'aupair', name: 'Ida', country: 'PH' }) })).json();
+    let r = await call2(reg.token, 'GET', '/me/id-check');
+    assert.deepEqual(r.body, { available: true, verified: false, status: 'none', error: null });
+    r = await call2(reg.token, 'POST', '/me/id-check');
+    assert.equal(r.status, 200);
+    assert.match(r.body.url, /^https:\/\/verify\.stripe\.test\/vs_1\?return=https%3A%2F%2Fpairmundo\.com%2Fid-check-done$/);
+    assert.equal((await call2(reg.token, 'GET', '/me/id-check')).body.status, 'requires_input');
+
+    // Stripe finishes; the app asks again and the badge appears without waiting for the webhook.
+    sessions.set('vs_1', 'verified');
+    r = await call2(reg.token, 'GET', '/me/id-check');
+    assert.equal(r.body.verified, true);
+    assert.equal((await call2(reg.token, 'GET', `/users/${reg.user.id}`)).body.user.verification.id, true);
+    assert.equal((await call2(reg.token, 'POST', '/me/id-check')).status, 409);
+
+    // Webhooks need Stripe's signature; a signed one updates the check.
+    const reg2 = await (await fetch(`${b2}/auth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'id2@test.io', password: 'password123', role: 'family', name: 'Fam', country: 'US' }) })).json();
+    await call2(reg2.token, 'POST', '/me/id-check');
+    const payload = JSON.stringify({ type: 'identity.verification_session.verified', data: { object: { id: 'vs_2', status: 'verified' } } });
+    const hook = (sig) => fetch(`${b2}/stripe/webhook`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Stripe-Signature': sig }, body: payload });
+    const t = Math.floor(Date.now() / 1000);
+    assert.equal((await hook(`t=${t},v1=${'0'.repeat(64)}`)).status, 400);
+    assert.equal((await hook(`t=${t},v1=${createHmac('sha256', 'whsec_test').update(`${t}.${payload}`).digest('hex')}`)).status, 200);
+    const me2 = await (await fetch(`${b2}/me`, { headers: { Authorization: `Bearer ${reg2.token}` } })).json();
+    assert.equal(me2.user.verification.id, true);
+
+    // Each check costs money, so only a few a day.
+    const reg3 = await (await fetch(`${b2}/auth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'id3@test.io', password: 'password123', role: 'aupair', name: 'Tri', country: 'PH' }) })).json();
+    for (let i = 0; i < 3; i++) assert.equal((await call2(reg3.token, 'POST', '/me/id-check')).status, 200);
+    assert.equal((await call2(reg3.token, 'POST', '/me/id-check')).status, 429);
+  } finally { srv.close(); delete process.env.STRIPE_WEBHOOK_SECRET; }
+});
+
+test('Family Pass: when switched on, families need it to message and to see who liked them', async () => {
+  const fam = await register('passfam@test.io', 'family', 'DE', 'Familie Pass');
+  const ap = await register('passap@test.io', 'aupair', 'BR', 'Bia');
+  const { hashPassword } = await import('../server/auth.js');
+  testDb.prepare("INSERT INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
+  await call(ap.token, 'POST', '/swipe', { target_id: fam.id, direction: 'like' });
+
+  // Off by default: nothing changes.
+  assert.equal((await call(fam.token, 'GET', '/me')).body.pass.required, false);
+  assert.equal((await call(fam.token, 'GET', '/likes')).body.likes.length, 1);
+
+  process.env.FAMILY_PASS = 'on';
+  try {
+    let r = await call(fam.token, 'GET', '/likes');
+    assert.deepEqual(r.body, { likes: [], locked: true, count: 1 });
+    assert.equal((await call(fam.token, 'GET', `/users/${ap.id}`)).body.request, null, 'who liked you stays hidden');
+    assert.equal((await call(fam.token, 'GET', '/requests')).body.incoming.length, 0);
+    // Au pairs are free.
+    assert.equal((await call(ap.token, 'GET', '/me')).body.pass.required, false);
+
+    // Matching still works; messaging needs the pass, for the family only.
+    const m = (await call(fam.token, 'POST', '/swipe', { target_id: ap.id, direction: 'like' })).body;
+    assert.ok(m.matched);
+    assert.equal((await call(ap.token, 'POST', `/conversations/${m.conversation_id}/messages`, { body: 'Olá!' })).status, 201);
+    r = await call(fam.token, 'POST', `/conversations/${m.conversation_id}/messages`, { body: 'Hallo!' });
+    assert.equal(r.status, 402);
+    assert.equal(r.body.code, 'pass_required');
+
+    // A pass (here from an admin) unlocks it for 90 days, and a second one adds on.
+    {
+      r = await call(admin, 'POST', `/admin/users/${fam.id}`, { grant_pass_days: 90 });
+      assert.equal(r.status, 200, JSON.stringify(r.body));
+      let pass = (await call(fam.token, 'GET', '/family-pass')).body;
+      assert.equal(pass.active, true);
+      const end1 = new Date(pass.ends_at.replace(' ', 'T') + 'Z');
+      assert.ok(Math.abs(end1 - Date.now() - 90 * 86400000) < 120000);
+      assert.equal((await call(fam.token, 'POST', `/conversations/${m.conversation_id}/messages`, { body: 'Hallo!' })).status, 201);
+      await call(admin, 'POST', `/admin/users/${fam.id}`, { grant_pass_days: 90 });
+      pass = (await call(fam.token, 'GET', '/family-pass')).body;
+      assert.ok(new Date(pass.ends_at.replace(' ', 'T') + 'Z') - end1 > 89 * 86400000);
+    }
+  } finally { delete process.env.FAMILY_PASS; }
+});
+
+test('Family Pass on the website: Stripe Checkout link, and the pass once paid (once only)', async () => {
+  const plain = await register('nopay@test.io', 'family', 'DE');
+  assert.equal((await call(plain.token, 'GET', '/family-pass')).body.web_checkout, false);
+  assert.equal((await call(plain.token, 'POST', '/family-pass/checkout')).status, 503);
+
+  const sessions = new Map();
+  const checkout = {
+    async start(user, o) { const id = `cs_${sessions.size + 1}`; sessions.set(id, { paid: false, userId: user.id, o }); return { id, url: `https://checkout.stripe.test/${id}` }; },
+    async result(id) { const s = sessions.get(id); if (!s) throw new Error('No such session'); return { paid: s.paid, userId: s.userId }; },
+  };
+  const { createHmac } = await import('node:crypto');
+  process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test';
+  const app2 = createApp(openDb(':memory:'), { mailer: async (m) => { outbox.push(m); }, pusher: async (m) => m.map(() => ({ status: 'ok' })), checkout });
+  const srv = await new Promise((r) => { const s = app2.listen(0, () => r(s)); });
+  const b2 = `http://127.0.0.1:${srv.address().port}/api`;
+  const call2 = async (token, method, path) => {
+    const res = await fetch(b2 + path, { method, headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    return { status: res.status, body: await res.json() };
+  };
+  const reg = async (email, role) => (await (await fetch(`${b2}/auth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password: 'password123', role, name: email, country: 'DE' }) })).json());
+  try {
+    const fam = await reg('pay@test.io', 'family');
+    const ap = await reg('payap@test.io', 'aupair');
+    assert.equal((await call2(ap.token, 'POST', '/family-pass/checkout')).status, 403);
+    let r = await call2(fam.token, 'POST', '/family-pass/checkout');
+    assert.equal(r.body.url, 'https://checkout.stripe.test/cs_1');
+    const o = sessions.get('cs_1').o;
+    assert.equal(o.amount, 7900);
+    assert.equal(o.successUrl, 'https://pairmundo.com/#/family-pass?paid={CHECKOUT_SESSION_ID}');
+
+    // Not paid yet, and someone else can't claim the session.
+    assert.equal((await call2(fam.token, 'POST', '/family-pass/checkout/cs_1')).body.paid, false);
+    sessions.get('cs_1').paid = true;
+    assert.equal((await call2(ap.token, 'POST', '/family-pass/checkout/cs_1')).status, 404);
+    assert.equal((await call2(fam.token, 'POST', '/family-pass/checkout/cs_9')).status, 404);
+    r = await call2(fam.token, 'POST', '/family-pass/checkout/cs_1');
+    assert.equal(r.body.paid, true);
+    assert.equal(r.body.pass.active, true);
+    const end1 = r.body.pass.ends_at;
+
+    // Stripe's webhook for the same payment doesn't add a second pass; a new payment does.
+    const hook = (id) => {
+      const payload = JSON.stringify({ type: 'checkout.session.completed', data: { object: { id, payment_status: 'paid', metadata: { product: 'family_pass', user_id: String(fam.user.id) } } } });
+      const t = Math.floor(Date.now() / 1000);
+      return fetch(`${b2}/stripe/webhook`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Stripe-Signature': `t=${t},v1=${createHmac('sha256', 'whsec_test').update(`${t}.${payload}`).digest('hex')}` }, body: payload });
+    };
+    assert.equal((await hook('cs_1')).status, 200);
+    assert.equal((await call2(fam.token, 'GET', '/family-pass')).body.ends_at, end1);
+    assert.equal((await hook('cs_2')).status, 200);
+    assert.notEqual((await call2(fam.token, 'GET', '/family-pass')).body.ends_at, end1);
+  } finally { srv.close(); delete process.env.STRIPE_WEBHOOK_SECRET; }
+});
+
+test('Family Pass in-app purchase: checked with RevenueCat, counted once, refunds end it', async () => {
+  const plain = await register('noiap@test.io', 'family', 'DE');
+  assert.equal((await call(plain.token, 'GET', '/family-pass')).body.product_id, 'family_pass_90');
+  assert.equal((await call(plain.token, 'POST', '/family-pass/sync')).status, 503);
+
+  const bought = new Map(); // app user id -> purchases
+  const recent = new Date(Date.now() - 3600000).toISOString();
+  const revenuecat = { async purchases(id) { return bought.get(id) || []; } };
+  process.env.REVENUECAT_WEBHOOK_AUTH = 'rc_secret_test';
+  const app2 = createApp(openDb(':memory:'), { mailer: async (m) => { outbox.push(m); }, pusher: async (m) => m.map(() => ({ status: 'ok' })), revenuecat });
+  const srv = await new Promise((r) => { const s = app2.listen(0, () => r(s)); });
+  const b2 = `http://127.0.0.1:${srv.address().port}/api`;
+  const call2 = async (token, method, path, body, headers = {}) => {
+    const res = await fetch(b2 + path, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...headers }, body: body ? JSON.stringify(body) : undefined });
+    return { status: res.status, body: await res.json() };
+  };
+  const reg = async (email, role) => (await call2(null, 'POST', '/auth/register', { email, password: 'password123', role, name: email, country: 'DE' })).body;
+  try {
+    const fam = await reg('iap@test.io', 'family');
+    const ap = await reg('iapap@test.io', 'aupair');
+    const id = String(fam.user.id);
+    assert.equal((await call2(ap.token, 'POST', '/family-pass/sync')).status, 403);
+
+    // Nothing bought yet; then a purchase, plus an old one and another product that don't count.
+    let r = await call2(fam.token, 'POST', '/family-pass/sync');
+    assert.equal(r.body.added, 0);
+    assert.equal(r.body.pass.active, false);
+    bought.set(id, [
+      { ref: '1000001', store: 'app_store', product: 'family_pass_90', purchasedAt: recent },
+      { ref: '1000000', store: 'app_store', product: 'family_pass_90', purchasedAt: '2025-01-01T00:00:00Z' },
+      { ref: '1000002', store: 'app_store', product: 'something_else', purchasedAt: recent },
+    ]);
+    r = await call2(fam.token, 'POST', '/family-pass/sync');
+    assert.equal(r.body.added, 1);
+    assert.equal(r.body.pass.active, true);
+    const end1 = r.body.pass.ends_at;
+    assert.equal((await call2(fam.token, 'POST', '/family-pass/sync')).body.added, 0, 'restore does not count it twice');
+
+    // RevenueCat's webhook needs the shared secret, and doesn't count the same purchase again.
+    const hook = (event, auth = 'Bearer rc_secret_test') => call2(null, 'POST', '/revenuecat/webhook', { event }, { Authorization: auth });
+    const ev = { type: 'NON_RENEWING_PURCHASE', app_user_id: id, product_id: 'family_pass_90', transaction_id: '1000001', store: 'APP_STORE' };
+    assert.equal((await hook(ev, 'Bearer wrong')).status, 401);
+    assert.equal((await hook(ev)).status, 200);
+    assert.equal((await call2(fam.token, 'GET', '/family-pass')).body.ends_at, end1);
+
+    // A second purchase on Android adds 90 days after the first.
+    assert.equal((await hook({ ...ev, transaction_id: 'GPA.1234', store: 'PLAY_STORE' })).status, 200);
+    const end2 = (await call2(fam.token, 'GET', '/family-pass')).body.ends_at;
+    assert.ok(new Date(end2.replace(' ', 'T') + 'Z') - new Date(end1.replace(' ', 'T') + 'Z') > 89 * 86400000);
+
+    // Refunding both ends the pass.
+    await hook({ ...ev, type: 'CANCELLATION' });
+    await hook({ ...ev, type: 'CANCELLATION', transaction_id: 'GPA.1234', store: 'PLAY_STORE' });
+    assert.equal((await call2(fam.token, 'GET', '/family-pass')).body.active, false);
+  } finally { srv.close(); delete process.env.REVENUECAT_WEBHOOK_AUTH; }
 });

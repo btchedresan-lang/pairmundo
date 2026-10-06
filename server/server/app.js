@@ -8,6 +8,8 @@ import { scoreMatch, checkCompliance, ageOn } from './matching.js';
 import { PROGRAMS, REVIEW_CRITERIA, PLACEMENT_TASKS } from './programs.js';
 import { createMailer, codeEmail } from './mailer.js';
 import { pickLang, t as translate } from './i18n.js';
+import { createCheckout, createIdentity, verifyWebhook } from './identity.js';
+import { createRevenueCat, storeName, webhookAuthorized } from './revenuecat.js';
 import { createPusher, isPushToken } from './push.js';
 import { createStorage } from './storage.js';
 
@@ -27,6 +29,11 @@ const USER_FIELDS = ['name', 'country', 'city'];
 const REVIEW_REVEAL_DAYS = 14;
 const CODE_MINUTES = 30;
 const CODE_MAX_ATTEMPTS = 5;
+
+/** The Family Pass: what families buy to message au pairs. The price is shown in the app; the stores charge their own listed price. */
+// amount/currency are the website price (Stripe). product_id is the one-off (consumable) in-app product set up in
+// App Store Connect, Google Play and RevenueCat; the stores charge their own listed price.
+export const FAMILY_PASS = { days: 90, price: '€79', amount: 7900, currency: 'eur', product_id: 'family_pass_90' };
 
 class HttpError extends Error {
   constructor(status, message, code) { super(message); this.status = status; this.code = code; }
@@ -53,7 +60,7 @@ export function seedPrograms(db) {
   }
 }
 
-export function createApp(db, { mailer = createMailer(), pusher = createPusher(), storage } = {}) {
+export function createApp(db, { mailer = createMailer(), pusher = createPusher(), storage, identity = createIdentity(), checkout = createCheckout(), revenuecat = createRevenueCat() } = {}) {
   const UPLOAD_DIR = process.env.UPLOAD_DIR || 'data/uploads';
   storage ??= createStorage({ dir: UPLOAD_DIR });
   seedPrograms(db);
@@ -61,6 +68,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   app.disable('x-powered-by');
   // Behind a hosting proxy (Render, Railway, ...) this makes req.ip the visitor's address, so rate limits apply per person.
   if (process.env.NODE_ENV === 'production' || process.env.TRUST_PROXY) app.set('trust proxy', 1);
+  // Stripe signs the exact bytes it sends, so this route reads the raw body before the JSON parser below.
+  app.post('/api/stripe/webhook', express.raw({ type: '*/*', limit: '200kb' }), (req, res) => stripeWebhook(req, res));
   app.use('/api/me/photos', express.json({ limit: '8mb' }));
   app.use(express.json({ limit: '200kb' }));
   // The mobile app talks to this API with a Bearer token. Native apps ignore CORS; this lets its web preview work too.
@@ -307,6 +316,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     return {
       user: { ...publicUser(u), email: u.email, email_verified: !!u.email_verified },
       profile: getProfile(u),
+      pass: passView(u),
       rating: ratingSummary(u.id),
       counts: {
         notifications: db.prepare('SELECT COUNT(*) n FROM notifications WHERE user_id = ? AND read = 0').get(u.id).n,
@@ -390,7 +400,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       reviews,
       placements_completed: db.prepare(`SELECT COUNT(*) n FROM placements WHERE status = 'completed' AND (aupair_id = ? OR family_id = ?)`).get(u.id, u.id).n,
       match,
-      request: req_ || null,
+      // Who liked you is part of the Family Pass.
+      request: req_ && !(req_.status === 'pending' && req_.from_user === u.id && needsPass(me)) ? req_ : null,
       favorite: !!db.prepare('SELECT 1 FROM favorites WHERE user_id = ? AND target_id = ?').get(me.id, u.id),
       blocked: iBlocked,
     };
@@ -425,6 +436,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   // ---------- search & matching ----------
   const findCandidates = (me, q, discover = false) => {
     const myProfile = getProfile(me);
+    const lockLikes = needsPass(me);
     const targetRole = me.role === 'family' ? 'aupair' : 'family';
     const table = targetRole === 'aupair' ? 'aupair_profiles' : 'family_profiles';
     const where = ['u.role = ?', 'u.suspended = 0', 'p.visible = 1', notBlocked('u.id')];
@@ -450,7 +462,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
         : [{ user: u, profile }, { user: me, profile: myProfile }];
       const match = scoreMatch(ap, fam, getProgram(fam.user.country), ratingSummary(ap.user.id), me.lang);
       const likesYou = !!db.prepare("SELECT 1 FROM match_requests WHERE from_user = ? AND to_user = ? AND status = 'pending'").get(u.id, me.id);
-      return { user: publicUser(u), profile, rating, match, likes_you: likesYou };
+      return { user: publicUser(u), profile, rating, match, likes_you: likesYou && !lockLikes };
     });
 
     if (q.language) {
@@ -530,6 +542,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const me = req.user;
     const rows = db.prepare(`SELECT r.id request_id, r.message, r.created_at, u.* FROM match_requests r JOIN users u ON u.id = r.from_user
         WHERE r.to_user = ? AND r.status = 'pending' AND u.suspended = 0 AND ${notBlocked('u.id')} ORDER BY r.created_at DESC`).all(me.id, me.id, me.id);
+    // Without the Family Pass, a family sees how many people liked them, but not who.
+    if (needsPass(me)) return { likes: [], locked: true, count: rows.length };
     const myProfile = getProfile(me);
     return {
       likes: rows.map((u) => {
@@ -543,6 +557,121 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   }));
 
   // ---------- push notifications ----------
+  // Family Pass: families pay to message au pairs and to see who liked them; au pairs are always free.
+  // It only applies with FAMILY_PASS=on, so nobody is locked out before payments are set up.
+  const passRequired = () => process.env.FAMILY_PASS === 'on';
+  const activePass = (userId) => db.prepare("SELECT * FROM passes WHERE user_id = ? AND ends_at > datetime('now') ORDER BY ends_at DESC LIMIT 1").get(userId);
+  const needsPass = (u) => passRequired() && u.role === 'family' && !activePass(u.id);
+  const passView = (u) => {
+    const p = activePass(u.id);
+    return { required: passRequired() && u.role === 'family', active: !!p, ends_at: p?.ends_at ?? null, days: FAMILY_PASS.days, price: FAMILY_PASS.price, web_checkout: !!checkout, product_id: FAMILY_PASS.product_id };
+  };
+  /** Adds a pass, starting when the current one ends. A purchase already counted (same source and ref) is ignored. */
+  const grantPass = (userId, source, ref = null, days = FAMILY_PASS.days) => {
+    if (ref && db.prepare('SELECT 1 FROM passes WHERE source = ? AND ref = ?').get(source, ref)) return false;
+    const start = activePass(userId)?.ends_at ?? db.prepare("SELECT datetime('now') d").get().d;
+    db.prepare("INSERT INTO passes (user_id, source, ref, starts_at, ends_at) VALUES (?,?,?,?, datetime(?, ?))").run(userId, source, ref, start, start, `+${Number(days)} days`);
+    notify(userId, 'pass', 'Your Family Pass is active. You can now message au pairs and see who liked you.', {}, '#/likes');
+    return true;
+  };
+  const mustHavePass = (u) => {
+    if (needsPass(u)) throw new HttpError(402, 'Get the Family Pass to message au pairs.', 'pass_required');
+  };
+  api.get('/family-pass', requireAuth, wrap((req) => passView(req.user)));
+  const publicBase = () => (process.env.PUBLIC_URL || 'https://pairmundo.com').replace(/\/$/, '');
+  // Paying on the website goes through Stripe Checkout. The webhook grants the pass; the page also checks on return.
+  api.post('/family-pass/checkout', requireAuth, wrap(async (req) => {
+    if (!checkout) throw new HttpError(503, 'Payments are coming soon.');
+    if (req.user.role !== 'family') throw forbidden('Only families need the Family Pass.');
+    const s = await checkout.start(req.user, {
+      amount: FAMILY_PASS.amount, currency: FAMILY_PASS.currency, name: 'PairMundo Family Pass (3 months)',
+      successUrl: `${publicBase()}/#/family-pass?paid={CHECKOUT_SESSION_ID}`, cancelUrl: `${publicBase()}/#/family-pass`,
+    });
+    return { url: s.url };
+  }));
+  api.post('/family-pass/checkout/:id', requireAuth, wrap(async (req) => {
+    if (!checkout) throw new HttpError(503, 'Payments are coming soon.');
+    let r;
+    try { r = await checkout.result(req.params.id); } catch { throw notFound(); }
+    if (r.userId !== req.user.id) throw notFound();
+    if (r.paid) grantPass(req.user.id, 'stripe', req.params.id);
+    return { paid: r.paid, pass: passView(req.user) };
+  }));
+  // Apple and Google purchases, checked with RevenueCat. The app calls this after buying and for "Restore purchases";
+  // RevenueCat's webhook below does the same thing in the background.
+  const isPassPurchase = (product) => product === FAMILY_PASS.product_id;
+  api.post('/family-pass/sync', requireAuth, wrap(async (req) => {
+    if (!revenuecat) throw new HttpError(503, 'Payments are coming soon.');
+    if (req.user.role !== 'family') throw forbidden('Only families need the Family Pass.');
+    let list;
+    try { list = await revenuecat.purchases(String(req.user.id)); }
+    catch (e) { console.error('RevenueCat check failed:', e.message); throw new HttpError(502, 'We could not check your purchase. Try again in a moment.'); }
+    // A purchase older than one pass that was never counted would only add days nobody expects.
+    const cutoff = Date.now() - FAMILY_PASS.days * 86400000;
+    let added = 0;
+    for (const p of list) if (isPassPurchase(p.product) && (!p.purchasedAt || Date.parse(p.purchasedAt) > cutoff) && grantPass(req.user.id, p.store, p.ref)) added++;
+    return { added, pass: passView(req.user) };
+  }));
+  api.post('/revenuecat/webhook', wrap((req) => {
+    if (!webhookAuthorized(req.get('authorization'))) throw new HttpError(401, 'Not allowed.');
+    const e = req.body?.event || {};
+    const u = getUser(Number(e.app_user_id));
+    if (!u || u.role !== 'family' || !isPassPurchase(e.product_id) || !e.transaction_id) return { received: true };
+    const ref = String(e.transaction_id);
+    if (e.type === 'NON_RENEWING_PURCHASE') grantPass(u.id, storeName(e.store), ref);
+    // A refund ends that pass now (or cancels it if it hadn't started); other passes keep their dates.
+    if (e.type === 'CANCELLATION' || e.type === 'REFUND') {
+      db.prepare("UPDATE passes SET starts_at = MIN(starts_at, datetime('now')), ends_at = MIN(ends_at, datetime('now')) WHERE user_id = ? AND source = ? AND ref = ?").run(u.id, storeName(e.store), ref);
+    }
+    return { received: true };
+  }));
+
+  // ID check (Stripe Identity). Each check costs money, so a person can start only a few a day.
+  const ID_CHECKS_PER_DAY = 3;
+  const idCheckDone = (userId, sessionId, status, error = null) => {
+    db.prepare("UPDATE id_checks SET status = ?, error = ?, updated_at = datetime('now') WHERE session_id = ? AND user_id = ?").run(status, error, sessionId, userId);
+    const u = getUser(userId);
+    if (status === 'verified' && u && !u.id_verified) {
+      db.prepare('UPDATE users SET id_verified = 1 WHERE id = ?').run(userId);
+      notify(userId, 'verification', 'Your ID is verified. Your profile now shows the ID verified badge.', {}, '#/profile');
+    }
+  };
+  const latestIdCheck = (userId) => db.prepare('SELECT * FROM id_checks WHERE user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1').get(userId);
+  const idCheckView = (u, c) => ({ available: !!identity, verified: !!u.id_verified, status: u.id_verified ? 'verified' : c?.status || 'none', error: c?.error || null });
+
+  api.get('/me/id-check', requireAuth, wrap(async (req) => {
+    let c = latestIdCheck(req.user.id);
+    // Ask Stripe for news in case its webhook hasn't arrived (or isn't set up).
+    if (identity && c && ['requires_input', 'processing'].includes(c.status) && !req.user.id_verified) {
+      try { const s = await identity.status(c.session_id); if (s.status !== c.status || s.error !== c.error) idCheckDone(req.user.id, c.session_id, s.status, s.error); } catch (e) { console.error('ID check status failed:', e.message); }
+      c = latestIdCheck(req.user.id);
+    }
+    return idCheckView(getUser(req.user.id), c);
+  }));
+  api.post('/me/id-check', requireAuth, wrap(async (req) => {
+    if (!identity) throw new HttpError(503, "ID check isn't available yet.");
+    if (req.user.id_verified) throw new HttpError(409, 'Your ID is already verified.');
+    const today = db.prepare("SELECT COUNT(*) n FROM id_checks WHERE user_id = ? AND created_at > datetime('now', '-1 day')").get(req.user.id).n;
+    if (today >= ID_CHECKS_PER_DAY) throw new HttpError(429, 'You have started several ID checks today. Try again tomorrow.');
+    const s = await identity.start(req.user, `${publicBase()}/id-check-done`);
+    db.prepare('INSERT INTO id_checks (session_id, user_id, status) VALUES (?,?,?)').run(s.id, req.user.id, s.status || 'requires_input');
+    return { url: s.url };
+  }));
+  const stripeWebhook = (req, res) => {
+    const event = verifyWebhook(Buffer.isBuffer(req.body) ? req.body.toString('utf8') : '', req.get('stripe-signature'), process.env.STRIPE_WEBHOOK_SECRET);
+    if (!event) return res.status(400).json({ error: 'Bad signature.' });
+    const s = event.data?.object;
+    if (String(event.type).startsWith('identity.verification_session.') && s?.id) {
+      const row = db.prepare('SELECT user_id FROM id_checks WHERE session_id = ?').get(s.id);
+      if (row) idCheckDone(row.user_id, s.id, s.status, s.last_error?.code || null);
+    }
+    if (event.type === 'checkout.session.completed' && s?.id && s.metadata?.product === 'family_pass' && s.payment_status === 'paid') {
+      const u = getUser(Number(s.metadata.user_id));
+      if (u) grantPass(u.id, 'stripe', s.id);
+    }
+    res.json({ received: true });
+  };
+
   api.post('/me/push-token', requireAuth, wrap((req) => {
     const token = String(req.body?.token || '');
     if (!isPushToken(token)) throw bad('That is not a push token.');
@@ -623,7 +752,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
         FROM match_requests r JOIN users fu ON fu.id = r.from_user JOIN users tu ON tu.id = r.to_user
         WHERE r.from_user = ? OR r.to_user = ? ORDER BY r.created_at DESC`).all(req.user.id, req.user.id);
     return {
-      incoming: rows.filter((r) => r.to_user === req.user.id),
+      // Pending likes stay hidden without the Family Pass, as on the Likes screen.
+      incoming: rows.filter((r) => r.to_user === req.user.id && !(r.status === 'pending' && needsPass(req.user))),
       outgoing: rows.filter((r) => r.from_user === req.user.id),
     };
   }));
@@ -693,6 +823,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   api.post('/conversations/:id/messages', requireAuth, wrap((req, res) => {
     const c = myConversation(req);
     mustBeVerified(req.user);
+    mustHavePass(req.user);
     const body = str(req.body?.body, 4000);
     if (!body) throw bad('Message is empty.');
     const r = db.prepare('INSERT INTO messages (conversation_id, sender_id, body) VALUES (?,?,?)').run(c.id, req.user.id, body);
@@ -931,6 +1062,9 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (!u || u.role === 'admin') throw notFound();
     const map = { id_verified: 'id_verified', references_checked: 'references_checked', background_checked: 'background_checked', suspended: 'suspended' };
     const sets = Object.keys(map).filter((k) => k in (req.body || {}));
+    // An admin can give a family a free pass (for example to test, or as a goodwill gesture).
+    const passDays = Number(req.body?.grant_pass_days);
+    if (passDays > 0 && passDays <= 400 && u.role === 'family') { grantPass(u.id, 'admin', null, passDays); if (!sets.length) return { ...publicUser(getUser(u.id)), pass: passView(u) }; }
     if (!sets.length) throw bad('Nothing to change.');
     db.prepare(`UPDATE users SET ${sets.map((k) => `${map[k]} = ?`).join(', ')} WHERE id = ?`).run(...sets.map((k) => (req.body[k] ? 1 : 0)), u.id);
     if (req.body.suspended) db.prepare('DELETE FROM sessions WHERE user_id = ?').run(u.id);
@@ -962,7 +1096,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   app.get(/^\/(?!api).*/, (_req, res) => res.sendFile(join(PUBLIC_DIR, 'index.html')));
 
   app.use((err, _req, res, _next) => {
-    if (err.status && err.status < 500) return res.status(err.status).json({ error: err.message, ...(err.code ? { code: err.code } : {}) });
+    if (err instanceof HttpError || (err.status && err.status < 500)) return res.status(err.status).json({ error: err.message, ...(err.code ? { code: err.code } : {}) });
     if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'Invalid JSON.' });
     console.error(err);
     res.status(500).json({ error: 'Something went wrong.' });

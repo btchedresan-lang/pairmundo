@@ -41,7 +41,12 @@ export default function Chat() {
     const body = text.trim(); if (!body) return;
     setText('');
     try { add([await api(`/conversations/${id}/messages`, { method: 'POST', body: { body } })]); }
-    catch (e) { setText(body); if (e.data?.code === 'email_unverified') router.push('/verify-email'); else setError(e.message); }
+    catch (e) {
+      setText(body);
+      if (e.data?.code === 'email_unverified') router.push('/verify-email');
+      else if (e.data?.code === 'pass_required') router.push('/family-pass');
+      else setError(e.message);
+    }
   };
 
   const menu = async () => {

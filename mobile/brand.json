@@ -8,5 +8,7 @@
   "primaryDark": "#ff6036",
   "apiUrl": "https://pairmundo.onrender.com",
   "easProjectId": "3f5bf239-d616-4699-89d5-0b80dadca703",
-  "expoOwner": "b.tchedresan"
+  "expoOwner": "b.tchedresan",
+  "revenuecatIos": "",
+  "revenuecatAndroid": ""
 }
