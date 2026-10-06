@@ -15,7 +15,7 @@ export function pickLang(header) {
   return null;
 }
 
-const DICT = {
+export const DICT = {
   "It's a match! {name} liked you back.": {
     es: '¡Es un match! A {name} también le gustas.', fr: "C'est un match ! {name} vous a aussi liké.",
     de: 'Es ist ein Match! {name} mag dich auch.', pt: 'Deu match! {name} também curtiu você.' },

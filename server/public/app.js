@@ -412,7 +412,7 @@ function landing() {
     ['💬', tr('Safe messaging'), tr('Chat opens only when you match, so nobody can message you out of the blue. Report anything suspicious in one click.')],
     ['✅', tr('Placement checklist'), tr('Contract, visa, insurance, travel, language course and check-ins tracked for both sides.')],
     ['🛡️', tr('Verified profiles'), tr('Members can verify their ID with a passport or ID card and a selfie, and program staff check references and backgrounds. The badges show on every profile.')],
-    ['🌍', tr('In your language'), tr('PairMundo speaks English, Spanish, French, German and Portuguese, and so do the emails it sends you.')]]
+    ['🌍', tr('In your language'), tr('PairMundo speaks English, Swedish, Spanish, French, German and Portuguese, and so do the emails it sends you.')]]
     .map(([i, t, d]) => `<div class="card feature"><div class="icon">${i}</div><h3>${t}</h3><p class="muted">${d}</p></div>`).join('')}
     </div>
     <section class="card wait-card" style="margin-top:32px"><h2>${tr('Get the app at launch')}</h2>${waitForm('wait2')}<div id="waitMsg2"></div></section>`);
