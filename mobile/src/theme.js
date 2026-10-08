@@ -1,7 +1,7 @@
 import brand from '../brand.json';
 
-// One warm, light palette. The app stays light even when the phone is in dark mode.
-const light = { bg: '#fbf8f3', card: '#ffffff', ink: '#2b2a33', muted: '#77716c', line: '#ece6dd', soft: '#edf2ff' };
+// One light palette with a pale blue background. The app stays light even when the phone is in dark mode.
+const light = { bg: '#edf1fd', card: '#ffffff', ink: '#2b2a33', muted: '#6b7286', line: '#e1e6f5', soft: '#edf2ff' };
 
 export const C = {
   primary: brand.primary, primary2: brand.primaryDark,
