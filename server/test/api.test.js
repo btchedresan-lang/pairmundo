@@ -513,6 +513,12 @@ test('Family Pass: when switched on, families need it to message and to see who 
     assert.equal((await call(trialAp.token, 'GET', '/family-pass')).body.active, false);
     const listed = (await call(admin, 'GET', '/admin/users?q=trial@test.io')).body.users[0];
     assert.equal(listed.pass_ends_at, pass.ends_at);
+
+    // The ad link a family came from is kept, and Admin counts sign-ups per link.
+    await call(null, 'POST', '/auth/register', { email: 'adfam@test.io', password: 'password123', role: 'family', name: 'Ad Family', country: 'SE', source: 'Meta-Fam-SV-Trial' });
+    assert.equal((await call(admin, 'GET', '/admin/users?q=adfam@test.io')).body.users[0].source, 'meta-fam-sv-trial');
+    const row = (await call(admin, 'GET', '/admin/waitlist')).body.signups_by_source.find((x) => x.source === 'meta-fam-sv-trial');
+    assert.deepEqual([row.families, row.aupairs], [1, 0]);
   } finally { delete process.env.FAMILY_PASS; delete process.env.FAMILY_TRIAL_DAYS; }
 });
 

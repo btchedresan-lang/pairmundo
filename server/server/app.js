@@ -280,8 +280,9 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (!str(name)) throw bad('Name is required.');
     if (db.prepare('SELECT 1 FROM users WHERE lower(trim(email)) = ?').get(email)) throw new HttpError(409, 'An account with this email already exists.');
     const user = tx(db, () => {
-      const r = db.prepare('INSERT INTO users (email, password_hash, role, name, country, city, lang) VALUES (?,?,?,?,?,?,?)')
-        .run(email, hashPassword(String(password)), role, str(name, 120), str(country, 2)?.toUpperCase() ?? null, str(city, 120), pickLang(req.get('accept-language')));
+      const r = db.prepare('INSERT INTO users (email, password_hash, role, name, country, city, lang, source) VALUES (?,?,?,?,?,?,?,?)')
+        .run(email, hashPassword(String(password)), role, str(name, 120), str(country, 2)?.toUpperCase() ?? null, str(city, 120), pickLang(req.get('accept-language')),
+          str(req.body?.source, 60)?.toLowerCase() ?? null);
       const id = Number(r.lastInsertRowid);
       db.prepare(`INSERT INTO ${role === 'aupair' ? 'aupair_profiles' : 'family_profiles'} (user_id) VALUES (?)`).run(id);
       return getUser(id);
@@ -1104,6 +1105,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     by_country: db.prepare('SELECT country, COUNT(*) n FROM waitlist GROUP BY country ORDER BY n DESC').all(),
     by_source: db.prepare('SELECT source, COUNT(*) n FROM waitlist GROUP BY source ORDER BY n DESC').all(),
     people: db.prepare('SELECT email, role, country, lang, source, created_at FROM waitlist ORDER BY created_at DESC, rowid DESC LIMIT 500').all(),
+    signups_by_source: db.prepare("SELECT source, SUM(role = 'family') families, SUM(role = 'aupair') aupairs FROM users WHERE role != 'admin' GROUP BY source ORDER BY COUNT(*) DESC").all(),
   })));
   // The whole list as a spreadsheet file, for emailing everyone at launch.
   api.get('/admin/waitlist.csv', requireRole('admin'), (req, res) => {
@@ -1139,7 +1141,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const like = `%${req.query.q || ''}%`;
     return {
       users: db.prepare("SELECT * FROM users WHERE role != 'admin' AND (name LIKE ? OR email LIKE ?) ORDER BY created_at DESC LIMIT 200").all(like, like)
-        .map((u) => ({ ...publicUser(u), email: u.email, suspended: !!u.suspended, rating: ratingSummary(u.id), pass_ends_at: u.role === 'family' ? activePass(u.id)?.ends_at ?? null : undefined })),
+        .map((u) => ({ ...publicUser(u), email: u.email, suspended: !!u.suspended, rating: ratingSummary(u.id), source: u.source, pass_ends_at: u.role === 'family' ? activePass(u.id)?.ends_at ?? null : undefined })),
     };
   }));
   api.post('/admin/users/:id', requireRole('admin'), wrap((req) => {
