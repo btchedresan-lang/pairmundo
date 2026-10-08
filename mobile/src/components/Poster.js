@@ -1,6 +1,6 @@
 // The au pair profile laid out like the "Hi, I'm ..." letters au pairs make for host families: a polaroid photo and
 // pastel cards for each part of the profile. Cards with nothing filled in are left out.
-import { useColorScheme, View } from 'react-native';
+import { View } from 'react-native';
 import { HEADING, HEADING_BOLD, Text } from './Text';
 import { Photo } from './ui';
 import { Gallery } from './SwipeDeck';
@@ -8,7 +8,7 @@ import { AGE_GROUPS, cname, country, firstName, flag, fmtDate, HOBBIES, langName
 import { tr, trn } from '../i18n';
 import { C, useTheme } from '../theme';
 
-// [card background, header strip, accent] for light mode. Dark mode tints the card with the accent instead.
+// [card background, header strip, accent].
 const TINTS = {
   green: ['#eef8f1', '#d6f0df', '#2f9e5b'], peach: ['#fdf1ea', '#fadbc8', '#e0703a'], blue: ['#edf3fd', '#d6e4fb', '#3b6fd8'],
   teal: ['#e9f7f6', '#cfeeeb', '#1f9a92'], pink: ['#fdeff2', '#f8d6de', '#d6456b'], lilac: ['#f4eefc', '#e4d8f7', '#8456d0'],
@@ -16,9 +16,8 @@ const TINTS = {
 };
 
 function useTint(name) {
-  const dark = useColorScheme() === 'dark';
   const [bg, head, accent] = TINTS[name];
-  return dark ? { bg: `${accent}1f`, head: `${accent}40`, accent } : { bg, head, accent };
+  return { bg, head, accent };
 }
 
 function Section({ tint, icon, title, children, tilt = 0 }) {

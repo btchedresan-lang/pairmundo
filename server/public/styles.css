@@ -3,19 +3,12 @@
 @font-face { font-family: "Fraunces Soft"; src: url(/fonts/FrauncesSoft-SemiBold.woff2) format("woff2"); font-weight: 600 900; font-display: swap; }
 :root {
   --heading: "Fraunces Soft", Georgia, serif;
-  --bg: #f6f7fb; --card: #fff; --ink: #1d2433; --muted: #667085; --line: #e4e7ec;
+  --bg: #fbf8f3; --card: #fff; --ink: #2b2a33; --muted: #77716c; --line: #ece6dd;
   --brand: #3b5bdb; --brand-ink: #fff; --brand-soft: #edf2ff;
   --ok: #2b8a3e; --ok-soft: #ebfbee; --warn: #b26b00; --warn-soft: #fff4e6; --err: #c92a2a; --err-soft: #fff5f5;
   --star: #f59f00; --radius: 12px;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  color-scheme: light dark;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #11141b; --card: #1a1f2a; --ink: #e8eaf0; --muted: #98a2b3; --line: #2a3140;
-    --brand: #748ffc; --brand-ink: #0b1020; --brand-soft: #1e2645;
-    --ok-soft: #13291a; --warn-soft: #2e2210; --err-soft: #2e1515; --ok: #69db7c; --warn: #ffc078; --err: #ff8787;
-  }
+  color-scheme: light;
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--ink); line-height: 1.5; }
@@ -32,6 +25,8 @@ h1 { font-size: 1.95rem; } h2 { font-size: 1.4rem; } h3 { font-size: 1.15rem; }
 #nav { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
 #nav a { padding: 6px 10px; border-radius: 8px; color: var(--ink); position: relative; }
 #nav a.active, #nav a:hover { background: var(--brand-soft); text-decoration: none; }
+#nav a.btn { color: var(--brand-ink); }
+#nav a.btn:hover { background: var(--brand); }
 .badge { display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--err); color: #fff; font-size: .72rem; text-align: center; margin-left: 4px; }
 
 main { max-width: 1120px; margin: 0 auto; padding: 24px 16px 64px; }
@@ -240,12 +235,6 @@ th { color: var(--muted); font-weight: 600; font-size: .8rem; text-transform: up
 .poster-card.peach { --c-bg: #fdf1ea; --c-head: #fadbc8; } .poster-card.blue { --c-bg: #edf3fd; --c-head: #d6e4fb; }
 .poster-card.teal { --c-bg: #e9f7f6; --c-head: #cfeeeb; } .poster-card.pink { --c-bg: #fdeff2; --c-head: #f8d6de; }
 .poster-card.lilac { --c-bg: #f4eefc; --c-head: #e4d8f7; } .poster-card.yellow { --c-bg: #fdf7e4; --c-head: #f8e8b0; }
-@media (prefers-color-scheme: dark) {
-  .poster-card { --c-bg: #2f9e5b1f; --c-head: #2f9e5b40; }
-  .poster-card.peach { --c-bg: #e0703a1f; --c-head: #e0703a40; } .poster-card.blue { --c-bg: #3b6fd81f; --c-head: #3b6fd840; }
-  .poster-card.teal { --c-bg: #1f9a921f; --c-head: #1f9a9240; } .poster-card.pink { --c-bg: #d6456b1f; --c-head: #d6456b40; }
-  .poster-card.lilac { --c-bg: #8456d01f; --c-head: #8456d040; } .poster-card.yellow { --c-bg: #b8860b1f; --c-head: #b8860b40; }
-}
 .poster-strip { display: flex; justify-content: center; gap: 12px; padding: 6px 0; }
 .poster-strip .polaroid { width: 110px; } .poster-strip .polaroid img { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; display: block; }
 .poster-strip .polaroid:nth-child(1) { transform: rotate(-4deg); } .poster-strip .polaroid:nth-child(2) { transform: rotate(3deg); } .poster-strip .polaroid:nth-child(3) { transform: rotate(-2deg); }

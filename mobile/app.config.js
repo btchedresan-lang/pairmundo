@@ -10,7 +10,7 @@ module.exports = {
     version: '1.0.0',
     orientation: 'portrait',
     icon: './assets/icon.png',
-    userInterfaceStyle: 'automatic',
+    userInterfaceStyle: 'light',
     ios: { supportsTablet: false, bundleIdentifier: brand.bundleId },
     android: {
       package: brand.bundleId,
