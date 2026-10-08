@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { HEADING_BOLD, Text } from '../components/Text';
 import { router, useFocusEffect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -15,26 +15,34 @@ const perks = () => [
   ['💬', tr('Message every au pair you match with')],
   ['💛', tr('See everyone who liked you, and match with one tap')],
   ['🧳', tr('Propose a placement with the country rules check built in')],
-  ['🔁', tr('One payment for 3 months. No automatic renewal.')],
+  ['🔁', tr('One payment. No automatic renewal.')],
 ];
 
 /** The Family Pass paywall: what families get, and the buy button. */
 export default function FamilyPass() {
   const { me, refresh } = useAuth();
   const [pass, setPass] = useState(null);
-  const [price, setPrice] = useState(null);
+  const [prices, setPrices] = useState({});
+  const [planId, setPlanId] = useState('quarter');
   const [msg, setMsg] = useState(null);
   const [busy, setBusy] = useState(false);
   const load = useCallback(() => api('/family-pass').then(setPass).catch((e) => setMsg({ level: 'error', text: e.message })), []);
   useFocusEffect(useCallback(() => { load(); }, [load]));
+  // Older servers send one pass; newer ones a 1-month and a 3-month plan.
+  const plans = pass ? (pass.plans?.length ? pass.plans : [{ id: 'quarter', days: pass.days, price: pass.price, product_id: pass.product_id }]) : [];
+  const plan = plans.find((p) => p.id === planId) || plans[plans.length - 1];
   // Apple and Google show the price in the person's own currency.
-  const productId = pass?.product_id; const userId = me?.user?.id;
-  useEffect(() => { if (productId && userId) storePrice({ product_id: productId }, userId).then(setPrice); }, [productId, userId]);
+  const productIds = plans.map((p) => p.product_id).join(','); const userId = me?.user?.id;
+  useEffect(() => {
+    if (!productIds || !userId) return;
+    productIds.split(',').forEach((id) => storePrice({ product_id: id }, userId).then((s) => s && setPrices((x) => ({ ...x, [id]: s }))));
+  }, [productIds, userId]);
+  const planName = (p) => (p.days === 30 ? tr('1 month') : p.days === 90 ? tr('3 months') : tr('{n} days', { n: p.days }));
 
   const buy = async () => {
     setMsg(null); setBusy(true);
     try {
-      const done = await buyFamilyPass(pass, me.user.id);
+      const done = await buyFamilyPass(plan, me.user.id);
       if (done) { await load(); await refresh().catch(() => {}); setMsg({ level: 'ok', text: tr('Your Family Pass is active. You can now message au pairs and see who liked you.') }); }
     } catch (e) { setMsg({ level: 'error', text: e.message }); } finally { setBusy(false); }
   };
@@ -64,14 +72,23 @@ export default function FamilyPass() {
             </View>
           ))}
         </Card>
-        <View style={{ alignItems: 'center', gap: 2 }}>
-          <T h1>{price || pass.price}</T>
-          <T muted>{tr('for 3 months')}</T>
+        <View style={{ flexDirection: 'row', gap: 12, marginTop: 6 }}>
+          {plans.map((p) => {
+            const on = p.id === plan.id;
+            return (
+              <Pressable key={p.id} onPress={() => setPlanId(p.id)} accessibilityRole="radio" accessibilityState={{ selected: on }}
+                style={{ flex: 1, alignItems: 'center', gap: 2, paddingVertical: 16, borderRadius: 16, borderWidth: 2, borderColor: on ? C.primary : '#d0d5dd' }}>
+                {p.days === 90 && plans.length > 1 ? <Text style={{ position: 'absolute', top: -11, backgroundColor: C.primary, color: '#fff', fontSize: 12, fontWeight: '700', paddingHorizontal: 10, paddingVertical: 2, borderRadius: 999, overflow: 'hidden' }}>{tr('Best value')}</Text> : null}
+                <T bold>{planName(p)}</T>
+                <T h1>{prices[p.product_id] || p.price}</T>
+              </Pressable>
+            );
+          })}
         </View>
         {msg ? <Alert level={msg.level} text={msg.text} /> : null}
         {paymentsAvailable() ? (
           <>
-            <Button title={pass.active ? tr('Add 3 more months') : tr('Get Family Pass')} onPress={buy} loading={busy} />
+            <Button title={pass.active ? tr('Add {plan}', { plan: planName(plan) }) : tr('Get {plan}', { plan: planName(plan) })} onPress={buy} loading={busy} />
             <Button title={tr('Restore purchases')} kind="ghost" small onPress={restore} disabled={busy} />
           </>
         ) : <Alert level="info" text={pass.required ? tr('Payments are coming soon.') : tr('Payments are coming soon. Until then, families can use every feature for free.')} />}

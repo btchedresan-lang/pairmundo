@@ -511,15 +511,15 @@ test('Family Pass on the website: Stripe Checkout link, and the pass once paid (
   const sessions = new Map();
   const checkout = {
     async start(user, o) { const id = `cs_${sessions.size + 1}`; sessions.set(id, { paid: false, userId: user.id, o }); return { id, url: `https://checkout.stripe.test/${id}` }; },
-    async result(id) { const s = sessions.get(id); if (!s) throw new Error('No such session'); return { paid: s.paid, userId: s.userId }; },
+    async result(id) { const s = sessions.get(id); if (!s) throw new Error('No such session'); return { paid: s.paid, userId: s.userId, plan: s.o.plan }; },
   };
   const { createHmac } = await import('node:crypto');
   process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test';
   const app2 = createApp(openDb(':memory:'), { mailer: async (m) => { outbox.push(m); }, pusher: async (m) => m.map(() => ({ status: 'ok' })), checkout });
   const srv = await new Promise((r) => { const s = app2.listen(0, () => r(s)); });
   const b2 = `http://127.0.0.1:${srv.address().port}/api`;
-  const call2 = async (token, method, path) => {
-    const res = await fetch(b2 + path, { method, headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  const call2 = async (token, method, path, body) => {
+    const res = await fetch(b2 + path, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: body ? JSON.stringify(body) : undefined });
     return { status: res.status, body: await res.json() };
   };
   const reg = async (email, role) => (await (await fetch(`${b2}/auth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -553,7 +553,23 @@ test('Family Pass on the website: Stripe Checkout link, and the pass once paid (
     assert.equal((await hook('cs_1')).status, 200);
     assert.equal((await call2(fam.token, 'GET', '/family-pass')).body.ends_at, end1);
     assert.equal((await hook('cs_2')).status, 200);
-    assert.notEqual((await call2(fam.token, 'GET', '/family-pass')).body.ends_at, end1);
+    const end2 = (await call2(fam.token, 'GET', '/family-pass')).body.ends_at;
+    assert.notEqual(end2, end1);
+
+    // The 1-month pass costs less and adds 30 days.
+    assert.deepEqual((await call2(fam.token, 'GET', '/family-pass')).body.plans.map((p) => [p.id, p.days]), [['month', 30], ['quarter', 90]]);
+    r = await call2(fam.token, 'POST', '/family-pass/checkout', { plan: 'month' });
+    const o3 = sessions.get('cs_2').o;
+    assert.equal(r.body.url, 'https://checkout.stripe.test/cs_2');
+    assert.equal(o3.amount, 3900);
+    assert.equal(o3.plan, 'month');
+    sessions.get('cs_2').paid = true;
+    // cs_2 was already counted by the webhook above; a fresh month session adds 30 days.
+    await call2(fam.token, 'POST', '/family-pass/checkout', { plan: 'month' });
+    sessions.get('cs_3').paid = true;
+    const end3 = (await call2(fam.token, 'POST', '/family-pass/checkout/cs_3')).body.pass.ends_at;
+    const days = (a, b) => (new Date(b.replace(' ', 'T') + 'Z') - new Date(a.replace(' ', 'T') + 'Z')) / 86400000;
+    assert.equal(Math.round(days(end2, end3)), 30);
   } finally { srv.close(); delete process.env.STRIPE_WEBHOOK_SECRET; }
 });
 
@@ -606,6 +622,11 @@ test('Family Pass in-app purchase: checked with RevenueCat, counted once, refund
     assert.equal((await hook({ ...ev, transaction_id: 'GPA.1234', store: 'PLAY_STORE' })).status, 200);
     const end2 = (await call2(fam.token, 'GET', '/family-pass')).body.ends_at;
     assert.ok(new Date(end2.replace(' ', 'T') + 'Z') - new Date(end1.replace(' ', 'T') + 'Z') > 89 * 86400000);
+
+    // The 1-month product adds 30 days.
+    const end3 = await (async () => { await hook({ ...ev, product_id: 'family_pass_30', transaction_id: '1000003' }); return (await call2(fam.token, 'GET', '/family-pass')).body.ends_at; })();
+    assert.equal(Math.round((new Date(end3.replace(' ', 'T') + 'Z') - new Date(end2.replace(' ', 'T') + 'Z')) / 86400000), 30);
+    await hook({ ...ev, type: 'CANCELLATION', product_id: 'family_pass_30', transaction_id: '1000003' });
 
     // Refunding both ends the pass.
     await hook({ ...ev, type: 'CANCELLATION' });

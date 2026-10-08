@@ -34,10 +34,16 @@ const REVIEW_REVEAL_DAYS = 14;
 const CODE_MINUTES = 30;
 const CODE_MAX_ATTEMPTS = 5;
 
-/** The Family Pass: what families buy to message au pairs. The price is shown in the app; the stores charge their own listed price. */
+/** The Family Pass: what families buy to message au pairs, as 1 or 3 months paid once. */
 // amount/currency are the website price (Stripe). product_id is the one-off (consumable) in-app product set up in
 // App Store Connect, Google Play and RevenueCat; the stores charge their own listed price.
-export const FAMILY_PASS = { days: 90, price: '€79', amount: 7900, currency: 'eur', product_id: 'family_pass_90' };
+export const PASS_PLANS = [
+  { id: 'month', days: 30, price: '€39', amount: 3900, currency: 'eur', product_id: 'family_pass_30', name: 'PairMundo Family Pass (1 month)' },
+  { id: 'quarter', days: 90, price: '€79', amount: 7900, currency: 'eur', product_id: 'family_pass_90', name: 'PairMundo Family Pass (3 months)' },
+];
+// The 3-month pass is the default, and what app versions from before the 1-month pass show.
+export const FAMILY_PASS = PASS_PLANS[1];
+const passPlan = (key, value) => PASS_PLANS.find((p) => p[key] === value);
 
 class HttpError extends Error {
   constructor(status, message, code) { super(message); this.status = status; this.code = code; }
@@ -597,7 +603,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   const needsPass = (u) => passRequired() && u.role === 'family' && !activePass(u.id);
   const passView = (u) => {
     const p = activePass(u.id);
-    return { required: passRequired() && u.role === 'family', active: !!p, ends_at: p?.ends_at ?? null, days: FAMILY_PASS.days, price: FAMILY_PASS.price, web_checkout: !!checkout, product_id: FAMILY_PASS.product_id };
+    return { required: passRequired() && u.role === 'family', active: !!p, ends_at: p?.ends_at ?? null, days: FAMILY_PASS.days, price: FAMILY_PASS.price, web_checkout: !!checkout, product_id: FAMILY_PASS.product_id,
+      plans: PASS_PLANS.map(({ id, days, price, product_id }) => ({ id, days, price, product_id })) };
   };
   /** Adds a pass, starting when the current one ends. A purchase already counted (same source and ref) is ignored. */
   const grantPass = (userId, source, ref = null, days = FAMILY_PASS.days) => {
@@ -616,8 +623,9 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   api.post('/family-pass/checkout', requireAuth, wrap(async (req) => {
     if (!checkout) throw new HttpError(503, 'Payments are coming soon.');
     if (req.user.role !== 'family') throw forbidden('Only families need the Family Pass.');
+    const plan = passPlan('id', req.body?.plan) || FAMILY_PASS;
     const s = await checkout.start(req.user, {
-      amount: FAMILY_PASS.amount, currency: FAMILY_PASS.currency, name: 'PairMundo Family Pass (3 months)',
+      amount: plan.amount, currency: plan.currency, name: plan.name, plan: plan.id,
       successUrl: `${publicBase()}/#/family-pass?paid={CHECKOUT_SESSION_ID}`, cancelUrl: `${publicBase()}/#/family-pass`,
     });
     return { url: s.url };
@@ -627,31 +635,34 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     let r;
     try { r = await checkout.result(req.params.id); } catch { throw notFound(); }
     if (r.userId !== req.user.id) throw notFound();
-    if (r.paid) grantPass(req.user.id, 'stripe', req.params.id);
+    if (r.paid) grantPass(req.user.id, 'stripe', req.params.id, (passPlan('id', r.plan) || FAMILY_PASS).days);
     return { paid: r.paid, pass: passView(req.user) };
   }));
   // Apple and Google purchases, checked with RevenueCat. The app calls this after buying and for "Restore purchases";
   // RevenueCat's webhook below does the same thing in the background.
-  const isPassPurchase = (product) => product === FAMILY_PASS.product_id;
+  const planFor = (product) => passPlan('product_id', product);
   api.post('/family-pass/sync', requireAuth, wrap(async (req) => {
     if (!revenuecat) throw new HttpError(503, 'Payments are coming soon.');
     if (req.user.role !== 'family') throw forbidden('Only families need the Family Pass.');
     let list;
     try { list = await revenuecat.purchases(String(req.user.id)); }
     catch (e) { console.error('RevenueCat check failed:', e.message); throw new HttpError(502, 'We could not check your purchase. Try again in a moment.'); }
-    // A purchase older than one pass that was never counted would only add days nobody expects.
-    const cutoff = Date.now() - FAMILY_PASS.days * 86400000;
+    // A purchase older than its own pass that was never counted would only add days nobody expects.
     let added = 0;
-    for (const p of list) if (isPassPurchase(p.product) && (!p.purchasedAt || Date.parse(p.purchasedAt) > cutoff) && grantPass(req.user.id, p.store, p.ref)) added++;
+    for (const p of list) {
+      const plan = planFor(p.product);
+      if (plan && (!p.purchasedAt || Date.parse(p.purchasedAt) > Date.now() - plan.days * 86400000) && grantPass(req.user.id, p.store, p.ref, plan.days)) added++;
+    }
     return { added, pass: passView(req.user) };
   }));
   api.post('/revenuecat/webhook', wrap((req) => {
     if (!webhookAuthorized(req.get('authorization'))) throw new HttpError(401, 'Not allowed.');
     const e = req.body?.event || {};
     const u = getUser(Number(e.app_user_id));
-    if (!u || u.role !== 'family' || !isPassPurchase(e.product_id) || !e.transaction_id) return { received: true };
+    const plan = planFor(e.product_id);
+    if (!u || u.role !== 'family' || !plan || !e.transaction_id) return { received: true };
     const ref = String(e.transaction_id);
-    if (e.type === 'NON_RENEWING_PURCHASE') grantPass(u.id, storeName(e.store), ref);
+    if (e.type === 'NON_RENEWING_PURCHASE') grantPass(u.id, storeName(e.store), ref, plan.days);
     // A refund ends that pass now (or cancels it if it hadn't started); other passes keep their dates.
     if (e.type === 'CANCELLATION' || e.type === 'REFUND') {
       db.prepare("UPDATE passes SET starts_at = MIN(starts_at, datetime('now')), ends_at = MIN(ends_at, datetime('now')) WHERE user_id = ? AND source = ? AND ref = ?").run(u.id, storeName(e.store), ref);
@@ -701,7 +712,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     }
     if (event.type === 'checkout.session.completed' && s?.id && s.metadata?.product === 'family_pass' && s.payment_status === 'paid') {
       const u = getUser(Number(s.metadata.user_id));
-      if (u) grantPass(u.id, 'stripe', s.id);
+      if (u) grantPass(u.id, 'stripe', s.id, (passPlan('id', s.metadata.plan) || FAMILY_PASS).days);
     }
     res.json({ received: true });
   };

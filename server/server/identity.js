@@ -74,22 +74,22 @@ export function createCheckout({ secretKey = process.env.STRIPE_SECRET_KEY, fetc
   const call = stripeApi(secretKey, fetchImpl);
   return {
     /** Returns { id, url } for Stripe's payment page. */
-    async start(user, { amount, currency, name, successUrl, cancelUrl }) {
+    async start(user, { amount, currency, name, plan, successUrl, cancelUrl }) {
       const s = await call('POST', '/checkout/sessions', {
         mode: 'payment',
         line_items: { 0: { quantity: 1, price_data: { currency, unit_amount: amount, product_data: { name } } } },
         customer_email: user.email,
         client_reference_id: String(user.id),
-        metadata: { user_id: String(user.id), product: 'family_pass' },
+        metadata: { user_id: String(user.id), product: 'family_pass', plan },
         success_url: successUrl,
         cancel_url: cancelUrl,
       });
       return { id: s.id, url: s.url };
     },
-    /** { paid, userId } for a finished payment page. */
+    /** { paid, userId, plan } for a finished payment page. */
     async result(id) {
       const s = await call('GET', `/checkout/sessions/${encodeURIComponent(id)}`);
-      return { paid: s.payment_status === 'paid', userId: Number(s.metadata?.user_id || s.client_reference_id) || null };
+      return { paid: s.payment_status === 'paid', userId: Number(s.metadata?.user_id || s.client_reference_id) || null, plan: s.metadata?.plan || null };
     },
   };
 }

@@ -1266,21 +1266,24 @@ views['family-pass'] = async (_args, qs) => {
     catch (e) { toast(e.message); }
     history.replaceState(null, '', '#/family-pass');
   }
-  const until = pass.active ? `<p><strong>${tr('Your Family Pass is active until {date}.', { date: fmtDate(pass.ends_at) })}</strong> ${tr('Buying again adds {days} days after that.', { days: pass.days })}</p>` : '';
+  // Older servers send one pass; newer ones a 1-month and a 3-month plan.
+  const plans = pass.plans?.length ? pass.plans : [{ id: 'quarter', days: pass.days, price: pass.price }];
+  const planName = (p) => (p.days === 30 ? tr('1 month') : p.days === 90 ? tr('3 months') : tr('{n} days', { n: p.days }));
+  const until = pass.active ? `<p><strong>${tr('Your Family Pass is active until {date}.', { date: fmtDate(pass.ends_at) })}</strong> ${tr('Buying again adds the new days after that.')}</p>` : '';
   render(`<h1>Family Pass</h1><div class="card" style="max-width:560px">
-    <p class="muted">${tr("{days} days for {price}, paid once. It doesn't renew by itself.", { days: pass.days, price: esc(pass.price) })}</p>
+    <p class="muted">${tr("Paid once. It doesn't renew by itself.")}</p>
     <ul><li>${tr('Message every au pair you match with')}</li><li>${tr('See everyone who liked you, and match with one tap')}</li><li>${tr('Au pairs never pay. Swiping and matching are free for everyone.')}</li></ul>
     ${until}
-    ${pass.web_checkout ? `<button class="btn" id="buy">${pass.active ? tr('Add {days} more days for {price}', { days: pass.days, price: esc(pass.price) }) : tr('Get {days} days for {price}', { days: pass.days, price: esc(pass.price) })}</button>
+    ${pass.web_checkout ? `<div class="pass-plans">${plans.map((p) => `<button class="pass-plan ${p.days === 90 ? 'best' : ''}" data-plan="${esc(p.id)}">
+        ${p.days === 90 && plans.length > 1 ? `<span class="pass-tag">${tr('Best value')}</span>` : ''}<strong>${planName(p)}</strong><span class="pass-price">${esc(p.price)}</span></button>`).join('')}</div>
       <p class="muted small">${tr('You pay securely with Stripe.')}</p>`
       : `<p class="muted">${pass.required ? tr('Payments are coming soon.') : tr('Payments are coming soon. Until then, families can use every feature for free.')}</p>`}
   </div>`);
-  const $buy = document.getElementById('buy');
-  if ($buy) $buy.onclick = async () => {
-    $buy.disabled = true;
-    try { location.href = (await api('/family-pass/checkout', { method: 'POST' })).url; }
-    catch (e) { $buy.disabled = false; if (!needsCode(e)) toast(e.message); }
-  };
+  document.querySelectorAll('[data-plan]').forEach((b) => { b.onclick = async () => {
+    b.disabled = true;
+    try { location.href = (await api('/family-pass/checkout', { method: 'POST', body: { plan: b.dataset.plan } })).url; }
+    catch (e) { b.disabled = false; if (!needsCode(e)) toast(e.message); }
+  }; });
 };
 
 // ---------- router ----------
