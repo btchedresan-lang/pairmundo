@@ -286,6 +286,8 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
     ALTER TABLE aupair_profiles ADD COLUMN goal TEXT;
     ALTER TABLE aupair_profiles ADD COLUMN ideal_family TEXT;`);
   if (!db.prepare('PRAGMA table_info(waitlist)').all().some((c) => c.name === 'source')) db.exec('ALTER TABLE waitlist ADD COLUMN source TEXT');
+  // Which flyer or ad (?src= on the website link) brought someone who signed up.
+  if (!db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'source')) db.exec('ALTER TABLE users ADD COLUMN source TEXT');
   const pcols = db.prepare('PRAGMA table_info(country_programs)').all().map((c) => c.name);
   if (!pcols.includes('status')) {
     db.exec(`ALTER TABLE country_programs ADD COLUMN status TEXT NOT NULL DEFAULT 'open';

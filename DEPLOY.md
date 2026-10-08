@@ -82,7 +82,9 @@ Families pay once for messaging and seeing who liked them: €39 for 1 month (30
   4. In RevenueCat → Integrations → Webhooks, add `https://pairmundo.com/api/revenuecat/webhook` and type any long password as the Authorization header; put the same password in Render as `REVENUECAT_WEBHOOK_AUTH`. Refunds then end the pass too.
   In-app purchase only works in a store build (`eas build`), not in Expo Go.
 
-Turn on payments first, then `FAMILY_PASS`, so families are never locked out with no way to pay. An admin can also give a family free days from the admin page.
+Turn on payments first, then `FAMILY_PASS`, so families are never locked out with no way to pay.
+
+Free trial: set `FAMILY_TRIAL_DAYS` (for example `14`, at most 90) and every family that signs up from then on starts with that many days of the pass for free. Families who signed up earlier don't get it automatically; an admin can give any family free days with **+ Free days** in Admin → Users & verification.
 
 ## Pointing the phone app at the live server
 

@@ -540,5 +540,6 @@
   "Get {plan}": "{plan} kaufen",
   "Best value": "Bester Preis",
   "One payment. No automatic renewal.": "Einmal zahlen. Keine automatische Verlängerung.",
-  "{n} days": "{n} Tage"
+  "{n} days": "{n} Tage",
+  "Your free trial runs until {date}.": "Dein kostenloser Test läuft bis zum {date}."
 }

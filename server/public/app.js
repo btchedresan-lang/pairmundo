@@ -475,7 +475,7 @@ views.register = (_, query) => {
       <p class="muted small" style="text-align:center">${tr('By creating an account you agree to the {terms} and the {privacy}.', { terms: `<a href="/terms" target="_blank">${tr('Terms of Use')}</a>`, privacy: `<a href="/privacy" target="_blank">${tr('Privacy Policy')}</a>` })}</p></form></div>`);
   document.getElementById('f').onsubmit = async (e) => {
     e.preventDefault();
-    try { await api('/auth/register', { method: 'POST', body: formData(e.target) }); await refreshMe(); toast(tr('Welcome! Check your email for your code.')); go('#/verify'); }
+    try { await api('/auth/register', { method: 'POST', body: { ...formData(e.target), source: adSource() } }); await refreshMe(); toast(tr('Welcome! Check your email for your code.')); go('#/verify'); }
     catch (err) { document.getElementById('err').innerHTML = `<div class="alert error">${esc(err.message)}</div>`; }
   };
 };
@@ -1190,12 +1190,20 @@ views.admin = async ([tab = 'overview']) => {
   }
   if (tab === 'users') {
     const { users } = await api('/admin/users');
-    render(`${head}<div class="card table-wrap"><table><tr><th>Member</th><th>Role</th><th>Rating</th><th>ID</th><th>References</th><th>Background</th><th>Suspended</th></tr>
-      ${users.map((u) => `<tr><td><a href="#/u/${u.id}">${esc(u.name)}</a><div class="muted small">${esc(u.email)} · ${cname(u.country)}</div></td>
+    render(`${head}<div class="card table-wrap"><table><tr><th>Member</th><th>Role</th><th>Rating</th><th>ID</th><th>References</th><th>Background</th><th>Suspended</th><th>Family Pass</th></tr>
+      ${users.map((u) => `<tr><td><a href="#/u/${u.id}">${esc(u.name)}</a><div class="muted small">${esc(u.email)} · ${cname(u.country)}${u.source ? ` · via ${esc(u.source)}` : ''}</div></td>
         <td>${u.role === 'aupair' ? 'Au pair' : 'Family'}</td><td>${u.rating.avg ?? '—'}</td>
         ${['id_verified:id', 'references_checked:references', 'background_checked:background'].map((x) => { const [f, k] = x.split(':');
     return `<td><input type="checkbox" style="width:auto" data-u="${u.id}" data-f="${f}" ${u.verification[k] ? 'checked' : ''}></td>`; }).join('')}
-        <td><input type="checkbox" style="width:auto" data-u="${u.id}" data-f="suspended" ${u.suspended ? 'checked' : ''}></td></tr>`).join('')}</table></div>`);
+        <td><input type="checkbox" style="width:auto" data-u="${u.id}" data-f="suspended" ${u.suspended ? 'checked' : ''}></td>
+        <td>${u.role === 'family' ? `<div class="small">${u.pass_ends_at ? `until ${fmtDate(u.pass_ends_at)}` : '<span class="muted">none</span>'}</div>
+          <button class="btn ghost sm" data-free="${u.id}">+ Free days</button>` : ''}</td></tr>`).join('')}</table></div>`);
+    document.querySelectorAll('[data-free]').forEach((b) => { b.onclick = async () => {
+      const days = Number(prompt('How many free days of the Family Pass?', '30'));
+      if (!(days > 0)) return;
+      try { await api(`/admin/users/${b.dataset.free}`, { method: 'POST', body: { grant_pass_days: days } }); toast('Free days added'); views.admin(['users']); }
+      catch (e) { toast(e.message); }
+    }; });
     document.querySelectorAll('[data-u]').forEach((cb) => { cb.onchange = async () => {
       await api(`/admin/users/${cb.dataset.u}`, { method: 'POST', body: { [cb.dataset.f]: cb.checked } }); toast('Saved');
     }; });
@@ -1223,6 +1231,8 @@ views.admin = async ([tab = 'overview']) => {
       <div class="cols-2"><div class="card"><h2>By role</h2><table>${w.by_role.map((r) => `<tr><td>${role(r.role)}</td><td>${r.n}</td></tr>`).join('')}</table></div>
       <div class="card"><h2>By browser region</h2><table>${w.by_country.map((r) => `<tr><td>${cname(r.country) || '—'}</td><td>${r.n}</td></tr>`).join('')}</table></div>
       <div class="card"><h2>By flyer or ad</h2><table>${w.by_source.map((r) => `<tr><td>${esc(r.source || 'Website')}</td><td>${r.n}</td></tr>`).join('')}</table></div></div>
+      <div class="card"><h2>Accounts by flyer or ad</h2><p class="muted small">People who created an account, by the link they came from.</p>
+        <table><tr><th>Source</th><th>Families</th><th>Au pairs</th></tr>${(w.signups_by_source || []).map((r) => `<tr><td>${esc(r.source || 'Website')}</td><td>${r.families}</td><td>${r.aupairs}</td></tr>`).join('')}</table></div>
       <div class="card table-wrap"><h2>Latest</h2><table><tr><th>Email</th><th>Role</th><th>Region</th><th>Language</th><th>Source</th><th>Joined</th></tr>
       ${w.people.map((p) => `<tr><td>${esc(p.email)}</td><td>${role(p.role)}</td><td>${cname(p.country) || '—'}</td><td>${esc(LANGUAGES[p.lang] || p.lang)}</td><td>${esc(p.source || '—')}</td><td>${fmtTime(p.created_at)}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">Nobody yet.</td></tr>'}</table></div>`);
   }
@@ -1269,7 +1279,7 @@ views['family-pass'] = async (_args, qs) => {
   // Older servers send one pass; newer ones a 1-month and a 3-month plan.
   const plans = pass.plans?.length ? pass.plans : [{ id: 'quarter', days: pass.days, price: pass.price }];
   const planName = (p) => (p.days === 30 ? tr('1 month') : p.days === 90 ? tr('3 months') : tr('{n} days', { n: p.days }));
-  const until = pass.active ? `<p><strong>${tr('Your Family Pass is active until {date}.', { date: fmtDate(pass.ends_at) })}</strong> ${tr('Buying again adds the new days after that.')}</p>` : '';
+  const until = pass.active ? `<p><strong>${pass.trial ? tr('Your free trial runs until {date}.', { date: fmtDate(pass.ends_at) }) : tr('Your Family Pass is active until {date}.', { date: fmtDate(pass.ends_at) })}</strong> ${tr('Buying again adds the new days after that.')}</p>` : '';
   render(`<h1>Family Pass</h1><div class="card" style="max-width:560px">
     <p class="muted">${tr("Paid once. It doesn't renew by itself.")}</p>
     <ul><li>${tr('Message every au pair you match with')}</li><li>${tr('See everyone who liked you, and match with one tap')}</li><li>${tr('Au pairs never pay. Swiping and matching are free for everyone.')}</li></ul>

@@ -634,5 +634,6 @@
   "Best value": "Meilleur prix",
   "{n} days": "{n} jours",
   "Buying again adds the new days after that.": "Un nouvel achat ajoute les jours après cette date.",
-  "Paid once. It doesn't renew by itself.": "Payé une fois. Il ne se renouvelle pas tout seul."
+  "Paid once. It doesn't renew by itself.": "Payé une fois. Il ne se renouvelle pas tout seul.",
+  "Your free trial runs until {date}.": "Votre essai gratuit dure jusqu'au {date}."
 }
