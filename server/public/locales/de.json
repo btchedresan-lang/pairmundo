@@ -655,7 +655,7 @@
   "That code is already taken.": "Dieser Code ist schon vergeben.",
   "That referral code is not valid. Check it, or leave it empty.": "Dieser Einladungscode ist ungültig. Prüfe ihn oder lass das Feld leer.",
   "This month": "Diesen Monat",
-  "You earn {profile} for each au pair who completes their profile, {share}% of a family's first Family Pass, and {placement} when a stay starts. Only people who join with your link or code count.": "Du verdienst {profile} für jedes Au-pair, das sein Profil vervollständigt, {share} % vom ersten Family Pass einer Familie und {placement}, wenn ein Aufenthalt beginnt. Es zählen nur Personen, die mit deinem Link oder Code beitreten.",
+  "You earn {profile} for each au pair who completes their profile, {pass} when a family buys their first Family Pass, and {placement} when a stay starts. Only people who join with your link or code count.": "Du verdienst {profile} für jedes Au-pair, das sein Profil vervollständigt, {pass}, wenn eine Familie ihren ersten Family Pass kauft, und {placement}, wenn ein Aufenthalt beginnt. Es zählen nur Personen, die mit deinem Link oder Code beitreten.",
   "Your code": "Dein Code",
   "{name} invited you to PairMundo.": "{name} hat dich zu PairMundo eingeladen."
 }

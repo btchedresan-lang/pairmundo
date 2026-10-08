@@ -120,7 +120,8 @@ export default function Account() {
   );
 }
 
-const eur = (cents) => `€${(cents / 100).toFixed(2).replace(/\.00$/, '')}`;
+// Ambassadors are paid in US dollars. US$ rather than $, which reads as pesos in much of Latin America.
+const usd = (cents) => `US$${(cents / 100).toFixed(2).replace(/\.00$/, '')}`;
 
 /** An ambassador's code, link and what it has brought in. */
 function AmbassadorCard({ amb }) {
@@ -139,10 +140,10 @@ function AmbassadorCard({ amb }) {
       <Button title={tr('Share my link')} onPress={() => Share.share({ message: tr('Join PairMundo with my link: {link}', { link: amb.link }) }).catch(() => {})} />
       {row('', tr('This month'), tr('All time'), true)}
       {rows.map(([label, k]) => row(label, amb.this_month[k], amb.total[k]))}
-      {row(tr('Earned'), eur(amb.this_month.earned_cents), eur(amb.total.earned_cents), true)}
-      <T>{tr('Not paid out yet')}: <T bold>{eur(amb.total.owed_cents)}</T></T>
-      <T small muted>{tr("You earn {profile} for each au pair who completes their profile, {share}% of a family's first Family Pass, and {placement} when a stay starts. Only people who join with your link or code count.",
-        { profile: eur(amb.rewards.profile), share: Math.round(amb.rewards.pass_share * 100), placement: eur(amb.rewards.placement) })}</T>
+      {row(tr('Earned'), usd(amb.this_month.earned_cents), usd(amb.total.earned_cents), true)}
+      <T>{tr('Not paid out yet')}: <T bold>{usd(amb.total.owed_cents)}</T></T>
+      <T small muted>{tr("You earn {profile} for each au pair who completes their profile, {pass} when a family buys their first Family Pass, and {placement} when a stay starts. Only people who join with your link or code count.",
+        { profile: usd(amb.rewards.profile), pass: usd(amb.rewards.pass), placement: usd(amb.rewards.placement) })}</T>
     </Card>
   );
 }

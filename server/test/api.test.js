@@ -592,8 +592,8 @@ test('Family Pass on the website: Stripe Checkout link, and the pass once paid (
     const days = (a, b) => (new Date(b.replace(' ', 'T') + 'Z') - new Date(a.replace(' ', 'T') + 'Z')) / 86400000;
     assert.equal(Math.round(days(end2, end3)), 30);
 
-    // The family came with an ambassador's code: only their first paid pass earns the ambassador a share (25% of €79).
-    assert.deepEqual(db2.prepare('SELECT kind, amount_cents FROM referral_rewards').all().map((x) => ({ ...x })), [{ kind: 'pass', amount_cents: 1975 }]);
+    // The family came with an ambassador's code: only their first paid pass earns the ambassador a reward (US$15).
+    assert.deepEqual(db2.prepare('SELECT kind, amount_cents FROM referral_rewards').all().map((x) => ({ ...x })), [{ kind: 'pass', amount_cents: 1500 }]);
   } finally { srv.close(); delete process.env.STRIPE_WEBHOOK_SECRET; }
 });
 
@@ -775,7 +775,7 @@ test('ambassadors: referral codes at sign-up, rewards counted once, monthly cap,
   const list = (await call(admin, 'GET', `/admin/ambassadors?month=${month}`)).body;
   assert.equal(list.ambassadors.find((a) => a.id === amb).stats.earned_cents, 18050);
   const csv = await (await fetch(`${base}/admin/ambassadors.csv?month=${month}`, { headers: { Authorization: `Bearer ${admin}` } })).text();
-  assert.match(csv, /^code,name,country,contact,active,waitlist,au pairs,families,au pair profiles,family passes,placements,earned \d{4}-\d{2} \(EUR\),owed now \(EUR\)\n/);
+  assert.match(csv, /^code,name,country,contact,active,waitlist,au pairs,families,au pair profiles,family passes,placements,earned \d{4}-\d{2} \(USD\),owed now \(USD\)\n/);
   assert.match(csv, /\nANA-CO,Ana Gómez,CO,'\+57 300 000,yes,1,2,1,3,0,2,180\.50,180\.50\n/);
   r = await call(admin, 'POST', `/admin/ambassadors/${amb}/paid`, { month });
   assert.equal(r.body.marked, 5);

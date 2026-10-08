@@ -276,7 +276,7 @@ CREATE TABLE IF NOT EXISTS ambassadors (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- What ambassadors earned, in euro cents. One row per referred person and kind, so nothing is counted twice.
+-- What ambassadors earned, in US cents. One row per referred person and kind, so nothing is counted twice.
 CREATE TABLE IF NOT EXISTS referral_rewards (
   id INTEGER PRIMARY KEY,
   ambassador_id INTEGER NOT NULL REFERENCES ambassadors(id) ON DELETE CASCADE,

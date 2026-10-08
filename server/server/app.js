@@ -44,9 +44,9 @@ export const PASS_PLANS = [
 // The 3-month pass is the default, and what app versions from before the 1-month pass show.
 export const FAMILY_PASS = PASS_PLANS[1];
 const passPlan = (key, value) => PASS_PLANS.find((p) => p[key] === value);
-/** What an ambassador earns for people who join with their referral code, in euro cents. Au pair profile rewards
- *  stop at the monthly cap; a family's first paid Family Pass earns a share of its website price. */
-export const AMBASSADOR_REWARDS = { profile: 200, profile_monthly_cap: 10000, pass_share: 0.25, placement: 4000 };
+/** What an ambassador earns for people who join with their referral code, in US cents (ambassadors are paid in
+ *  dollars, whatever the Family Pass costs). Au pair profile rewards stop at the monthly cap. */
+export const AMBASSADOR_REWARDS = { currency: 'usd', profile: 200, profile_monthly_cap: 10000, pass: 1500, placement: 4000 };
 
 class HttpError extends Error {
   constructor(status, message, code) { super(message); this.status = status; this.code = code; }
@@ -686,9 +686,9 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (ref && db.prepare('SELECT 1 FROM passes WHERE source = ? AND ref = ?').get(source, ref)) return false;
     const start = activePass(userId)?.ends_at ?? db.prepare("SELECT datetime('now') d").get().d;
     db.prepare("INSERT INTO passes (user_id, source, ref, starts_at, ends_at) VALUES (?,?,?,?, datetime(?, ?))").run(userId, source, ref, start, start, `+${Number(days)} days`);
-    // A family's first paid pass earns their ambassador a share. Trials and free days from an admin don't count.
+    // A family's first paid pass earns their ambassador a reward. Trials and free days from an admin don't count.
     const plan = !['trial', 'admin'].includes(source) && passPlan('days', Number(days));
-    if (plan) addReward(userId, 'pass', plan.amount * AMBASSADOR_REWARDS.pass_share, `First Family Pass (${plan.price})`);
+    if (plan) addReward(userId, 'pass', AMBASSADOR_REWARDS.pass, `First Family Pass (${plan.price})`);
     if (!quiet) notify(userId, 'pass', 'Your Family Pass is active. You can now message au pairs and see who liked you.', {}, '#/likes');
     return true;
   };
@@ -1250,13 +1250,13 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   // The monthly payout sheet: one row per ambassador.
   api.get('/admin/ambassadors.csv', requireRole('admin'), (req, res) => {
     const month = monthParam(req.query.month);
-    const eur = (c) => (c / 100).toFixed(2);
+    const usd = (c) => (c / 100).toFixed(2);
     const rows = db.prepare('SELECT * FROM ambassadors ORDER BY code').all().map((a) => {
       const s = ambassadorStats(a, month);
-      return [a.code, a.name, a.country, a.contact, a.active ? 'yes' : 'no', s.waitlist, s.aupairs, s.families, s.profiles, s.passes, s.placements, eur(s.earned_cents), eur(s.owed_cents)];
+      return [a.code, a.name, a.country, a.contact, a.active ? 'yes' : 'no', s.waitlist, s.aupairs, s.families, s.profiles, s.passes, s.placements, usd(s.earned_cents), usd(s.owed_cents)];
     });
     res.set('Content-Disposition', `attachment; filename="pairmundo-ambassadors-${month || 'all-time'}.csv"`).type('text/csv')
-      .send([`code,name,country,contact,active,waitlist,au pairs,families,au pair profiles,family passes,placements,earned ${month || 'all time'} (EUR),owed now (EUR)`,
+      .send([`code,name,country,contact,active,waitlist,au pairs,families,au pair profiles,family passes,placements,earned ${month || 'all time'} (USD),owed now (USD)`,
         ...rows.map((r) => r.map(csvCell).join(','))].join('\n') + '\n');
   });
   api.get('/admin/backup', requireRole('admin'), wrap(() => backups.status()));

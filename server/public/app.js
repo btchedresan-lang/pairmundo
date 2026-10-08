@@ -396,7 +396,8 @@ function refCode() {
     return localStorage.getItem('ref') || undefined;
   } catch { return undefined; }
 }
-const eur = (cents) => `€${(cents / 100).toFixed(2).replace(/\.00$/, '')}`;
+// Ambassadors are paid in US dollars. US$ rather than $, which reads as pesos in much of Latin America.
+const usd = (cents) => `US$${(cents / 100).toFixed(2).replace(/\.00$/, '')}`;
 
 function landing() {
   const waitForm = (id) => `<form class="waitlist" id="${id}">
@@ -559,9 +560,9 @@ views.account = async () => {
       ${[[tr('On the waitlist'), 'waitlist'], [tr('Au pairs who joined'), 'aupairs'], [tr('Families who joined'), 'families'], [tr('Completed au pair profiles'), 'profiles'],
     [tr('Families who bought a Family Pass'), 'passes'], [tr('Stays that started'), 'placements']]
     .map(([label, k]) => `<tr><td>${label}</td><td>${amb.this_month[k]}</td><td>${amb.total[k]}</td></tr>`).join('')}
-      <tr><td><strong>${tr('Earned')}</strong></td><td><strong>${eur(amb.this_month.earned_cents)}</strong></td><td><strong>${eur(amb.total.earned_cents)}</strong></td></tr></table>
-    <p>${tr('Not paid out yet')}: <strong>${eur(amb.total.owed_cents)}</strong></p>
-    <p class="muted small">${tr('You earn {profile} for each au pair who completes their profile, {share}% of a family\'s first Family Pass, and {placement} when a stay starts. Only people who join with your link or code count.', { profile: eur(amb.rewards.profile), share: Math.round(amb.rewards.pass_share * 100), placement: eur(amb.rewards.placement) })}</p></div>` : '';
+      <tr><td><strong>${tr('Earned')}</strong></td><td><strong>${usd(amb.this_month.earned_cents)}</strong></td><td><strong>${usd(amb.total.earned_cents)}</strong></td></tr></table>
+    <p>${tr('Not paid out yet')}: <strong>${usd(amb.total.owed_cents)}</strong></p>
+    <p class="muted small">${tr('You earn {profile} for each au pair who completes their profile, {pass} when a family buys their first Family Pass, and {placement} when a stay starts. Only people who join with your link or code count.', { profile: usd(amb.rewards.profile), pass: usd(amb.rewards.pass), placement: usd(amb.rewards.placement) })}</p></div>` : '';
   render(`<h1>${tr('Account and safety')}</h1>${ambCard}
     <div class="card"><h2>${tr('Email')}</h2><p>${esc(me.user.email)} ${me.user.email_verified ? `<span class="chip ok">✓ ${tr('Confirmed')}</span>` : `<a class="chip warn" href="#/verify">${tr('Not confirmed yet. Click to enter your code.')}</a>`}</p></div>
     <div class="card"><h2>${tr('ID check')}</h2>${idCard}</div>
@@ -1303,7 +1304,7 @@ async function adminAmbassadors(head, id, qs) {
   const month = qs?.get('month') || new Date().toISOString().slice(0, 7);
   const role = (r) => (r === 'aupair' ? 'Au pair' : 'Family');
   const kinds = { profile: 'Au pair profile complete', pass: 'First Family Pass', placement: 'Stay started' };
-  const statCells = (s) => `<td>${s.waitlist}</td><td>${s.aupairs}</td><td>${s.families}</td><td>${s.profiles}</td><td>${s.passes}</td><td>${s.placements}</td><td>${eur(s.earned_cents)}</td><td><strong>${eur(s.owed_cents)}</strong></td>`;
+  const statCells = (s) => `<td>${s.waitlist}</td><td>${s.aupairs}</td><td>${s.families}</td><td>${s.profiles}</td><td>${s.passes}</td><td>${s.placements}</td><td>${usd(s.earned_cents)}</td><td><strong>${usd(s.owed_cents)}</strong></td>`;
   const statHead = '<th>Waitlist</th><th>Au pairs</th><th>Families</th><th>Profiles done</th><th>Passes</th><th>Stays</th><th>Earned</th><th>Owed now</th>';
   const fields = (a = {}) => `<div class="form-grid"><div class="field"><label>Name</label><input name="name" required value="${esc(a.name)}"></div>
       <div class="field"><label>Country</label><select name="country">${options(COUNTRIES, a.country || '', '—')}</select></div></div>
@@ -1322,7 +1323,7 @@ async function adminAmbassadors(head, id, qs) {
         <button class="btn sm" style="margin-top:10px">Save</button></form>
       <div class="card table-wrap"><h3>Rewards</h3><table><tr><th>When</th><th>For</th><th>Person</th><th>Amount</th><th>Paid</th></tr>
         ${a.rewards.map((r) => `<tr><td>${fmtTime(r.created_at)}</td><td>${esc(kinds[r.kind])}${r.note && r.kind === 'pass' ? ` <span class="muted small">${esc(r.note)}</span>` : ''}</td>
-          <td>${r.user_id ? `<a href="#/u/${r.user_id}">${esc(r.user_name)}</a>` : '<span class="muted">—</span>'}</td><td>${eur(r.amount_cents)}</td><td>${r.paid_at ? fmtDate(r.paid_at) : '<span class="muted">not yet</span>'}</td></tr>`).join('')
+          <td>${r.user_id ? `<a href="#/u/${r.user_id}">${esc(r.user_name)}</a>` : '<span class="muted">—</span>'}</td><td>${usd(r.amount_cents)}</td><td>${r.paid_at ? fmtDate(r.paid_at) : '<span class="muted">not yet</span>'}</td></tr>`).join('')
         || '<tr><td colspan="5" class="muted">Nothing earned yet.</td></tr>'}</table></div>
       <div class="card table-wrap"><h3>People who joined with this code</h3><table><tr><th>Member</th><th>Role</th><th>Country</th><th>Joined</th></tr>
         ${a.referrals.map((u) => `<tr><td><a href="#/u/${u.id}">${esc(u.name)}</a>${u.suspended ? ' <span class="chip warn">suspended</span>' : ''}</td><td>${role(u.role)}</td><td>${cname(u.country) || '—'}</td><td>${fmtTime(u.created_at)}</td></tr>`).join('')
@@ -1344,7 +1345,7 @@ async function adminAmbassadors(head, id, qs) {
   const { ambassadors, rewards } = await api(`/admin/ambassadors?month=${month}`);
   render(`${head}<div class="spread"><form id="monthPick" class="row"><label>Month</label><input type="month" name="month" value="${esc(month)}" style="width:auto"></form>
       <a class="btn sm" href="/api/admin/ambassadors.csv?month=${esc(month)}">⬇ Payout sheet for ${esc(month)} (CSV)</a></div>
-    <p class="muted small">Rewards: ${eur(rewards.profile)} per completed au pair profile (up to ${eur(rewards.profile_monthly_cap)} a month), ${Math.round(rewards.pass_share * 100)}% of a family's first Family Pass, ${eur(rewards.placement)} per referred side when a stay starts.</p>
+    <p class="muted small">Rewards: ${usd(rewards.profile)} per completed au pair profile (up to ${usd(rewards.profile_monthly_cap)} a month), ${usd(rewards.pass)} for a family's first Family Pass, ${usd(rewards.placement)} per referred side when a stay starts.</p>
     <div class="card table-wrap"><table><tr><th>Ambassador</th>${statHead}</tr>
       ${ambassadors.map((a) => `<tr><td><a href="#/admin/ambassadors/${a.id}"><strong>${esc(a.name)}</strong></a> ${a.active ? '' : '<span class="chip warn">Paused</span>'}
         <div class="muted small"><code>${esc(a.code)}</code>${a.country ? ` · ${cname(a.country)}` : ''}</div></td>${statCells(a.stats)}</tr>`).join('')
