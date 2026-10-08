@@ -66,7 +66,11 @@ CREATE TABLE IF NOT EXISTS aupair_profiles (
   education TEXT,
   bio TEXT,
   video_url TEXT,
-  visible INTEGER NOT NULL DEFAULT 1
+  visible INTEGER NOT NULL DEFAULT 1,
+  traits TEXT NOT NULL DEFAULT '[]',             -- JSON ['patient','caring',...] for the poster profile
+  hobbies TEXT NOT NULL DEFAULT '[]',            -- JSON ['travel','skiing',...]
+  goal TEXT,                                     -- "My goal" on the poster profile
+  ideal_family TEXT                              -- "My ideal family"
 );
 
 -- Host family profile
@@ -276,6 +280,11 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
   // Accounts created before email verification existed count as verified.
   if (!cols.includes('lang')) db.exec('ALTER TABLE users ADD COLUMN lang TEXT');
   if (!cols.includes('email_verified')) db.exec('ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0; UPDATE users SET email_verified = 1');
+  const apcols = db.prepare('PRAGMA table_info(aupair_profiles)').all().map((c) => c.name);
+  if (!apcols.includes('traits')) db.exec(`ALTER TABLE aupair_profiles ADD COLUMN traits TEXT NOT NULL DEFAULT '[]';
+    ALTER TABLE aupair_profiles ADD COLUMN hobbies TEXT NOT NULL DEFAULT '[]';
+    ALTER TABLE aupair_profiles ADD COLUMN goal TEXT;
+    ALTER TABLE aupair_profiles ADD COLUMN ideal_family TEXT;`);
   if (!db.prepare('PRAGMA table_info(waitlist)').all().some((c) => c.name === 'source')) db.exec('ALTER TABLE waitlist ADD COLUMN source TEXT');
   const pcols = db.prepare('PRAGMA table_info(country_programs)').all().map((c) => c.name);
   if (!pcols.includes('status')) {

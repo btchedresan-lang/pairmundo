@@ -22,9 +22,11 @@ const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 /** Emails are matched without case or spaces, so "Me@x.com " and "me@x.com" are the same account. */
 export const normEmail = (e) => String(e || '').trim().toLowerCase();
 
-const AP_JSON = ['languages', 'preferred_countries', 'age_groups', 'skills'];
+const AP_JSON = ['languages', 'preferred_countries', 'age_groups', 'skills', 'traits', 'hobbies'];
+// Picked from fixed lists in the apps, so only short keys are stored.
+const KEY_LISTS = ['traits', 'hobbies'];
 const FAM_JSON = ['children', 'languages', 'required_languages', 'preferred_nationalities'];
-const AP_FIELDS = ['birth_date', 'nationality', 'gender', 'childcare_years', 'drivers_license', 'non_smoker', 'ok_with_pets', 'available_from', 'duration_months', 'education', 'bio', 'video_url', 'visible', ...AP_JSON];
+const AP_FIELDS = ['birth_date', 'nationality', 'gender', 'childcare_years', 'drivers_license', 'non_smoker', 'ok_with_pets', 'available_from', 'duration_months', 'education', 'bio', 'video_url', 'visible', 'goal', 'ideal_family', ...AP_JSON];
 const FAM_FIELDS = ['start_date', 'duration_months', 'weekly_hours', 'pocket_money', 'needs_driver', 'has_pets', 'smoking_household', 'private_room', 'bio', 'visible', ...FAM_JSON];
 const USER_FIELDS = ['name', 'country', 'city'];
 // Reviews become visible once both sides have reviewed, or 14 days after the placement ends.
@@ -374,7 +376,10 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
         if (k in p && p[k] && !isDate(p[k])) throw bad(`${k} must be YYYY-MM-DD.`);
       }
       if (sets.length) {
-        const vals = sets.map((k) => (jsonFields.includes(k) ? json.str(Array.isArray(p[k]) ? p[k] : [])
+        const list = (k) => (Array.isArray(p[k]) ? p[k] : []);
+        const vals = sets.map((k) => (KEY_LISTS.includes(k) ? json.str([...new Set(list(k).filter((v) => /^[a-z_]{1,24}$/.test(v)))].slice(0, 12))
+          : jsonFields.includes(k) ? json.str(list(k))
+          : ['goal', 'ideal_family'].includes(k) ? str(p[k], 400)
           : typeof p[k] === 'string' ? str(p[k]) : sql(p[k])));
         db.prepare(`UPDATE ${table} SET ${sets.map((k) => `${k} = ?`).join(', ')} WHERE user_id = ?`).run(...vals, u.id);
       }

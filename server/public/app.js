@@ -23,6 +23,12 @@ const statusLabel = (s) => (STATUSES[s] ? tr(STATUSES[s]) : s);
 const AGE_GROUPS = { infant: 'Infants (0-2)', toddler: 'Toddlers (2-5)', school: 'School age (5-12)', teen: 'Teens (13+)' };
 const SKILLS = { first_aid: 'First aid', swimming: 'Swimming', cooking: 'Cooking', tutoring: 'Homework help', music: 'Music', art: 'Arts & crafts',
   sports: 'Sports', special_needs: 'Special needs care', housekeeping: 'Light housekeeping' };
+const TRAITS = { patient: 'Patient', caring: 'Caring', responsible: 'Responsible', fun: 'Fun', calm: 'Calm', creative: 'Creative',
+  curious: 'Curious', organised: 'Organised', sporty: 'Sporty', cheerful: 'Cheerful', flexible: 'Flexible', reliable: 'Reliable' };
+const HOBBIES = { travel: ['✈️', 'Travelling'], outdoors: ['⛰️', 'Hiking and nature'], skiing: ['⛷️', 'Skiing'], beach: ['🌊', 'The ocean'],
+  animals: ['🐾', 'Animals'], movies: ['🎬', 'Movies and series'], sports: ['⚽', 'Sports'], music: ['🎵', 'Music'], reading: ['📚', 'Reading'],
+  cooking: ['🍳', 'Cooking and baking'], art: ['🎨', 'Drawing and crafts'], dancing: ['💃', 'Dancing'], photography: ['📷', 'Photography'],
+  friends: ['👯', 'Time with friends'], languages: ['🗣️', 'Learning languages'], gaming: ['🎮', 'Games'] };
 const CRIT_LABEL = { reliability: 'Reliability', childcare: 'Childcare', communication: 'Communication', household: 'Household help',
   adaptability: 'Adaptability', respect: 'Respect', accommodation: 'Accommodation', fair_hours: 'Fair hours', support: 'Support & inclusion' };
 
@@ -71,6 +77,7 @@ const fmtDate = (d) => (d ? new Date(d.length === 10 ? `${d}T00:00:00` : d.repla
   .toLocaleDateString(LANG, { year: 'numeric', month: 'short', day: 'numeric' }) : '');
 const fmtTime = (d) => new Date(d.replace(' ', 'T') + 'Z').toLocaleString(LANG, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 const initials = (name) => esc(String(name || '?').split(/\s+/).filter((w) => !/^(the|family|familie|famille|familia|familien)$/i.test(w)).map((w) => w[0]).slice(0, 2).join('').toUpperCase());
+const firstName = (name) => { const w = String(name || '').split(' '); return /^(the)$/i.test(w[0]) ? w[1] : w[0]; };
 const avatar = (u, size = '') => (u?.photo_url
   ? `<img class="avatar ${size}" src="${esc(u.photos?.[0] || u.photo_url)}" alt="" onerror="this.outerHTML='<span class=&quot;avatar ${size}&quot;>${initials(u.name)}</span>'">`
   : `<span class="avatar ${size}">${initials(u?.name)}</span>`);
@@ -615,6 +622,43 @@ views.search = async (_, query) => {
 };
 
 // ---------- public profile ----------
+// ---------- au pair profile as a "Hi, I'm ..." letter ----------
+// Laid out like the letters au pairs make for host families: a polaroid photo and pastel cards. Empty cards are left out.
+function posterHeader(u, p, badge) {
+  const from = p.nationality || u.country;
+  return `<div class="poster-head"><div class="poster-hi">${tr('Hi!')}</div>
+    <div class="poster-name">${tr("I'm {name}", { name: esc(firstName(u.name)) })}${u.verification.id ? ` <span class="tick" title="${tr('ID verified')}">✔</span>` : ''}</div>
+    ${from ? `<div class="poster-pill">${tr('Au pair from {country}', { country: esc(country(from)) })} ${flag(from)}</div>` : ''}
+    <div class="polaroid big">${gallery(u, { cls: 'polaroid-photo' })}<div class="polaroid-cap">${tr('Big dreams · Good vibes · New adventures')}</div></div>
+    ${badge}</div>`;
+}
+function posterBody(u, p) {
+  const sec = (tint, icon, title, body) => (body ? `<section class="poster-card ${tint}"><h3><span>${icon}</span> ${title}</h3><div class="poster-in">${body}</div></section>` : '');
+  const row = (icon, text) => (text ? `<div class="poster-row"><span>${icon}</span><div>${text}</div></div>` : '');
+  const para = (text) => (text ? `<p class="poster-p">${esc(text)}</p>` : '');
+  const place = [u.city, country(u.country)].filter(Boolean).join(', ');
+  const months = p.duration_months && trn(p.duration_months, '{n} month', '{n} months');
+  const hobbies = (p.hobbies || []).filter((k) => HOBBIES[k]);
+  const extra = (u.photos || []).slice(1, 4);
+  return `<div class="poster-body">
+    ${sec('green', '🙂', tr('About me'), [p.age && row('🎂', trn(p.age, '{n} year old', '{n} years old')),
+      p.nationality && row(flag(p.nationality) || '🌍', tr('From {country}', { country: esc(country(p.nationality)) })),
+      place && row('📍', tr('Currently in {place}', { place: esc(place) })),
+      p.traits?.length && row('♡', p.traits.map((k) => (TRAITS[k] ? tr(TRAITS[k]) : esc(k))).join(' · ')), para(p.bio)].filter(Boolean).join(''))}
+    ${sec('peach', '🧸', tr('My experience with children'), [p.childcare_years && row('⭐', trn(p.childcare_years, '{n} year of childcare experience', '{n} years of childcare experience')),
+      ...(p.age_groups || []).map((g) => row('👶', AGE_GROUPS[g] ? tr(AGE_GROUPS[g]) : esc(g))),
+      p.skills?.length && `<div class="poster-sub">${tr('I can help with:')}</div><ul class="poster-list">${p.skills.map((s) => `<li>${SKILLS[s] ? tr(SKILLS[s]) : esc(s)}</li>`).join('')}</ul>`].filter(Boolean).join(''))}
+    ${sec('yellow', '🗣️', tr('Languages'), (p.languages || []).map((l) => row('💬', `${esc(langName(l.code))} · ${l.level === 'native' ? tr('native') : esc(l.level)}`)).join(''))}
+    ${sec('blue', '✨', tr('Good to know'), [p.drivers_license && row('🚗', tr("Has a driver's license")), p.non_smoker && row('🚭', tr('Non-smoker')),
+      p.ok_with_pets && row('🐾', tr('Happy to live with pets')), p.education && row('🎓', esc(p.education))].filter(Boolean).join(''))}
+    ${sec('teal', '🌿', tr('Hobbies and personality'), hobbies.length ? `<div class="poster-grid">${hobbies.map((k) => row(HOBBIES[k][0], tr(HOBBIES[k][1]))).join('')}</div>` : '')}
+    ${sec('pink', '🎯', tr('My goal'), [para(p.goal), p.preferred_countries?.length && row('🌍', tr('Would love to go to {places}', { places: p.preferred_countries.map(cname).join(', ') }))].filter(Boolean).join(''))}
+    ${sec('lilac', '🏡', tr('My ideal family'), para(p.ideal_family))}
+    ${sec('yellow', '📅', tr('Available'), [p.available_from && row('🗓️', tr('From {date}', { date: fmtDate(p.available_from) })), months && row('⏳', tr('For {stay}', { stay: months }))].filter(Boolean).join(''))}
+    ${extra.length ? `<div class="poster-strip">${extra.map((src) => `<div class="polaroid"><img src="${esc(src)}" alt="" draggable="false"></div>`).join('')}</div>` : ''}
+    <div class="poster-end"><strong>${tr('Looking for my next host family!')} ♡</strong><span>${tr('Like my profile if you think we could be a good match.')}</span></div></div>`;
+}
+
 views.u = async ([id]) => {
   const d = await api(`/users/${id}`);
   const u = d.user; const p = d.profile || {};
@@ -635,12 +679,7 @@ views.u = async ([id]) => {
   }
   const yes = (v) => (v ? tr('Yes') : tr('No'));
   const months = p.duration_months && trn(p.duration_months, '{n} month', '{n} months');
-  const facts = u.role === 'aupair' ? [
-    ['🎂', tr('Age'), p.age], ['🛂', tr('Nationality'), cname(p.nationality)], ['🧸', tr('Childcare experience'), p.childcare_years != null && trn(p.childcare_years, '{n} year', '{n} years')],
-    ['📅', tr('Available from'), fmtDate(p.available_from)], ['⏳', tr('Stay length'), months],
-    ['🚗', tr("Driver's license"), yes(p.drivers_license)], ['🚭', tr('Non-smoker'), yes(p.non_smoker)], ['🐾', tr('OK with pets'), yes(p.ok_with_pets)],
-    ['🎓', tr('Education'), p.education],
-  ] : [
+  const facts = [
     ['📍', tr('Location'), [u.city, cname(u.country)].filter(Boolean).join(', ')], ['👶', tr('Children'), p.children?.length ? p.children.map((c) => trn(c.age, '{n} year', '{n} years')).join(', ') : '—'],
     ['📅', tr('Start date'), fmtDate(p.start_date)], ['⏳', tr('Stay length'), months], ['⏰', tr('Hours / week'), p.weekly_hours],
     ['💶', tr('Pocket money / month'), p.pocket_money], ['🚗', tr('Needs a driver'), yes(p.needs_driver)], ['🐾', tr('Pets'), yes(p.has_pets)], ['🛏️', tr('Private room'), yes(p.private_room)],
@@ -648,12 +687,15 @@ views.u = async ([id]) => {
   const preview = mine ? `<div class="alert info preview-note"><div><strong>👁 ${u.role === 'aupair' ? tr('This is how host families see your profile.') : tr('This is how au pairs see your profile.')}</strong>
       ${p.visible === 0 ? `<div class="small">${tr('Your profile is hidden right now, so nobody can find you. You can show it again in your profile settings.')}</div>` : ''}</div>
       <a class="btn sm" href="#/profile">${tr('Edit profile')}</a></div>` : '';
-  render(`${preview}<div class="profile-layout"><div class="profile-left">
-      <div class="profile-hero">${gallery(u, { cls: 'hero-gallery' })}<div class="card-shade"></div>
+  const ap = u.role === 'aupair';
+  const score = d.match ? `<div class="poster-score ${d.match.score >= 75 ? 'high' : ''}">${tr('{n}% match', { n: d.match.score })}</div>` : '';
+  const stats = `${d.rating.count ? `★ ${d.rating.avg} (${trn(d.rating.count, '{n} review', '{n} reviews')}) · ` : ''}${trn(d.placements_completed, '{n} completed placement', '{n} completed placements')}`;
+  render(`${preview}<div class="profile-layout${ap ? ' poster' : ''}"><div class="profile-left">
+      ${ap ? `${posterHeader(u, p, score)}<div class="muted small center">${stats}</div>` : `<div class="profile-hero">${gallery(u, { cls: 'hero-gallery' })}<div class="card-shade"></div>
         ${d.match ? `<div class="card-score ${d.match.score >= 75 ? 'high' : ''}">${tr('{n}% match', { n: d.match.score })}</div>` : ''}
         <div class="card-info static"><h2>${esc(u.name)}${p.age && u.role === 'aupair' ? ` <span class="age">${p.age}</span>` : ''} ${u.verification.id ? `<span class="tick" title="${tr('ID verified')}">✔</span>` : ''}</h2>
           <div class="sub">${u.role === 'aupair' ? tr('Au pair') : tr('Host family')} · ${flag(u.country)} ${esc([u.city, country(u.country)].filter(Boolean).join(', '))}</div>
-          <div class="sub">${d.rating.count ? `★ ${d.rating.avg} (${trn(d.rating.count, '{n} review', '{n} reviews')}) · ` : ''}${trn(d.placements_completed, '{n} completed placement', '{n} completed placements')}</div></div></div>
+          <div class="sub">${d.rating.count ? `★ ${d.rating.avg} (${trn(d.rating.count, '{n} review', '{n} reviews')}) · ` : ''}${trn(d.placements_completed, '{n} completed placement', '{n} completed placements')}</div></div></div>`}
       ${action}
       <div class="row center-row small">${!mine ? `<button class="btn ghost sm" id="fav">${d.favorite ? `♥ ${tr('Saved')}` : `♡ ${tr('Save')}`}</button><button class="btn ghost sm" id="report">⚑ ${tr('Report')}</button>${d.blocked ? '' : `<button class="btn ghost sm" id="block">🚫 ${tr('Block')}</button>`}` : ''}
         <button class="btn ghost sm" onclick="history.back()">← ${tr('Back')}</button></div>
@@ -661,15 +703,11 @@ views.u = async ([id]) => {
       ${d.match ? `<div class="card"><h3>${tr('Why you match')}</h3>
         ${d.match.reasons.map((r) => `<div class="small" style="color:var(--ok)">✓ ${esc(r)}</div>`).join('')}
         ${d.match.warnings.map((r) => `<div class="small" style="color:var(--warn)">⚠ ${esc(r)}</div>`).join('')}</div>` : ''}
-      <div class="card"><h3>${u.role === 'aupair' ? tr('About me') : tr('About us')}</h3><p style="white-space:pre-wrap;margin-top:0">${esc(p.bio) || `<span class="muted">${tr('No description yet.')}</span>`}</p>
+      ${ap ? `${verifyBadges(u.verification) ? `<div style="margin-bottom:10px">${verifyBadges(u.verification)}</div>` : ''}${posterBody(u, p)}` : `<div class="card"><h3>${tr('About us')}</h3><p style="white-space:pre-wrap;margin-top:0">${esc(p.bio) || `<span class="muted">${tr('No description yet.')}</span>`}</p>
         <div>${verifyBadges(u.verification) || `<span class="muted small">${tr('Not yet verified')}</span>`}</div></div>
       <div class="card"><h3>${tr('Basics')}</h3><div class="facts">${facts.filter(([, , v]) => v != null && v !== '').map(([i, k, v]) => `<div class="fact"><span>${i}</span><div><div class="muted small">${k}</div>${esc(v)}</div></div>`).join('')}</div></div>
-      <div class="card">${u.role === 'aupair' ? `<h3>${tr('Languages')}</h3><div class="chips">${(p.languages || []).map((l) => `<span class="chip">${esc(langName(l.code))} · ${esc(l.level)}</span>`).join('')}</div>
-          <h3 style="margin-top:12px">${tr('Experience with')}</h3><div class="chips">${(p.age_groups || []).map((g) => `<span class="chip">${AGE_GROUPS[g] ? tr(AGE_GROUPS[g]) : esc(g)}</span>`).join('')}</div>
-          <h3 style="margin-top:12px">${tr('Skills')}</h3><div class="chips">${(p.skills || []).map((x) => `<span class="chip">${SKILLS[x] ? tr(SKILLS[x]) : esc(x)}</span>`).join('')}</div>
-          <h3 style="margin-top:12px">${tr('Wants to go to')}</h3><div class="chips">${(p.preferred_countries || []).map((c) => `<span class="chip">${cname(c)}</span>`).join('') || `<span class="muted">${tr('Open to anywhere')}</span>`}</div>`
-    : `<h3>${tr('Languages at home')}</h3><div class="chips">${(p.languages || []).map((l) => `<span class="chip">${esc(langName(l))}</span>`).join('')}</div>
-          <h3 style="margin-top:12px">${tr('Au pair must speak')}</h3><div class="chips">${(p.required_languages || []).map((l) => `<span class="chip">${esc(langName(l))}</span>`).join('') || `<span class="muted">${tr('No requirement')}</span>`}</div>`}</div>
+      <div class="card"><h3>${tr('Languages at home')}</h3><div class="chips">${(p.languages || []).map((l) => `<span class="chip">${esc(langName(l))}</span>`).join('')}</div>
+          <h3 style="margin-top:12px">${tr('Au pair must speak')}</h3><div class="chips">${(p.required_languages || []).map((l) => `<span class="chip">${esc(langName(l))}</span>`).join('') || `<span class="muted">${tr('No requirement')}</span>`}</div></div>`}
       <div class="card"><h3>${tr('Reviews')}</h3>${ratingBreakdown(d.rating)}
         ${d.reviews.map((r) => reviewItem(r, mine)).join('') || `<div class="empty">${tr('No reviews yet. Reviews come only from real placements.')}</div>`}</div>
     </div></div>`);
@@ -759,7 +797,11 @@ views.profile = async () => {
       <h3 style="margin-top:16px">${tr('Experience with')}</h3>${chipSet('age_groups', AGE_GROUPS, p.age_groups)}
       <h3 style="margin-top:16px">${tr('Skills')}</h3>${chipSet('skills', SKILLS, p.skills)}
       <h3 style="margin-top:16px">${tr("Countries I'd like to go to")}</h3><p class="muted small">${tr("Leave empty if you're open to anywhere.")}</p>
-      ${chipSet('preferred_countries', Object.fromEntries(PROGRAM_CODES.map((c) => [c, cname(c)])), p.preferred_countries)}</div>`
+      ${chipSet('preferred_countries', Object.fromEntries(PROGRAM_CODES.map((c) => [c, cname(c)])), p.preferred_countries)}
+      <h3 style="margin-top:16px">${tr('Words that describe me')}</h3>${chipSet('traits', TRAITS, p.traits)}
+      <h3 style="margin-top:16px">${tr('Hobbies')}</h3>${chipSet('hobbies', Object.fromEntries(Object.entries(HOBBIES).map(([k, [i, l]]) => [k, `${i} ${tr(l)}`])), p.hobbies)}
+      <div class="field" style="margin-top:16px"><label>${tr('My goal as an au pair')}</label><textarea name="goal" maxlength="400" placeholder="${tr('For example: improve my English and see more of the world.')}">${esc(p.goal)}</textarea></div>
+      <div class="field"><label>${tr('My ideal host family')}</label><textarea name="ideal_family" maxlength="400" placeholder="${tr('For example: a warm family with young children who likes the outdoors.')}">${esc(p.ideal_family)}</textarea></div></div>`
     : `<div class="card"><h2>${tr('Family details')}</h2><div class="form-grid">
       <div class="field"><label>${tr("Children's ages (comma separated)")}</label><input name="children" value="${esc((p.children || []).map((c) => c.age).join(', '))}" placeholder="${tr('e.g. 2, 6')}"></div>
       <div class="field"><label>${tr('Start date')}</label><input type="date" name="start_date" value="${esc(p.start_date)}"></div>
@@ -815,6 +857,7 @@ views.profile = async () => {
       drivers_license: f.drivers_license.checked, non_smoker: f.non_smoker.checked, ok_with_pets: f.ok_with_pets.checked,
       languages: [...document.querySelectorAll('.lang-row')].map((r) => ({ code: r.querySelector('.lc').value, level: r.querySelector('.ll').value })).filter((l) => l.code),
       age_groups: chips('age_groups'), skills: chips('skills'), preferred_countries: chips('preferred_countries'),
+      traits: chips('traits'), hobbies: chips('hobbies'), goal: v.goal, ideal_family: v.ideal_family,
     });
     else Object.assign(profile, {
       children: v.children.split(',').map((s) => s.trim()).filter((s) => s !== '' && !Number.isNaN(Number(s))).map((a) => ({ age: Number(a) })),

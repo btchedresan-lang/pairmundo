@@ -205,6 +205,44 @@ th { color: var(--muted); font-weight: 600; font-size: .8rem; text-transform: up
 .fact { display: flex; gap: 10px; align-items: flex-start; } .fact > span { font-size: 1.3rem; }
 @media (max-width: 820px) { .profile-layout { grid-template-columns: 1fr; } .profile-left { position: static; } }
 
+/* Au pair profile as a "Hi, I'm ..." letter */
+.poster-head { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin-bottom: 12px; }
+.poster-hi { font-family: var(--heading); font-weight: 600; font-size: 2.6rem; line-height: 1.1; }
+.poster-name { font-family: var(--heading); font-weight: 600; font-size: 2.1rem; line-height: 1.15; }
+.poster-name .tick { color: var(--brand); font-size: 1.4rem; }
+.poster-pill { margin: 8px 0 14px; background: #f8d6de; color: #5c2233; font-family: var(--heading); font-size: 1.15rem; padding: 5px 14px; border-radius: 10px; transform: rotate(-2deg); }
+.polaroid { background: #fff; padding: 8px; border-radius: 4px; box-shadow: 0 3px 12px rgba(0,0,0,.16); }
+.polaroid.big { align-self: center; width: calc(100% - 48px); padding-bottom: 6px; transform: rotate(1.5deg); cursor: pointer; }
+.polaroid-photo { position: relative; aspect-ratio: 3 / 4; overflow: hidden; background: #222; }
+.polaroid-photo .gal-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.polaroid-cap { text-align: center; color: #475066; font-family: var(--heading); font-size: .95rem; margin-top: 6px; }
+.poster-score { align-self: center; margin-top: 14px; background: var(--brand); color: #fff; font-weight: 700; padding: 4px 12px; border-radius: 999px; }
+.poster-score.high { background: var(--like); }
+.poster-body { display: flex; flex-direction: column; gap: 16px; }
+.poster-card { --c-bg: #eef8f1; --c-head: #d6f0df; --c-acc: #2f9e5b; background: var(--c-bg); border-radius: 18px; overflow: hidden; }
+.poster-card:nth-child(odd) { transform: rotate(-.3deg); } .poster-card:nth-child(even) { transform: rotate(.3deg); }
+.poster-card h3 { margin: 0; padding: 10px 16px; background: var(--c-head); font-weight: 600; font-size: 1.2rem; display: flex; gap: 8px; align-items: center; }
+.poster-in { padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+.poster-row { display: flex; gap: 10px; align-items: flex-start; } .poster-row > span { width: 24px; text-align: center; flex: none; }
+.poster-p { margin: 0; white-space: pre-wrap; }
+.poster-sub { font-weight: 700; margin-top: 4px; }
+.poster-list { margin: 0; padding-left: 20px; columns: 2; }
+.poster-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.poster-card.peach { --c-bg: #fdf1ea; --c-head: #fadbc8; } .poster-card.blue { --c-bg: #edf3fd; --c-head: #d6e4fb; }
+.poster-card.teal { --c-bg: #e9f7f6; --c-head: #cfeeeb; } .poster-card.pink { --c-bg: #fdeff2; --c-head: #f8d6de; }
+.poster-card.lilac { --c-bg: #f4eefc; --c-head: #e4d8f7; } .poster-card.yellow { --c-bg: #fdf7e4; --c-head: #f8e8b0; }
+@media (prefers-color-scheme: dark) {
+  .poster-card { --c-bg: #2f9e5b1f; --c-head: #2f9e5b40; }
+  .poster-card.peach { --c-bg: #e0703a1f; --c-head: #e0703a40; } .poster-card.blue { --c-bg: #3b6fd81f; --c-head: #3b6fd840; }
+  .poster-card.teal { --c-bg: #1f9a921f; --c-head: #1f9a9240; } .poster-card.pink { --c-bg: #d6456b1f; --c-head: #d6456b40; }
+  .poster-card.lilac { --c-bg: #8456d01f; --c-head: #8456d040; } .poster-card.yellow { --c-bg: #b8860b1f; --c-head: #b8860b40; }
+}
+.poster-strip { display: flex; justify-content: center; gap: 12px; padding: 6px 0; }
+.poster-strip .polaroid { width: 110px; } .poster-strip .polaroid img { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; display: block; }
+.poster-strip .polaroid:nth-child(1) { transform: rotate(-4deg); } .poster-strip .polaroid:nth-child(2) { transform: rotate(3deg); } .poster-strip .polaroid:nth-child(3) { transform: rotate(-2deg); }
+.poster-end { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px; transform: rotate(-1.5deg); padding: 6px 0 12px; }
+.poster-end strong { font-family: var(--heading); font-weight: 600; font-size: 1.5rem; } .poster-end span { color: var(--muted); font-family: var(--heading); }
+
 .photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-width: 480px; }
 .photo-slot { position: relative; aspect-ratio: 3 / 4; border-radius: 12px; overflow: hidden; background: var(--bg); border: 2px dashed var(--line);
   display: flex; align-items: center; justify-content: center; text-align: center; color: var(--muted); font-weight: 700; font-size: 1.6rem; margin: 0; }
@@ -248,6 +286,5 @@ th { color: var(--muted); font-weight: 600; font-size: .8rem; text-transform: up
 .waitlist select { flex: 0 1 180px; width: auto; }
 .step-n { width: 36px; height: 36px; border-radius: 50%; background: var(--brand); color: var(--brand-ink); display: flex;
   align-items: center; justify-content: center; font-weight: 800; }
-.center { text-align: center; }
 .waitlist[hidden] { display: none; }
 .preview-note { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 16px; }

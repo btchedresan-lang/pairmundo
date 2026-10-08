@@ -4,11 +4,12 @@ import { HEADING, Text } from '../../components/Text';
 import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { api } from '../../api';
 import { useAuth } from '../../auth';
-import { AGE_GROUPS, cname, country, CRIT_LABEL, flag, fmtDate, langName, SKILLS } from '../../data';
+import { country, CRIT_LABEL, flag, fmtDate, langName } from '../../data';
 import { tr, trn } from '../../i18n';
 import { Alert, Button, Card, Chip, Chips, Loading, RoundButton, Screen, Stars, T } from '../../components/ui';
 import { Gallery, Shade } from '../../components/SwipeDeck';
 import { MatchModal } from '../../components/pickers';
+import { PosterBody, PosterHeader } from '../../components/Poster';
 import { confirmAsync } from '../../components/dialogs';
 import { C } from '../../theme';
 
@@ -63,11 +64,7 @@ export default function UserProfile() {
 
   const yes = (v) => (v ? tr('Yes') : tr('No'));
   const months = p.duration_months && trn(p.duration_months, '{n} month', '{n} months');
-  const facts = u.role === 'aupair' ? [
-    ['🎂', tr('Age'), p.age], ['🛂', tr('Nationality'), cname(p.nationality)], ['🧸', tr('Childcare'), p.childcare_years != null && trn(p.childcare_years, '{n} year', '{n} years')],
-    ['📅', tr('Available'), fmtDate(p.available_from)], ['⏳', tr('Stay'), months],
-    ['🚗', tr('Driver'), yes(p.drivers_license)], ['🚭', tr('Non-smoker'), yes(p.non_smoker)], ['🐾', tr('OK with pets'), yes(p.ok_with_pets)],
-  ] : [
+  const facts = [
     ['👶', tr('Children'), p.children?.length ? p.children.map((c) => tr('{n} yrs', { n: c.age })).join(', ') : '—'], ['📅', tr('Start'), fmtDate(p.start_date)],
     ['⏳', tr('Stay'), months], ['⏰', tr('Hours / week'), p.weekly_hours], ['💶', tr('Pocket money'), p.pocket_money && tr('{amount} / month', { amount: p.pocket_money })],
     ['🚗', tr('Needs driver'), yes(p.needs_driver)], ['🐾', tr('Pets'), yes(p.has_pets)], ['🛏️', tr('Private room'), yes(p.private_room)],
@@ -76,7 +73,12 @@ export default function UserProfile() {
   return (
     <Screen padded={false}>
       <Stack.Screen options={{ title: u.name }} />
-      <View style={{ alignSelf: 'center', width: W }}>
+      {u.role === 'aupair' ? (
+        <View style={{ alignSelf: 'center', width: W }}>
+          <PosterHeader u={u} p={p} width={W} badge={d.match ? <Text style={{ marginTop: 12, backgroundColor: d.match.score >= 75 ? C.like : C.primary, color: '#fff', fontWeight: '700', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, overflow: 'hidden' }}>{tr('{score}% match', { score: d.match.score })}</Text> : null} />
+          <T small muted style={{ textAlign: 'center', marginTop: 10 }}>{d.rating.count ? `★ ${d.rating.avg} (${trn(d.rating.count, '{n} review', '{n} reviews')}) · ` : ''}{trn(d.placements_completed, '{n} completed placement', '{n} completed placements')}</T>
+        </View>
+      ) : <View style={{ alignSelf: 'center', width: W }}>
         <Gallery user={u} style={{ width: W, height: W * 4 / 3 }}>
           <Shade />
           {d.match ? <Text style={{ position: 'absolute', top: 22, right: 14, backgroundColor: d.match.score >= 75 ? C.like : 'rgba(0,0,0,0.55)', color: '#fff', fontWeight: '700', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, overflow: 'hidden' }}>{tr('{score}% match', { score: d.match.score })}</Text> : null}
@@ -86,7 +88,7 @@ export default function UserProfile() {
             <Text style={{ color: '#fff', fontSize: 14, opacity: 0.9 }}>{d.rating.count ? `★ ${d.rating.avg} (${trn(d.rating.count, '{n} review', '{n} reviews')}) · ` : ''}{trn(d.placements_completed, '{n} completed placement', '{n} completed placements')}</Text>
           </View>
         </Gallery>
-      </View>
+      </View>}
 
       <View style={{ padding: 16, gap: 12 }}>
         {isMe ? (
@@ -128,8 +130,16 @@ export default function UserProfile() {
           </Card>
         ) : null}
 
+        {u.role === 'aupair' ? <>
+          {u.verification.id || u.verification.references || u.verification.background ? <Chips>
+            {u.verification.id ? <Chip tone="ok" label={`✔ ${tr('ID verified')}`} /> : null}
+            {u.verification.references ? <Chip tone="ok" label={`✔ ${tr('References')}`} /> : null}
+            {u.verification.background ? <Chip tone="ok" label={`✔ ${tr('Background check')}`} /> : null}
+          </Chips> : null}
+          <View style={{ marginHorizontal: -16 }}><PosterBody u={u} p={p} /></View>
+        </> : <>
         <Card>
-          <T bold>{u.role === 'aupair' ? tr('About me') : tr('About us')}</T>
+          <T bold>{tr('About us')}</T>
           <T>{p.bio || tr('No description yet.')}</T>
           <Chips>
             {u.verification.id ? <Chip tone="ok" label={`✔ ${tr('ID verified')}`} /> : null}
@@ -151,22 +161,12 @@ export default function UserProfile() {
         </Card>
 
         <Card>
-          {u.role === 'aupair' ? <>
-            <T bold>{tr('Languages')}</T>
-            <Chips>{(p.languages || []).map((l) => <Chip key={l.code} label={`${langName(l.code)} · ${l.level === 'native' ? tr('native') : l.level}`} />)}</Chips>
-            <T bold>{tr('Experience with')}</T>
-            <Chips>{(p.age_groups || []).map((g) => <Chip key={g} label={AGE_GROUPS[g] ? tr(AGE_GROUPS[g]) : g} />)}</Chips>
-            <T bold>{tr('Skills')}</T>
-            <Chips>{(p.skills || []).map((s) => <Chip key={s} label={SKILLS[s] ? tr(SKILLS[s]) : s} />)}</Chips>
-            <T bold>{tr('Wants to go to')}</T>
-            <Chips>{(p.preferred_countries || []).length ? p.preferred_countries.map((c) => <Chip key={c} label={cname(c)} />) : <T muted>{tr('Open to anywhere')}</T>}</Chips>
-          </> : <>
-            <T bold>{tr('Languages at home')}</T>
-            <Chips>{(p.languages || []).map((l) => <Chip key={l} label={langName(l)} />)}</Chips>
-            <T bold>{tr('Au pair must speak')}</T>
-            <Chips>{(p.required_languages || []).length ? p.required_languages.map((l) => <Chip key={l} label={langName(l)} />) : <T muted>{tr('No requirement')}</T>}</Chips>
-          </>}
+          <T bold>{tr('Languages at home')}</T>
+          <Chips>{(p.languages || []).map((l) => <Chip key={l} label={langName(l)} />)}</Chips>
+          <T bold>{tr('Au pair must speak')}</T>
+          <Chips>{(p.required_languages || []).length ? p.required_languages.map((l) => <Chip key={l} label={langName(l)} />) : <T muted>{tr('No requirement')}</T>}</Chips>
         </Card>
+        </>}
 
         <Card>
           <T bold>{tr('Reviews')}</T>
