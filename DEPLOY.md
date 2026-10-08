@@ -70,14 +70,14 @@ Stripe asks you to activate Identity once (Stripe → Identity) before live chec
 
 ## Family Pass
 
-Families pay €79 once for 90 days of messaging and seeing who liked them; au pairs stay free. Two switches in Render → Environment:
+Families pay once for messaging and seeing who liked them: €39 for 1 month (30 days) or €79 for 3 months (90 days). Au pairs stay free. Two switches in Render → Environment:
 
 - `FAMILY_PASS` = `on` makes families need the pass. Leave it out and everything stays free.
 - Payment on the website uses the same `STRIPE_SECRET_KEY` as the ID check. Add the event `checkout.session.completed` to the same Stripe webhook so a pass starts even if someone closes the page after paying.
 
 - In the iPhone and Android apps, families pay with Apple or Google through RevenueCat (free until $2,500 a month in sales):
-  1. In App Store Connect and Google Play Console, create a one-off (consumable) in-app product with the ID `family_pass_90`.
-  2. In RevenueCat, add both apps and the product. Copy the public SDK keys (`appl_...` and `goog_...`) into `mobile/brand.json` as `revenuecatIos` and `revenuecatAndroid`.
+  1. In App Store Connect and Google Play Console, create two one-off (consumable) in-app products with the IDs `family_pass_30` (1 month) and `family_pass_90` (3 months).
+  2. In RevenueCat, add both apps and both products. Copy the public SDK keys (`appl_...` and `goog_...`) into `mobile/brand.json` as `revenuecatIos` and `revenuecatAndroid`.
   3. In Render, set `REVENUECAT_SECRET_KEY` (RevenueCat → API keys, a secret key starting `sk_`).
   4. In RevenueCat → Integrations → Webhooks, add `https://pairmundo.com/api/revenuecat/webhook` and type any long password as the Authorization header; put the same password in Render as `REVENUECAT_WEBHOOK_AUTH`. Refunds then end the pass too.
   In-app purchase only works in a store build (`eas build`), not in Expo Go.
