@@ -4,7 +4,7 @@ import { Text } from '../../components/Text';
 import { router } from 'expo-router';
 import { api, getBase } from '../../api';
 import { useAuth } from '../../auth';
-import { AGE_GROUPS, cname, fmtDate, langName, SKILLS, TOP_LANGS } from '../../data';
+import { AGE_GROUPS, cname, fmtDate, HOBBIES, langName, SKILLS, TOP_LANGS, TRAITS } from '../../data';
 import { PhotoGrid } from '../../components/PhotoGrid';
 import { tr, trMap } from '../../i18n';
 import { Alert, Button, Card, ChoiceChips, Field, Screen, T } from '../../components/ui';
@@ -28,6 +28,7 @@ export default function MyProfile() {
         birth_date: p.birth_date || '', nationality: p.nationality, childcare_years: String(p.childcare_years ?? ''), available_from: p.available_from || '',
         duration_months: String(p.duration_months ?? ''), drivers_license: !!p.drivers_license, languages: (p.languages || []).map((l) => l.code),
         levels: Object.fromEntries((p.languages || []).map((l) => [l.code, l.level])), age_groups: p.age_groups || [], skills: p.skills || [], preferred_countries: p.preferred_countries || [],
+        traits: p.traits || [], hobbies: p.hobbies || [], goal: p.goal || '', ideal_family: p.ideal_family || '',
       } : {
         children: (p.children || []).map((c) => c.age).join(', '), start_date: p.start_date || '', duration_months: String(p.duration_months ?? ''),
         weekly_hours: String(p.weekly_hours ?? ''), pocket_money: String(p.pocket_money ?? ''), needs_driver: !!p.needs_driver, has_pets: !!p.has_pets,
@@ -45,6 +46,7 @@ export default function MyProfile() {
       birth_date: f.birth_date || null, nationality: f.nationality || null, childcare_years: num(f.childcare_years) ?? 0, available_from: f.available_from || null,
       duration_months: num(f.duration_months), drivers_license: f.drivers_license, age_groups: f.age_groups, skills: f.skills, preferred_countries: f.preferred_countries,
       languages: f.languages.map((code) => ({ code, level: f.levels[code] || 'B2' })),
+      traits: f.traits, hobbies: f.hobbies, goal: f.goal, ideal_family: f.ideal_family,
     });
     else Object.assign(profile, {
       children: f.children.split(',').map((s) => s.trim()).filter((s) => s !== '' && !Number.isNaN(Number(s))).map((a) => ({ age: Number(a) })),
@@ -99,6 +101,10 @@ export default function MyProfile() {
           <ChoiceChips label={tr('Experience with')} options={trMap(AGE_GROUPS)} value={f.age_groups} onChange={set('age_groups')} multi />
           <ChoiceChips label={tr('Skills')} options={trMap(SKILLS)} value={f.skills} onChange={set('skills')} multi />
           <ChoiceChips label={tr("Where I'd like to go (empty = anywhere)")} options={labels(DESTINATIONS, cname)} value={f.preferred_countries} onChange={set('preferred_countries')} multi />
+          <ChoiceChips label={tr('Words that describe me')} options={trMap(TRAITS)} value={f.traits} onChange={set('traits')} multi />
+          <ChoiceChips label={tr('Hobbies')} options={Object.fromEntries(Object.entries(HOBBIES).map(([k, [i, l]]) => [k, `${i} ${tr(l)}`]))} value={f.hobbies} onChange={set('hobbies')} multi />
+          <Field label={tr('My goal as an au pair')} multiline value={f.goal} onChangeText={set('goal')} placeholder={tr('For example: improve my English and see more of the world.')} />
+          <Field label={tr('My ideal host family')} multiline value={f.ideal_family} onChangeText={set('ideal_family')} placeholder={tr('For example: a warm family with young children who likes the outdoors.')} />
         </Card>
       ) : (
         <Card>

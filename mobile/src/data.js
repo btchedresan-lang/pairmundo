@@ -16,6 +16,13 @@ export const TOP_LANGS = ['en', 'es', 'fr', 'de', 'it', 'pt', 'nl', 'sv', 'da', 
 export const AGE_GROUPS = { infant: 'Infants (0-2)', toddler: 'Toddlers (2-5)', school: 'School age (5-12)', teen: 'Teens (13+)' };
 export const SKILLS = { first_aid: 'First aid', swimming: 'Swimming', cooking: 'Cooking', tutoring: 'Homework help', music: 'Music', art: 'Arts & crafts',
   sports: 'Sports', special_needs: 'Special needs', housekeeping: 'Housekeeping' };
+/** Personality words and hobbies an au pair can pick for the poster-style profile. */
+export const TRAITS = { patient: 'Patient', caring: 'Caring', responsible: 'Responsible', fun: 'Fun', calm: 'Calm', creative: 'Creative',
+  curious: 'Curious', organised: 'Organised', sporty: 'Sporty', cheerful: 'Cheerful', flexible: 'Flexible', reliable: 'Reliable' };
+export const HOBBIES = { travel: ['✈️', 'Travelling'], outdoors: ['⛰️', 'Hiking and nature'], skiing: ['⛷️', 'Skiing'], beach: ['🌊', 'The ocean'],
+  animals: ['🐾', 'Animals'], movies: ['🎬', 'Movies and series'], sports: ['⚽', 'Sports'], music: ['🎵', 'Music'], reading: ['📚', 'Reading'],
+  cooking: ['🍳', 'Cooking and baking'], art: ['🎨', 'Drawing and crafts'], dancing: ['💃', 'Dancing'], photography: ['📷', 'Photography'],
+  friends: ['👯', 'Time with friends'], languages: ['🗣️', 'Learning languages'], gaming: ['🎮', 'Games'] };
 export const CRIT_LABEL = { reliability: 'Reliability', childcare: 'Childcare', communication: 'Communication', household: 'Household help',
   adaptability: 'Adaptability', respect: 'Respect', accommodation: 'Accommodation', fair_hours: 'Fair hours', support: 'Support' };
 
