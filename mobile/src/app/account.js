@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AppState, Linking, Pressable, View } from 'react-native';
+import { AppState, Linking, Pressable, Share, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useAuth } from '../auth';
 import { api, getBase, setToken } from '../api';
@@ -19,6 +19,7 @@ export default function Account() {
   const [idCheck, setIdCheck] = useState(null);
   const [idBusy, setIdBusy] = useState(false);
   const [idErr, setIdErr] = useState(null);
+  const [amb, setAmb] = useState(null);
 
   const loadIdCheck = useCallback(() => api('/me/id-check').then((d) => {
     setIdCheck(d);
@@ -27,7 +28,8 @@ export default function Account() {
   useFocusEffect(useCallback(() => {
     api('/blocks').then((d) => setBlocked(d.blocked)).catch(() => setBlocked([]));
     loadIdCheck();
-  }, [loadIdCheck]));
+    if (me.ambassador) api('/me/ambassador').then(setAmb).catch(() => setAmb(null));
+  }, [loadIdCheck, me.ambassador]));
   // Coming back from Stripe's page in the browser: ask for the result.
   useEffect(() => {
     const sub = AppState.addEventListener('change', (s) => { if (s === 'active') loadIdCheck(); });
@@ -59,6 +61,7 @@ export default function Account() {
 
   return (
     <Screen>
+      {amb ? <AmbassadorCard amb={amb} /> : null}
       <Card>
         <T h2>{tr('Language')}</T>
         <Chips>
@@ -114,5 +117,32 @@ export default function Account() {
         <Button title={tr('Delete my account')} kind="danger" onPress={del} loading={busy} disabled={!password} />
       </Card>
     </Screen>
+  );
+}
+
+const eur = (cents) => `€${(cents / 100).toFixed(2).replace(/\.00$/, '')}`;
+
+/** An ambassador's code, link and what it has brought in. */
+function AmbassadorCard({ amb }) {
+  const rows = [[tr('On the waitlist'), 'waitlist'], [tr('Au pairs who joined'), 'aupairs'], [tr('Families who joined'), 'families'],
+    [tr('Completed au pair profiles'), 'profiles'], [tr('Families who bought a Family Pass'), 'passes'], [tr('Stays that started'), 'placements']];
+  const row = (label, a, b, bold) => (
+    <View key={label} style={{ flexDirection: 'row', gap: 8 }}>
+      <T small bold={bold} style={{ flex: 1 }}>{label}</T><T small bold={bold} style={{ width: 64, textAlign: 'right' }}>{a}</T><T small bold={bold} style={{ width: 64, textAlign: 'right' }}>{b}</T>
+    </View>
+  );
+  return (
+    <Card>
+      <T h2>🌍 {tr('PairMundo ambassador')}</T>
+      <T>{tr('Your code')}: <T bold>{amb.code}</T></T>
+      <T small style={{ color: C.primary }} selectable>{amb.link}</T>
+      <Button title={tr('Share my link')} onPress={() => Share.share({ message: tr('Join PairMundo with my link: {link}', { link: amb.link }) }).catch(() => {})} />
+      {row('', tr('This month'), tr('All time'), true)}
+      {rows.map(([label, k]) => row(label, amb.this_month[k], amb.total[k]))}
+      {row(tr('Earned'), eur(amb.this_month.earned_cents), eur(amb.total.earned_cents), true)}
+      <T>{tr('Not paid out yet')}: <T bold>{eur(amb.total.owed_cents)}</T></T>
+      <T small muted>{tr("You earn {profile} for each au pair who completes their profile, {share}% of a family's first Family Pass, and {placement} when a stay starts. Only people who join with your link or code count.",
+        { profile: eur(amb.rewards.profile), share: Math.round(amb.rewards.pass_share * 100), placement: eur(amb.rewards.placement) })}</T>
+    </Card>
   );
 }

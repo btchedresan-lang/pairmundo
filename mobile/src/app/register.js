@@ -9,13 +9,13 @@ import { tr } from '../i18n';
 
 export default function Register() {
   const { signIn } = useAuth();
-  const [f, setF] = useState({ role: 'family', name: '', country: null, city: '', email: '', password: '' });
+  const [f, setF] = useState({ role: 'family', name: '', country: null, city: '', email: '', password: '', ref_code: '' });
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
   const set = (k) => (v) => setF((x) => ({ ...x, [k]: v }));
   const submit = async () => {
     setErr(null); setBusy(true);
-    try { await signIn('/auth/register', { ...f, email: f.email.trim() }); }
+    try { await signIn('/auth/register', { ...f, email: f.email.trim(), ref_code: f.ref_code.trim() }); }
     catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
   return (
@@ -26,6 +26,8 @@ export default function Register() {
       <Field label={tr('City')} value={f.city} onChangeText={set('city')} />
       <Field label={tr('Email')} value={f.email} onChangeText={set('email')} keyboardType="email-address" autoCapitalize="none" />
       <Field label={tr('Password')} value={f.password} onChangeText={set('password')} secureTextEntry placeholder={tr('At least 8 characters')} />
+      {/* An ambassador's code. Installs from the app stores can't carry their link, so people type it. */}
+      <Field label={tr('Referral code (optional)')} value={f.ref_code} onChangeText={set('ref_code')} autoCapitalize="characters" placeholder={tr('From the person who invited you')} />
       {err ? <Alert level="error" text={err} /> : null}
       <Button title={tr('Create account')} onPress={submit} loading={busy} />
       <T small muted style={{ textAlign: 'center' }}>

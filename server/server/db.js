@@ -263,6 +263,33 @@ CREATE TABLE IF NOT EXISTS country_programs (
   admin_edited INTEGER NOT NULL DEFAULT 0          -- set once an admin edits; seed updates then leave the row alone
 );
 
+-- Ambassadors share a referral code (on a link or typed at sign-up). People who join with it earn them rewards.
+CREATE TABLE IF NOT EXISTS ambassadors (
+  id INTEGER PRIMARY KEY,
+  code TEXT NOT NULL UNIQUE COLLATE NOCASE,       -- stored in capitals; never changes, because users.ref_code points at it
+  name TEXT NOT NULL,
+  country TEXT,
+  contact TEXT,                                   -- phone or email, for the admin only
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL, -- their own account, so they can see their numbers in the app
+  active INTEGER NOT NULL DEFAULT 1,
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- What ambassadors earned, in euro cents. One row per referred person and kind, so nothing is counted twice.
+CREATE TABLE IF NOT EXISTS referral_rewards (
+  id INTEGER PRIMARY KEY,
+  ambassador_id INTEGER NOT NULL REFERENCES ambassadors(id) ON DELETE CASCADE,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('profile','pass','placement')),
+  amount_cents INTEGER NOT NULL,
+  note TEXT,
+  paid_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (ambassador_id, user_id, kind)
+);
+CREATE INDEX IF NOT EXISTS referral_rewards_amb ON referral_rewards(ambassador_id, created_at);
+
 CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_reviews_reviewee ON reviews(reviewee_id);
 CREATE INDEX IF NOT EXISTS idx_requests_to ON match_requests(to_user, status);
@@ -288,6 +315,10 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
   if (!db.prepare('PRAGMA table_info(waitlist)').all().some((c) => c.name === 'source')) db.exec('ALTER TABLE waitlist ADD COLUMN source TEXT');
   // Which flyer or ad (?src= on the website link) brought someone who signed up.
   if (!db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'source')) db.exec('ALTER TABLE users ADD COLUMN source TEXT');
+  // The ambassador referral code someone joined with.
+  if (!db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'ref_code')) db.exec('ALTER TABLE users ADD COLUMN ref_code TEXT');
+  if (!db.prepare('PRAGMA table_info(waitlist)').all().some((c) => c.name === 'ref_code')) db.exec('ALTER TABLE waitlist ADD COLUMN ref_code TEXT');
+  db.exec('CREATE INDEX IF NOT EXISTS users_ref_code ON users(ref_code)');
   const pcols = db.prepare('PRAGMA table_info(country_programs)').all().map((c) => c.name);
   if (!pcols.includes('status')) {
     db.exec(`ALTER TABLE country_programs ADD COLUMN status TEXT NOT NULL DEFAULT 'open';
