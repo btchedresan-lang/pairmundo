@@ -3,7 +3,7 @@
 @font-face { font-family: "Fraunces Soft"; src: url(/fonts/FrauncesSoft-SemiBold.woff2) format("woff2"); font-weight: 600 900; font-display: swap; }
 :root {
   --heading: "Fraunces Soft", Georgia, serif;
-  --bg: #fbf8f3; --card: #fff; --ink: #2b2a33; --muted: #77716c; --line: #ece6dd;
+  --bg: #edf1fd; --card: #fff; --ink: #2b2a33; --muted: #6b7286; --line: #e1e6f5;
   --brand: #3b5bdb; --brand-ink: #fff; --brand-soft: #edf2ff;
   --ok: #2b8a3e; --ok-soft: #ebfbee; --warn: #b26b00; --warn-soft: #fff4e6; --err: #c92a2a; --err-soft: #fff5f5;
   --star: #f59f00; --radius: 12px;
