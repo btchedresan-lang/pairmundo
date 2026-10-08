@@ -72,7 +72,7 @@ export const PROGRAMS = [
     code: 'SE', name: 'Sweden', currency: 'SEK',
     visa: 'Work permit for au pairs (non-EU), Swedish course required',
     min_age: 18, max_age: 29, max_weekly_hours: 25, max_daily_hours: null,
-    min_pocket_money: 3500, pocket_money_note: 'Indicative; Migrationsverket publishes the current minimum.',
+    min_pocket_money: 5960, pocket_money_note: 'At least 10% of the price base amount (prisbasbelopp) per month, before tax: SEK 5,960 in 2027 (SEK 5,920 in 2026).',
     min_months: 1, max_months: 12, agency_required: 0,
     family_obligations: ['Swedish language course of 15+ hours/week', 'Insurance', 'Board and lodging'],
     notes: '',
