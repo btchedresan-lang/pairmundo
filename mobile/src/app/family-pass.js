@@ -64,7 +64,7 @@ export default function FamilyPass() {
         <Text style={{ color: '#fff', fontSize: 16, textAlign: 'center', opacity: 0.95 }}>{tr('Find your au pair faster')}</Text>
       </LinearGradient>
       <View style={{ padding: 16, gap: 12 }}>
-        {pass.active ? <Alert level="ok" text={tr('Your Family Pass is active until {date}.', { date: fmtDate(pass.ends_at) })} /> : null}
+        {pass.active ? <Alert level="ok" text={pass.trial ? tr('Your free trial runs until {date}.', { date: fmtDate(pass.ends_at) }) : tr('Your Family Pass is active until {date}.', { date: fmtDate(pass.ends_at) })} /> : null}
         <Card>
           {perks().map(([icon, text]) => (
             <View key={text} style={{ flexDirection: 'row', gap: 12, alignItems: 'center', paddingVertical: 4 }}>

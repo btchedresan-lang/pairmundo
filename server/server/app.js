@@ -286,6 +286,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       db.prepare(`INSERT INTO ${role === 'aupair' ? 'aupair_profiles' : 'family_profiles'} (user_id) VALUES (?)`).run(id);
       return getUser(id);
     });
+    // New families can get a free trial of the Family Pass (FAMILY_TRIAL_DAYS, off unless set).
+    if (role === 'family' && trialDays()) grantPass(user.id, 'trial', `signup-${user.id}`, trialDays(), { quiet: true });
     issueCode(user, 'verify');
     const s = createSession(db, user.id);
     setCookie(res, s.token);
@@ -599,19 +601,20 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   // Family Pass: families pay to message au pairs and to see who liked them; au pairs are always free.
   // It only applies with FAMILY_PASS=on, so nobody is locked out before payments are set up.
   const passRequired = () => process.env.FAMILY_PASS === 'on';
+  const trialDays = () => { const n = Math.floor(Number(process.env.FAMILY_TRIAL_DAYS)); return n > 0 && n <= 90 ? n : 0; };
   const activePass = (userId) => db.prepare("SELECT * FROM passes WHERE user_id = ? AND ends_at > datetime('now') ORDER BY ends_at DESC LIMIT 1").get(userId);
   const needsPass = (u) => passRequired() && u.role === 'family' && !activePass(u.id);
   const passView = (u) => {
     const p = activePass(u.id);
-    return { required: passRequired() && u.role === 'family', active: !!p, ends_at: p?.ends_at ?? null, days: FAMILY_PASS.days, price: FAMILY_PASS.price, web_checkout: !!checkout, product_id: FAMILY_PASS.product_id,
+    return { required: passRequired() && u.role === 'family', active: !!p, trial: p?.source === 'trial', ends_at: p?.ends_at ?? null, days: FAMILY_PASS.days, price: FAMILY_PASS.price, web_checkout: !!checkout, product_id: FAMILY_PASS.product_id,
       plans: PASS_PLANS.map(({ id, days, price, product_id }) => ({ id, days, price, product_id })) };
   };
   /** Adds a pass, starting when the current one ends. A purchase already counted (same source and ref) is ignored. */
-  const grantPass = (userId, source, ref = null, days = FAMILY_PASS.days) => {
+  const grantPass = (userId, source, ref = null, days = FAMILY_PASS.days, { quiet = false } = {}) => {
     if (ref && db.prepare('SELECT 1 FROM passes WHERE source = ? AND ref = ?').get(source, ref)) return false;
     const start = activePass(userId)?.ends_at ?? db.prepare("SELECT datetime('now') d").get().d;
     db.prepare("INSERT INTO passes (user_id, source, ref, starts_at, ends_at) VALUES (?,?,?,?, datetime(?, ?))").run(userId, source, ref, start, start, `+${Number(days)} days`);
-    notify(userId, 'pass', 'Your Family Pass is active. You can now message au pairs and see who liked you.', {}, '#/likes');
+    if (!quiet) notify(userId, 'pass', 'Your Family Pass is active. You can now message au pairs and see who liked you.', {}, '#/likes');
     return true;
   };
   const mustHavePass = (u) => {
@@ -1136,7 +1139,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const like = `%${req.query.q || ''}%`;
     return {
       users: db.prepare("SELECT * FROM users WHERE role != 'admin' AND (name LIKE ? OR email LIKE ?) ORDER BY created_at DESC LIMIT 200").all(like, like)
-        .map((u) => ({ ...publicUser(u), email: u.email, suspended: !!u.suspended, rating: ratingSummary(u.id) })),
+        .map((u) => ({ ...publicUser(u), email: u.email, suspended: !!u.suspended, rating: ratingSummary(u.id), pass_ends_at: u.role === 'family' ? activePass(u.id)?.ends_at ?? null : undefined })),
     };
   }));
   api.post('/admin/users/:id', requireRole('admin'), wrap((req) => {

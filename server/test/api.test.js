@@ -488,10 +488,11 @@ test('Family Pass: when switched on, families need it to message and to see who 
     assert.equal(r.body.code, 'pass_required');
 
     // A pass (here from an admin) unlocks it for 90 days, and a second one adds on.
+    let pass;
     {
       r = await call(admin, 'POST', `/admin/users/${fam.id}`, { grant_pass_days: 90 });
       assert.equal(r.status, 200, JSON.stringify(r.body));
-      let pass = (await call(fam.token, 'GET', '/family-pass')).body;
+      pass = (await call(fam.token, 'GET', '/family-pass')).body;
       assert.equal(pass.active, true);
       const end1 = new Date(pass.ends_at.replace(' ', 'T') + 'Z');
       assert.ok(Math.abs(end1 - Date.now() - 90 * 86400000) < 120000);
@@ -500,7 +501,19 @@ test('Family Pass: when switched on, families need it to message and to see who 
       pass = (await call(fam.token, 'GET', '/family-pass')).body;
       assert.ok(new Date(pass.ends_at.replace(' ', 'T') + 'Z') - end1 > 89 * 86400000);
     }
-  } finally { delete process.env.FAMILY_PASS; }
+
+    // With FAMILY_TRIAL_DAYS set, a new family starts with a free trial; au pairs get nothing.
+    process.env.FAMILY_TRIAL_DAYS = '14';
+    const trialFam = await register('trial@test.io', 'family', 'DE');
+    const trialAp = await register('trialap@test.io', 'aupair', 'PH');
+    pass = (await call(trialFam.token, 'GET', '/family-pass')).body;
+    assert.equal(pass.active, true);
+    assert.equal(pass.trial, true);
+    assert.ok(Math.abs(new Date(pass.ends_at.replace(' ', 'T') + 'Z') - Date.now() - 14 * 86400000) < 120000);
+    assert.equal((await call(trialAp.token, 'GET', '/family-pass')).body.active, false);
+    const listed = (await call(admin, 'GET', '/admin/users?q=trial@test.io')).body.users[0];
+    assert.equal(listed.pass_ends_at, pass.ends_at);
+  } finally { delete process.env.FAMILY_PASS; delete process.env.FAMILY_TRIAL_DAYS; }
 });
 
 test('Family Pass on the website: Stripe Checkout link, and the pass once paid (once only)', async () => {

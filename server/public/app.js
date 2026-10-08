@@ -1190,12 +1190,20 @@ views.admin = async ([tab = 'overview']) => {
   }
   if (tab === 'users') {
     const { users } = await api('/admin/users');
-    render(`${head}<div class="card table-wrap"><table><tr><th>Member</th><th>Role</th><th>Rating</th><th>ID</th><th>References</th><th>Background</th><th>Suspended</th></tr>
+    render(`${head}<div class="card table-wrap"><table><tr><th>Member</th><th>Role</th><th>Rating</th><th>ID</th><th>References</th><th>Background</th><th>Suspended</th><th>Family Pass</th></tr>
       ${users.map((u) => `<tr><td><a href="#/u/${u.id}">${esc(u.name)}</a><div class="muted small">${esc(u.email)} · ${cname(u.country)}</div></td>
         <td>${u.role === 'aupair' ? 'Au pair' : 'Family'}</td><td>${u.rating.avg ?? '—'}</td>
         ${['id_verified:id', 'references_checked:references', 'background_checked:background'].map((x) => { const [f, k] = x.split(':');
     return `<td><input type="checkbox" style="width:auto" data-u="${u.id}" data-f="${f}" ${u.verification[k] ? 'checked' : ''}></td>`; }).join('')}
-        <td><input type="checkbox" style="width:auto" data-u="${u.id}" data-f="suspended" ${u.suspended ? 'checked' : ''}></td></tr>`).join('')}</table></div>`);
+        <td><input type="checkbox" style="width:auto" data-u="${u.id}" data-f="suspended" ${u.suspended ? 'checked' : ''}></td>
+        <td>${u.role === 'family' ? `<div class="small">${u.pass_ends_at ? `until ${fmtDate(u.pass_ends_at)}` : '<span class="muted">none</span>'}</div>
+          <button class="btn ghost sm" data-free="${u.id}">+ Free days</button>` : ''}</td></tr>`).join('')}</table></div>`);
+    document.querySelectorAll('[data-free]').forEach((b) => { b.onclick = async () => {
+      const days = Number(prompt('How many free days of the Family Pass?', '30'));
+      if (!(days > 0)) return;
+      try { await api(`/admin/users/${b.dataset.free}`, { method: 'POST', body: { grant_pass_days: days } }); toast('Free days added'); views.admin(['users']); }
+      catch (e) { toast(e.message); }
+    }; });
     document.querySelectorAll('[data-u]').forEach((cb) => { cb.onchange = async () => {
       await api(`/admin/users/${cb.dataset.u}`, { method: 'POST', body: { [cb.dataset.f]: cb.checked } }); toast('Saved');
     }; });
@@ -1269,7 +1277,7 @@ views['family-pass'] = async (_args, qs) => {
   // Older servers send one pass; newer ones a 1-month and a 3-month plan.
   const plans = pass.plans?.length ? pass.plans : [{ id: 'quarter', days: pass.days, price: pass.price }];
   const planName = (p) => (p.days === 30 ? tr('1 month') : p.days === 90 ? tr('3 months') : tr('{n} days', { n: p.days }));
-  const until = pass.active ? `<p><strong>${tr('Your Family Pass is active until {date}.', { date: fmtDate(pass.ends_at) })}</strong> ${tr('Buying again adds the new days after that.')}</p>` : '';
+  const until = pass.active ? `<p><strong>${pass.trial ? tr('Your free trial runs until {date}.', { date: fmtDate(pass.ends_at) }) : tr('Your Family Pass is active until {date}.', { date: fmtDate(pass.ends_at) })}</strong> ${tr('Buying again adds the new days after that.')}</p>` : '';
   render(`<h1>Family Pass</h1><div class="card" style="max-width:560px">
     <p class="muted">${tr("Paid once. It doesn't renew by itself.")}</p>
     <ul><li>${tr('Message every au pair you match with')}</li><li>${tr('See everyone who liked you, and match with one tap')}</li><li>${tr('Au pairs never pay. Swiping and matching are free for everyone.')}</li></ul>

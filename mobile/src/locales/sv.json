@@ -540,5 +540,6 @@
   "Get {plan}": "Köp {plan}",
   "Best value": "Bäst värde",
   "One payment. No automatic renewal.": "En betalning. Ingen automatisk förnyelse.",
-  "{n} days": "{n} dagar"
+  "{n} days": "{n} dagar",
+  "Your free trial runs until {date}.": "Din gratis provperiod gäller till {date}."
 }

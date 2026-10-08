@@ -634,5 +634,6 @@
   "Best value": "Bäst värde",
   "{n} days": "{n} dagar",
   "Buying again adds the new days after that.": "Köper du igen läggs de nya dagarna till efter det.",
-  "Paid once. It doesn't renew by itself.": "Betalas en gång. Förnyas inte av sig själv."
+  "Paid once. It doesn't renew by itself.": "Betalas en gång. Förnyas inte av sig själv.",
+  "Your free trial runs until {date}.": "Din gratis provperiod gäller till {date}."
 }
