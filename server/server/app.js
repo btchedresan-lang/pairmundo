@@ -44,6 +44,9 @@ export const PASS_PLANS = [
 // The 3-month pass is the default, and what app versions from before the 1-month pass show.
 export const FAMILY_PASS = PASS_PLANS[1];
 const passPlan = (key, value) => PASS_PLANS.find((p) => p[key] === value);
+/** What an ambassador earns for people who join with their referral code, in US cents (ambassadors are paid in
+ *  dollars, whatever the Family Pass costs). Au pair profile rewards stop at the monthly cap. */
+export const AMBASSADOR_REWARDS = { currency: 'usd', profile: 200, profile_monthly_cap: 10000, pass: 1500, placement: 4000 };
 
 class HttpError extends Error {
   constructor(status, message, code) { super(message); this.status = status; this.code = code; }
@@ -242,8 +245,69 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
 
   const api = express.Router();
 
-  // ---------- auth ----------
   const authLimit = rateLimit({ windowMs: 60000, max: Number(process.env.AUTH_RATE_LIMIT || 30) });
+
+  // ---------- ambassadors ----------
+  // Ambassadors share a link (pairmundo.com/?ref=CODE) or a code people type at sign-up. Rewards are recorded as they
+  // happen, so the monthly payout is just a sum, and paying out marks them paid.
+  const referralCode = (v) => { const c = String(v ?? '').trim().toUpperCase(); return /^[A-Z0-9][A-Z0-9-]{2,23}$/.test(c) ? c : null; };
+  const ambassadorByCode = (code) => (code ? db.prepare('SELECT * FROM ambassadors WHERE code = ? AND active = 1').get(code) : undefined);
+  const referralLink = (a) => `${publicBase()}/?ref=${encodeURIComponent(a.code)}`;
+  const monthParam = (v) => (/^\d{4}-(0[1-9]|1[0-2])$/.test(v || '') ? v : null);
+  /** Records a reward for whoever referred userId. Each person earns their ambassador each kind of reward once. */
+  const addReward = (userId, kind, amount, note = null) => {
+    const u = getUser(userId);
+    const a = u?.ref_code ? db.prepare('SELECT * FROM ambassadors WHERE code = ?').get(u.ref_code) : null;
+    if (!a?.active || a.user_id === u.id || u.suspended) return;
+    if (kind === 'profile') {
+      const used = db.prepare("SELECT COALESCE(SUM(amount_cents), 0) n FROM referral_rewards WHERE ambassador_id = ? AND kind = 'profile' AND created_at >= datetime('now', 'start of month')").get(a.id).n;
+      amount = Math.max(0, Math.min(amount, AMBASSADOR_REWARDS.profile_monthly_cap - used));
+    }
+    db.prepare('INSERT OR IGNORE INTO referral_rewards (ambassador_id, user_id, kind, amount_cents, note) VALUES (?,?,?,?,?)').run(a.id, u.id, kind, Math.round(amount), note);
+  };
+  /** An au pair's profile counts once it has what families look at: a photo, about me, nationality, age, languages and dates. */
+  const checkProfileReward = (userId) => {
+    const u = getUser(userId);
+    if (u?.role !== 'aupair' || !u.ref_code || !u.email_verified) return;
+    const p = db.prepare('SELECT * FROM aupair_profiles WHERE user_id = ?').get(u.id);
+    if (photosOf(u).length && p?.bio && p.nationality && p.birth_date && json.parse(p.languages).length && p.available_from) {
+      addReward(u.id, 'profile', AMBASSADOR_REWARDS.profile, 'Au pair profile complete');
+    }
+  };
+  /** What an ambassador's code brought in, for one month (YYYY-MM) or all time. owed_cents is everything not paid yet. */
+  const ambassadorStats = (a, month = null) => {
+    const when = month ? " AND strftime('%Y-%m', created_at) = ?" : '';
+    const m = month ? [month] : [];
+    const people = db.prepare(`SELECT SUM(role = 'aupair') aupairs, SUM(role = 'family') families FROM users WHERE ref_code = ? AND id IS NOT ?${when}`).get(a.code, a.user_id, ...m);
+    const r = db.prepare(`SELECT SUM(kind = 'profile') profiles, SUM(kind = 'pass') passes, SUM(kind = 'placement') placements,
+      COALESCE(SUM(amount_cents), 0) earned_cents FROM referral_rewards WHERE ambassador_id = ?${when}`).get(a.id, ...m);
+    return {
+      waitlist: db.prepare(`SELECT COUNT(*) n FROM waitlist WHERE ref_code = ?${when}`).get(a.code, ...m).n,
+      aupairs: people.aupairs || 0, families: people.families || 0,
+      profiles: r.profiles || 0, passes: r.passes || 0, placements: r.placements || 0, earned_cents: r.earned_cents,
+      owed_cents: db.prepare('SELECT COALESCE(SUM(amount_cents), 0) n FROM referral_rewards WHERE ambassador_id = ? AND paid_at IS NULL').get(a.id).n,
+    };
+  };
+  const adminAmbassador = (id, month = null, detail = true) => {
+    const a = db.prepare('SELECT a.*, u.email account_email FROM ambassadors a LEFT JOIN users u ON u.id = a.user_id WHERE a.id = ?').get(Number(id));
+    if (!a) throw notFound();
+    return {
+      ...a, active: !!a.active, link: referralLink(a), stats: ambassadorStats(a, month),
+      ...(detail ? {
+        referrals: db.prepare('SELECT id, name, role, country, created_at, suspended FROM users WHERE ref_code = ? ORDER BY created_at DESC, id DESC LIMIT 500').all(a.code),
+        rewards: db.prepare('SELECT r.*, u.name user_name FROM referral_rewards r LEFT JOIN users u ON u.id = r.user_id WHERE r.ambassador_id = ? ORDER BY r.created_at DESC, r.id DESC LIMIT 500').all(a.id),
+      } : {}),
+    };
+  };
+
+  // The website and app show who invited someone, so they can tell the code is right.
+  api.get('/referral/:code', authLimit, wrap((req) => {
+    const a = ambassadorByCode(referralCode(req.params.code));
+    if (!a) throw notFound('That referral code is not valid. Check it, or leave it empty.');
+    return { code: a.code, name: a.name.split(/\s+/)[0] };
+  }));
+
+  // ---------- auth ----------
 
   // ---------- waitlist ----------
   // Anyone can ask to hear when the apps launch. Joining twice changes nothing, and the answer is the same either
@@ -256,8 +320,9 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const lang = pickLang(req.get('accept-language')) || 'en';
     // Flyers and ads link to pairmundo.com/?src=<name>, so the admin can see which ones bring people in.
     const source = /^[a-z0-9][a-z0-9-]{0,39}$/i.test(req.body?.source || '') ? req.body.source.toLowerCase() : null;
+    const refCode = ambassadorByCode(referralCode(req.body?.ref_code))?.code ?? null;
     const token = randomBytes(18).toString('base64url');
-    const added = db.prepare('INSERT OR IGNORE INTO waitlist (email, role, country, lang, source, token) VALUES (?,?,?,?,?,?)').run(email, role, country, lang, source, token).changes;
+    const added = db.prepare('INSERT OR IGNORE INTO waitlist (email, role, country, lang, source, ref_code, token) VALUES (?,?,?,?,?,?,?)').run(email, role, country, lang, source, refCode, token).changes;
     if (added) {
       const { subject, text } = waitlistEmail(lang, `${publicBase()}/api/waitlist/leave?t=${token}`);
       try { await mailer({ to: email, subject, text }); } catch (e) { console.error('Waitlist email failed:', e.message); }
@@ -278,11 +343,14 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (!password || String(password).length < 8) throw bad('Password must be at least 8 characters.');
     if (!['aupair', 'family'].includes(role)) throw bad('Choose au pair or host family.');
     if (!str(name)) throw bad('Name is required.');
+    // An ambassador's referral code, typed in or carried over from their link.
+    const ambassador = str(req.body?.ref_code) ? ambassadorByCode(referralCode(req.body.ref_code)) : null;
+    if (str(req.body?.ref_code) && !ambassador) throw bad('That referral code is not valid. Check it, or leave it empty.');
     if (db.prepare('SELECT 1 FROM users WHERE lower(trim(email)) = ?').get(email)) throw new HttpError(409, 'An account with this email already exists.');
     const user = tx(db, () => {
-      const r = db.prepare('INSERT INTO users (email, password_hash, role, name, country, city, lang, source) VALUES (?,?,?,?,?,?,?,?)')
+      const r = db.prepare('INSERT INTO users (email, password_hash, role, name, country, city, lang, source, ref_code) VALUES (?,?,?,?,?,?,?,?,?)')
         .run(email, hashPassword(String(password)), role, str(name, 120), str(country, 2)?.toUpperCase() ?? null, str(city, 120), pickLang(req.get('accept-language')),
-          str(req.body?.source, 60)?.toLowerCase() ?? null);
+          str(req.body?.source, 60)?.toLowerCase() ?? null, ambassador?.code ?? null);
       const id = Number(r.lastInsertRowid);
       db.prepare(`INSERT INTO ${role === 'aupair' ? 'aupair_profiles' : 'family_profiles'} (user_id) VALUES (?)`).run(id);
       return getUser(id);
@@ -310,6 +378,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (req.user.email_verified) return { ok: true };
     useCode(req.user.id, 'verify', req.body?.code);
     db.prepare('UPDATE users SET email_verified = 1 WHERE id = ?').run(req.user.id);
+    checkProfileReward(req.user.id);
     return { ok: true };
   }));
 
@@ -357,6 +426,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       profile: getProfile(u),
       pass: passView(u),
       rating: ratingSummary(u.id),
+      ambassador: db.prepare('SELECT code FROM ambassadors WHERE user_id = ? AND active = 1').get(u.id) ?? null,
       counts: {
         notifications: db.prepare('SELECT COUNT(*) n FROM notifications WHERE user_id = ? AND read = 0').get(u.id).n,
         requests: db.prepare("SELECT COUNT(*) n FROM match_requests WHERE to_user = ? AND status = 'pending'").get(u.id).n,
@@ -393,6 +463,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
         db.prepare(`UPDATE ${table} SET ${sets.map((k) => `${k} = ?`).join(', ')} WHERE user_id = ?`).run(...vals, u.id);
       }
     });
+    checkProfileReward(u.id);
     const fresh = getUser(u.id);
     return { user: publicUser(fresh), profile: getProfile(fresh) };
   }));
@@ -615,6 +686,9 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (ref && db.prepare('SELECT 1 FROM passes WHERE source = ? AND ref = ?').get(source, ref)) return false;
     const start = activePass(userId)?.ends_at ?? db.prepare("SELECT datetime('now') d").get().d;
     db.prepare("INSERT INTO passes (user_id, source, ref, starts_at, ends_at) VALUES (?,?,?,?, datetime(?, ?))").run(userId, source, ref, start, start, `+${Number(days)} days`);
+    // A family's first paid pass earns their ambassador a reward. Trials and free days from an admin don't count.
+    const plan = !['trial', 'admin'].includes(source) && passPlan('days', Number(days));
+    if (plan) addReward(userId, 'pass', AMBASSADOR_REWARDS.pass, `First Family Pass (${plan.price})`);
     if (!quiet) notify(userId, 'pass', 'Your Family Pass is active. You can now message au pairs and see who liked you.', {}, '#/likes');
     return true;
   };
@@ -763,6 +837,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     // Read the list again after the upload, in case another upload finished meanwhile.
     const photos = [...keep(photosOf(getUser(req.user.id))), url];
     setPhotos(req.user.id, photos);
+    checkProfileReward(req.user.id);
     res.status(201);
     return { photos };
   }));
@@ -1029,6 +1104,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     db.prepare('UPDATE placements SET status = ? WHERE id = ?').run(next, p.id);
     const other = req.user.id === p.aupair_id ? p.family_id : p.aupair_id;
     notify(other, 'placement', next === 'cancelled' ? 'Your placement was cancelled.' : `Your placement is now ${next}.`, {}, `#/placements/${p.id}`);
+    // The stay has started: whoever an ambassador brought in, on either side, earns them the placement reward.
+    if (next === 'active') for (const uid of [p.aupair_id, p.family_id]) addReward(uid, 'placement', AMBASSADOR_REWARDS.placement, `Placement ${p.id}`);
     if (next === 'completed') {
       for (const uid of [p.aupair_id, p.family_id]) notify(uid, 'review', 'Your placement ended. Leave a review to help the community.', {}, `#/placements/${p.id}`);
     }
@@ -1098,7 +1175,17 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     return { ok: true };
   }));
 
+  // An ambassador's own numbers, shown in their app.
+  api.get('/me/ambassador', requireAuth, wrap((req) => {
+    const a = db.prepare('SELECT * FROM ambassadors WHERE user_id = ? AND active = 1').get(req.user.id);
+    if (!a) throw notFound();
+    return { code: a.code, name: a.name, link: referralLink(a), rewards: AMBASSADOR_REWARDS,
+      this_month: ambassadorStats(a, new Date().toISOString().slice(0, 7)), total: ambassadorStats(a) };
+  }));
+
   // ---------- admin ----------
+  // A leading ' stops spreadsheet apps from running a cell that starts like a formula.
+  const csvCell = (v) => { if (v == null) return ''; let s = String(v); if (/^[=+\-@]/.test(s)) s = `'${s}`; return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
   api.get('/admin/waitlist', requireRole('admin'), wrap(() => ({
     total: db.prepare('SELECT COUNT(*) n FROM waitlist').get().n,
     by_role: db.prepare('SELECT role, COUNT(*) n FROM waitlist GROUP BY role ORDER BY n DESC').all(),
@@ -1109,11 +1196,68 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   })));
   // The whole list as a spreadsheet file, for emailing everyone at launch.
   api.get('/admin/waitlist.csv', requireRole('admin'), (req, res) => {
-    // A leading ' stops spreadsheet apps from running a cell that starts like a formula.
-    const cell = (v) => { if (v == null) return ''; let s = String(v); if (/^[=+\-@]/.test(s)) s = `'${s}`; return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
-    const rows = db.prepare('SELECT email, role, country, lang, source, created_at FROM waitlist ORDER BY created_at').all();
+    const rows = db.prepare('SELECT email, role, country, lang, source, ref_code, created_at FROM waitlist ORDER BY created_at').all();
     res.set('Content-Disposition', 'attachment; filename="pairmundo-waitlist.csv"').type('text/csv')
-      .send(['email,role,country,language,source,joined', ...rows.map((r) => [r.email, r.role, r.country, r.lang, r.source, r.created_at].map(cell).join(','))].join('\n') + '\n');
+      .send(['email,role,country,language,source,referral code,joined', ...rows.map((r) => [r.email, r.role, r.country, r.lang, r.source, r.ref_code, r.created_at].map(csvCell).join(','))].join('\n') + '\n');
+  });
+
+  // Ambassadors: create them, see what each code brought in, and record payouts.
+  const ambassadorFields = (body, a = {}) => {
+    const name = 'name' in body ? str(body.name, 120) : a.name;
+    if (!name) throw bad('Name is required.');
+    let userId = a.user_id ?? null;
+    if ('account_email' in body) {
+      const email = normEmail(body.account_email);
+      userId = email ? db.prepare("SELECT id FROM users WHERE lower(trim(email)) = ? AND role != 'admin'").get(email)?.id : null;
+      if (email && !userId) throw bad('No PairMundo account uses that email.');
+    }
+    const text = (k, max) => (k in body ? str(body[k], max) || null : a[k] ?? null);
+    return { name, country: text('country', 2)?.toUpperCase() ?? null, contact: text('contact', 200), notes: text('notes', 2000), user_id: userId,
+      active: 'active' in body ? (body.active ? 1 : 0) : Number(a.active ?? 1) };
+  };
+  api.get('/admin/ambassadors', requireRole('admin'), wrap((req) => {
+    const month = monthParam(req.query.month);
+    return { month, rewards: AMBASSADOR_REWARDS,
+      ambassadors: db.prepare('SELECT id FROM ambassadors ORDER BY active DESC, created_at DESC, id DESC').all().map((a) => adminAmbassador(a.id, month, false)) };
+  }));
+  api.post('/admin/ambassadors', requireRole('admin'), wrap((req, res) => {
+    const code = referralCode(req.body?.code);
+    if (!code) throw bad('A code is 3 to 24 letters, numbers or dashes, like ANACO.');
+    if (db.prepare('SELECT 1 FROM ambassadors WHERE code = ?').get(code)) throw new HttpError(409, 'That code is already taken.');
+    const f = ambassadorFields(req.body);
+    const r = db.prepare('INSERT INTO ambassadors (code, name, country, contact, notes, user_id, active) VALUES (?,?,?,?,?,?,?)')
+      .run(code, f.name, f.country, f.contact, f.notes, f.user_id, f.active);
+    res.status(201);
+    return adminAmbassador(r.lastInsertRowid);
+  }));
+  api.get('/admin/ambassadors/:id', requireRole('admin'), wrap((req) => adminAmbassador(req.params.id, monthParam(req.query.month))));
+  // The code can't change: the people who joined with it keep pointing at it.
+  api.post('/admin/ambassadors/:id', requireRole('admin'), wrap((req) => {
+    const a = adminAmbassador(req.params.id, null, false);
+    const f = ambassadorFields(req.body || {}, a);
+    db.prepare('UPDATE ambassadors SET name = ?, country = ?, contact = ?, notes = ?, user_id = ?, active = ? WHERE id = ?')
+      .run(f.name, f.country, f.contact, f.notes, f.user_id, f.active, a.id);
+    return adminAmbassador(a.id);
+  }));
+  // After paying an ambassador, mark what they earned up to the end of that month (or everything) as paid.
+  api.post('/admin/ambassadors/:id/paid', requireRole('admin'), wrap((req) => {
+    const a = adminAmbassador(req.params.id, null, false);
+    const month = monthParam(req.body?.month);
+    const r = db.prepare(`UPDATE referral_rewards SET paid_at = datetime('now') WHERE ambassador_id = ? AND paid_at IS NULL${month ? " AND strftime('%Y-%m', created_at) <= ?" : ''}`)
+      .run(a.id, ...(month ? [month] : []));
+    return { marked: r.changes, ...adminAmbassador(a.id) };
+  }));
+  // The monthly payout sheet: one row per ambassador.
+  api.get('/admin/ambassadors.csv', requireRole('admin'), (req, res) => {
+    const month = monthParam(req.query.month);
+    const usd = (c) => (c / 100).toFixed(2);
+    const rows = db.prepare('SELECT * FROM ambassadors ORDER BY code').all().map((a) => {
+      const s = ambassadorStats(a, month);
+      return [a.code, a.name, a.country, a.contact, a.active ? 'yes' : 'no', s.waitlist, s.aupairs, s.families, s.profiles, s.passes, s.placements, usd(s.earned_cents), usd(s.owed_cents)];
+    });
+    res.set('Content-Disposition', `attachment; filename="pairmundo-ambassadors-${month || 'all-time'}.csv"`).type('text/csv')
+      .send([`code,name,country,contact,active,waitlist,au pairs,families,au pair profiles,family passes,placements,earned ${month || 'all time'} (USD),owed now (USD)`,
+        ...rows.map((r) => r.map(csvCell).join(','))].join('\n') + '\n');
   });
   api.get('/admin/backup', requireRole('admin'), wrap(() => backups.status()));
   api.post('/admin/backup', requireRole('admin'), wrap(async () => {

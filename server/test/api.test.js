@@ -534,17 +534,19 @@ test('Family Pass on the website: Stripe Checkout link, and the pass once paid (
   };
   const { createHmac } = await import('node:crypto');
   process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test';
-  const app2 = createApp(openDb(':memory:'), { mailer: async (m) => { outbox.push(m); }, pusher: async (m) => m.map(() => ({ status: 'ok' })), checkout });
+  const db2 = openDb(':memory:');
+  db2.prepare("INSERT INTO ambassadors (code, name) VALUES ('PAYCO', 'Pay Ambassador')").run();
+  const app2 = createApp(db2, { mailer: async (m) => { outbox.push(m); }, pusher: async (m) => m.map(() => ({ status: 'ok' })), checkout });
   const srv = await new Promise((r) => { const s = app2.listen(0, () => r(s)); });
   const b2 = `http://127.0.0.1:${srv.address().port}/api`;
   const call2 = async (token, method, path, body) => {
     const res = await fetch(b2 + path, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: body ? JSON.stringify(body) : undefined });
     return { status: res.status, body: await res.json() };
   };
-  const reg = async (email, role) => (await (await fetch(`${b2}/auth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password: 'password123', role, name: email, country: 'DE' }) })).json());
+  const reg = async (email, role, extra = {}) => (await (await fetch(`${b2}/auth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password: 'password123', role, name: email, country: 'DE', ...extra }) })).json());
   try {
-    const fam = await reg('pay@test.io', 'family');
+    const fam = await reg('pay@test.io', 'family', { ref_code: 'payco' });
     const ap = await reg('payap@test.io', 'aupair');
     assert.equal((await call2(ap.token, 'POST', '/family-pass/checkout')).status, 403);
     let r = await call2(fam.token, 'POST', '/family-pass/checkout');
@@ -589,6 +591,9 @@ test('Family Pass on the website: Stripe Checkout link, and the pass once paid (
     const end3 = (await call2(fam.token, 'POST', '/family-pass/checkout/cs_3')).body.pass.ends_at;
     const days = (a, b) => (new Date(b.replace(' ', 'T') + 'Z') - new Date(a.replace(' ', 'T') + 'Z')) / 86400000;
     assert.equal(Math.round(days(end2, end3)), 30);
+
+    // The family came with an ambassador's code: only their first paid pass earns the ambassador a reward (US$15).
+    assert.deepEqual(db2.prepare('SELECT kind, amount_cents FROM referral_rewards').all().map((x) => ({ ...x })), [{ kind: 'pass', amount_cents: 1500 }]);
   } finally { srv.close(); delete process.env.STRIPE_WEBHOOK_SECRET; }
 });
 
@@ -680,7 +685,7 @@ test('waitlist: join once, email in their language, leave by link, admin sees it
   const fam = await register('waitfam@test.io', 'family', 'DE');
   assert.equal((await call(fam.token, 'GET', '/admin/waitlist')).status, 403);
   const csv = await (await fetch(`${base}/admin/waitlist.csv`, { headers: { Authorization: `Bearer ${admin}` } })).text();
-  assert.match(csv, /^email,role,country,language,source,joined\n/);
+  assert.match(csv, /^email,role,country,language,source,referral code,joined\n/);
   assert.match(csv, /\n'=cmd@test\.io,aupair,/, 'formula-looking cells are defused');
 
   // The link in the email removes them, once.
@@ -689,4 +694,96 @@ test('waitlist: join once, email in their language, leave by link, admin sees it
   assert.match(await leave(link), /off the list/);
   assert.match(await leave(link), /already used/);
   assert.equal((await call(admin, 'GET', '/admin/waitlist')).body.total, 1);
+});
+
+test('ambassadors: referral codes at sign-up, rewards counted once, monthly cap, their own numbers, payouts', async () => {
+  const { hashPassword } = await import('../server/auth.js');
+  testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
+
+  let r = await call(admin, 'POST', '/admin/ambassadors', { code: 'ana-co', name: 'Ana Gómez', country: 'co', contact: '+57 300 000' });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.equal(r.body.code, 'ANA-CO');
+  assert.equal(r.body.country, 'CO');
+  assert.equal(r.body.link, 'https://pairmundo.com/?ref=ANA-CO');
+  const amb = r.body.id;
+  assert.equal((await call(admin, 'POST', '/admin/ambassadors', { code: 'Ana-Co', name: 'Copy' })).status, 409);
+  assert.equal((await call(admin, 'POST', '/admin/ambassadors', { code: 'a!', name: 'Bad' })).status, 400);
+  assert.equal((await call(admin, 'POST', '/admin/ambassadors', { code: 'NONAME' })).status, 400);
+
+  // Anyone can check a code; only the first name shows.
+  assert.deepEqual((await call(null, 'GET', '/referral/ana-co')).body, { code: 'ANA-CO', name: 'Ana' });
+  assert.equal((await call(null, 'GET', '/referral/NOPE-1')).status, 404);
+
+  // A wrong code stops sign-up, so a typo gets fixed; a right one is saved in any case and spacing.
+  const regRef = async (email, role, code = ' ana-co ') => {
+    const res = await call(null, 'POST', '/auth/register', { email, password: 'password123', role, name: email, country: 'CO', ref_code: code });
+    if (res.status !== 201) return res;
+    await call(res.body.token, 'POST', '/auth/verify-email', { code: lastCode(email) });
+    return { token: res.body.token, id: res.body.user.id };
+  };
+  assert.equal((await regRef('refbad@test.io', 'aupair', 'NOPE')).status, 400);
+  assert.equal(testDb.prepare("SELECT COUNT(*) n FROM users WHERE email = 'refbad@test.io'").get().n, 0);
+  const ap = await regRef('refap@test.io', 'aupair');
+  assert.equal(testDb.prepare('SELECT ref_code FROM users WHERE id = ?').get(ap.id).ref_code, 'ANA-CO');
+  const join = (body) => fetch(`${base}/waitlist`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  await join({ email: 'refwait@test.io', ref_code: 'ana-co' });
+  await join({ email: 'refwait2@test.io', ref_code: 'NOPE' });
+  assert.equal(testDb.prepare("SELECT ref_code FROM waitlist WHERE email = 'refwait2@test.io'").get().ref_code, null);
+
+  // The profile reward comes once the profile is complete, photo included, and only once.
+  const stats = async () => (await call(admin, 'GET', `/admin/ambassadors/${amb}`)).body.stats;
+  const profile = { bio: 'Hola', nationality: 'CO', birth_date: '2003-01-01', languages: [{ code: 'es', level: 'C2' }], available_from: '2027-01-01' };
+  await call(ap.token, 'PUT', '/me', { profile });
+  assert.equal((await stats()).profiles, 0);
+  const png = `data:image/png;base64,${Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex').toString('base64')}`;
+  assert.equal((await call(ap.token, 'POST', '/me/photos', { data_url: png })).status, 201);
+  await call(ap.token, 'PUT', '/me', { profile });
+  let s = await stats();
+  assert.deepEqual([s.waitlist, s.aupairs, s.profiles, s.earned_cents, s.owed_cents], [1, 1, 1, 200, 200]);
+
+  // Linking the ambassador's own account lets them see their numbers in the app.
+  const own = await register('ana@test.io', 'aupair', 'CO');
+  assert.equal((await call(admin, 'POST', `/admin/ambassadors/${amb}`, { account_email: 'nobody@test.io' })).status, 400);
+  r = await call(admin, 'POST', `/admin/ambassadors/${amb}`, { account_email: 'ANA@test.io' });
+  assert.equal(r.body.account_email, 'ana@test.io', JSON.stringify(r.body));
+  assert.equal(r.body.contact, '+57 300 000', 'fields not sent stay as they were');
+  assert.deepEqual((await call(own.token, 'GET', '/me')).body.ambassador, { code: 'ANA-CO' });
+  const mine = (await call(own.token, 'GET', '/me/ambassador')).body;
+  assert.equal(mine.link, 'https://pairmundo.com/?ref=ANA-CO');
+  assert.deepEqual([mine.this_month.aupairs, mine.this_month.profiles, mine.total.earned_cents], [1, 1, 200]);
+  assert.equal((await call(ap.token, 'GET', '/me/ambassador')).status, 404);
+  assert.equal((await call(ap.token, 'GET', '/admin/ambassadors')).status, 403);
+
+  // A stay that starts earns the placement reward for each referred side.
+  const fam = await regRef('reffam@test.io', 'family');
+  const pid = testDb.prepare(`INSERT INTO placements (aupair_id, family_id, country, start_date, end_date, weekly_hours, pocket_money, status, aupair_confirmed, family_confirmed, created_by)
+    VALUES (?, ?, 'DE', '2027-01-01', '2027-12-31', 30, 280, 'confirmed', 1, 1, ?)`).run(ap.id, fam.id, fam.id).lastInsertRowid;
+  assert.equal((await call(fam.token, 'POST', `/placements/${pid}/status`, { status: 'active' })).status, 200);
+  s = await stats();
+  assert.deepEqual([s.families, s.placements, s.earned_cents], [1, 2, 8200]);
+
+  // Profile rewards stop at the monthly cap, but the profile still counts.
+  testDb.prepare("INSERT INTO referral_rewards (ambassador_id, user_id, kind, amount_cents) VALUES (?, NULL, 'profile', 9850)").run(amb);
+  const ap2 = await regRef('refap2@test.io', 'aupair');
+  await call(ap2.token, 'POST', '/me/photos', { data_url: png });
+  await call(ap2.token, 'PUT', '/me', { profile });
+  assert.deepEqual({ ...testDb.prepare("SELECT amount_cents FROM referral_rewards WHERE user_id = ? AND kind = 'profile'").get(ap2.id) }, { amount_cents: 0 });
+
+  // The list, the payout sheet, and marking a month paid.
+  const month = new Date().toISOString().slice(0, 7);
+  const list = (await call(admin, 'GET', `/admin/ambassadors?month=${month}`)).body;
+  assert.equal(list.ambassadors.find((a) => a.id === amb).stats.earned_cents, 18050);
+  const csv = await (await fetch(`${base}/admin/ambassadors.csv?month=${month}`, { headers: { Authorization: `Bearer ${admin}` } })).text();
+  assert.match(csv, /^code,name,country,contact,active,waitlist,au pairs,families,au pair profiles,family passes,placements,earned \d{4}-\d{2} \(USD\),owed now \(USD\)\n/);
+  assert.match(csv, /\nANA-CO,Ana Gómez,CO,'\+57 300 000,yes,1,2,1,3,0,2,180\.50,180\.50\n/);
+  r = await call(admin, 'POST', `/admin/ambassadors/${amb}/paid`, { month });
+  assert.equal(r.body.marked, 5);
+  assert.equal(r.body.stats.owed_cents, 0);
+  assert.equal(r.body.stats.earned_cents, 18050);
+
+  // A paused ambassador's code stops working, and they no longer earn.
+  await call(admin, 'POST', `/admin/ambassadors/${amb}`, { active: false });
+  assert.equal((await call(null, 'GET', '/referral/ANA-CO')).status, 404);
+  assert.equal((await call(own.token, 'GET', '/me')).body.ambassador, null);
 });
