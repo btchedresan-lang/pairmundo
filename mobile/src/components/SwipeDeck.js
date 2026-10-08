@@ -62,7 +62,7 @@ export function CardCaption({ r, onPress }) {
   );
 }
 
-export const Shade = () => <LinearGradient pointerEvents="none" colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.35)', 'rgba(0,0,0,0.88)']} locations={[0, 0.45, 1]} style={styles.shade} />;
+export const Shade = () => <LinearGradient pointerEvents="none" colors={['rgba(20,18,30,0)', 'rgba(20,18,30,0.22)', 'rgba(20,18,30,0.62)']} locations={[0, 0.5, 1]} style={styles.shade} />;
 
 function Stamp({ label, color, style, opacity }) {
   return <Animated.View pointerEvents="none" style={[styles.stamp, { borderColor: color, opacity }, style]}><Text style={[styles.stampText, { color }]}>{label}</Text></Animated.View>;
@@ -141,7 +141,7 @@ export function SwipeDeck({ cards, onSwipe, onOpen, ref }) {
 const styles = StyleSheet.create({
   card: { ...StyleSheet.absoluteFillObject, borderRadius: 22, overflow: 'hidden', backgroundColor: '#222',
     shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 6 },
-  shade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '60%' },
+  shade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '50%' },
   bars: { position: 'absolute', top: 8, left: 8, right: 8, flexDirection: 'row', gap: 4 },
   bar: { flex: 1, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.4)' },
   caption: { position: 'absolute', left: 0, right: 0, bottom: 0, padding: 18 },

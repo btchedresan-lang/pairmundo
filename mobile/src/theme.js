@@ -1,8 +1,7 @@
-import { useColorScheme } from 'react-native';
 import brand from '../brand.json';
 
-const light = { bg: '#f6f7fb', card: '#ffffff', ink: '#1d2433', muted: '#667085', line: '#e4e7ec', soft: '#edf2ff' };
-const dark = { bg: '#11141b', card: '#1a1f2a', ink: '#e8eaf0', muted: '#98a2b3', line: '#2a3140', soft: '#1e2645' };
+// One warm, light palette. The app stays light even when the phone is in dark mode.
+const light = { bg: '#fbf8f3', card: '#ffffff', ink: '#2b2a33', muted: '#77716c', line: '#ece6dd', soft: '#edf2ff' };
 
 export const C = {
   primary: brand.primary, primary2: brand.primaryDark,
@@ -11,6 +10,6 @@ export const C = {
 };
 
 export function useTheme() {
-  return useColorScheme() === 'dark' ? dark : light;
+  return light;
 }
 export { brand };

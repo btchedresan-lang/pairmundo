@@ -67,7 +67,7 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <LanguageProvider>
         <AuthProvider>
-          <StatusBar style="auto" />
+          <StatusBar style="dark" />
           <RootStack />
         </AuthProvider>
       </LanguageProvider>
