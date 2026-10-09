@@ -28,11 +28,13 @@ for (const block of web.matchAll(/const CERTS = \{([\s\S]*?)\};/g)) {
 }
 for (const block of site.matchAll(/options\(\{([^}]*)\}/g)) for (const m of block[1].matchAll(new RegExp(String.raw`:\s*(?:${literal})`, 'g'))) add(unq(m));
 // Fixed text the server sends (errors, checklist items), which the page translates.
-const server = ['app.js', 'matching.js', 'programs.js'].map((f) => read(`server/${f}`)).join('\n');
+const server = ['app.js', 'matching.js', 'programs.js', 'agreement.js'].map((f) => read(`server/${f}`)).join('\n');
 for (const re of [String.raw`HttpError\(\d+, (?:${literal})`, String.raw`\bbad\((?:${literal})`, String.raw`\berror: (?:${literal})`,
   String.raw`\bmsg = (?:${literal})`, String.raw`\b(?:notFound|forbidden)\((?:${literal})`, String.raw`\{ title: (?:${literal}), owner`]) {
   for (const m of server.matchAll(new RegExp(re, 'g'))) add(unq(m));
 }
+// The au pair agreement's sentences, written as c('...') in the server.
+for (const m of read('server/agreement.js').matchAll(new RegExp(String.raw`\bc\((?:${literal})`, 'g'))) add(unq(m));
 
 const all = [...keys].sort();
 const sorted = (d) => Object.fromEntries(Object.keys(d).sort().map((k) => [k, d[k]]));

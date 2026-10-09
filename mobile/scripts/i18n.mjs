@@ -33,11 +33,13 @@ for (const block of data.matchAll(/const CERTS = \{([\s\S]*?)\};/g)) {
 add(JSON.parse(read('brand.json')).tagline);
 ['Host family', 'Au pair'].forEach(add);
 // Fixed text the server sends (errors, match reasons, checklist items). Text built from numbers or names stays English for now.
-const server = ['app.js', 'matching.js', 'programs.js'].map((f) => read(`../server/server/${f}`)).join('\n');
+const server = ['app.js', 'matching.js', 'programs.js', 'agreement.js'].map((f) => read(`../server/server/${f}`)).join('\n');
 for (const re of [String.raw`HttpError\(\d+, (?:${literal})`, String.raw`\bbad\((?:${literal})`, String.raw`(?:reasons|warnings)\.push\((?:${literal})\)`,
   String.raw`\btext: (?:${literal})`, String.raw`\berror: (?:${literal})`, String.raw`\bmsg = (?:${literal})`, String.raw`\b(?:notFound|forbidden)\((?:${literal})`, String.raw`\{ title: (?:${literal}), owner`]) {
   for (const m of server.matchAll(new RegExp(re, 'g'))) add(unq(m));
 }
+// The au pair agreement's sentences, written as c('...') in the server.
+for (const m of read('../server/server/agreement.js').matchAll(new RegExp(String.raw`\bc\((?:${literal})`, 'g'))) add(unq(m));
 
 const all = [...keys].sort();
 if (process.argv.includes('--keys')) { console.log(JSON.stringify(all, null, 1)); process.exit(0); }
