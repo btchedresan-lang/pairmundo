@@ -148,6 +148,9 @@ export const DICT = {
   '{country} requires placement through a recognised agency/sponsor.': {
     es: '{country} exige tramitar la estancia con una agencia o patrocinador reconocido.', fr: '{country} exige un placement via une agence ou un sponsor reconnu.',
     de: '{country} verlangt die Vermittlung über eine anerkannte Agentur oder einen Sponsor.', pt: '{country} exige que a estadia seja feita por uma agência ou patrocinador reconhecido.' },
+  '{name} started a video call. Tap to join.': {
+    es: '{name} ha iniciado una videollamada. Toca para unirte.', fr: '{name} a lancé un appel vidéo. Touchez pour rejoindre.',
+    de: '{name} hat einen Videoanruf gestartet. Tippe, um beizutreten.', pt: '{name} iniciou uma videochamada. Toque para entrar.' },
 };
 
 // Swedish lives in its own file, keyed by the same English text.

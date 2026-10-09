@@ -290,3 +290,4 @@ th { color: var(--muted); font-weight: 600; font-size: .8rem; text-transform: up
 .cert-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-items: center; }
 .cert-row .cert-detail { width: 100%; }
 @media (max-width: 600px) { .cert-row { grid-template-columns: 1fr; gap: 4px; } }
+.msg.call, .msg.mine.call { background: var(--card); color: var(--ink); border-color: var(--line); display: flex; flex-direction: column; gap: 6px; }

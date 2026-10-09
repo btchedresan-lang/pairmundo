@@ -47,5 +47,6 @@
   "End date must be after start date.": "Slutdatumet måste vara efter startdatumet.",
   "Duration of ~{months} months exceeds the {max}-month maximum.": "En längd på ~{months} månader överskrider maxgränsen på {max} månader.",
   "Duration of ~{months} months is below the usual {min}-month minimum.": "En längd på ~{months} månader är kortare än den vanliga minimitiden på {min} månader.",
-  "{country} requires placement through a recognised agency/sponsor.": "{country} kräver att vistelsen förmedlas via en godkänd byrå/sponsor."
+  "{country} requires placement through a recognised agency/sponsor.": "{country} kräver att vistelsen förmedlas via en godkänd byrå/sponsor.",
+  "{name} started a video call. Tap to join.": "{name} har startat ett videosamtal. Tryck för att gå med."
 }

@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
+import { FlatList, KeyboardAvoidingView, Linking, Platform, Pressable, View } from 'react-native';
 import { Text, TextInput } from '../../components/Text';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { api } from '../../api';
 import { useAuth } from '../../auth';
 import { fmtTime } from '../../data';
-import { Alert, Loading, Photo, useInsets } from '../../components/ui';
+import { Alert, Button, Loading, Photo, useInsets } from '../../components/ui';
 import { chooseAsync, confirmAsync } from '../../components/dialogs';
 import { C, useTheme } from '../../theme';
 import { tr } from '../../i18n';
@@ -49,6 +49,22 @@ export default function Chat() {
     }
   };
 
+  // Calls open in the phone's browser, which asks for the camera and microphone.
+  const [calling, setCalling] = useState(false);
+  const join = async (messageId) => {
+    try { const { url } = await api(`/conversations/${id}/calls/${messageId}/join`, { method: 'POST' }); await Linking.openURL(url); }
+    catch (e) { setError(e.message); }
+  };
+  const startCall = async () => {
+    setCalling(true); setError(null);
+    try { const m = await api(`/conversations/${id}/calls`, { method: 'POST' }); add([m]); await join(m.id); }
+    catch (e) {
+      if (e.data?.code === 'email_unverified') router.push('/verify-email');
+      else if (e.data?.code === 'pass_required') router.push('/family-pass');
+      else setError(e.message);
+    } finally { setCalling(false); }
+  };
+
   const menu = async () => {
     const pick = await chooseAsync(other.name, [
       { key: 'report', label: tr('Report and block'), destructive: true },
@@ -72,13 +88,24 @@ export default function Chat() {
         <Pressable onPress={() => router.push(`/user/${other.id}`)} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Photo user={other} rounded style={{ width: 32, height: 32 }} /><Text style={{ color: t.ink, fontWeight: '700', fontSize: 16 }}>{other.name}</Text>
         </Pressable>) : null,
-      headerRight: () => other ? <Pressable onPress={menu} accessibilityLabel={tr('Report or block')} hitSlop={10}><Text style={{ color: C.primary, fontSize: 22, fontWeight: '800', paddingHorizontal: 6 }}>⋯</Text></Pressable> : null }} />
+      headerRight: () => other ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Pressable onPress={startCall} disabled={calling} accessibilityLabel={tr('Video call')} hitSlop={10}><Text style={{ fontSize: 22, paddingHorizontal: 6, opacity: calling ? 0.4 : 1 }}>📹</Text></Pressable>
+          <Pressable onPress={menu} accessibilityLabel={tr('Report or block')} hitSlop={10}><Text style={{ color: C.primary, fontSize: 22, fontWeight: '800', paddingHorizontal: 6 }}>⋯</Text></Pressable>
+        </View>) : null }} />
       {error ? <View style={{ padding: 12 }}><Alert level="error" text={error} /></View> : null}
       <FlatList ref={list} data={msgs} keyExtractor={(m) => String(m.id)} contentContainerStyle={{ padding: 14, gap: 8 }}
         onContentSizeChange={() => list.current?.scrollToEnd({ animated: true })}
         ListEmptyComponent={<Text style={{ color: t.muted, textAlign: 'center', marginTop: 40 }}>{tr('You matched! Say hello')} 👋</Text>}
         renderItem={({ item: m }) => {
           const mine = m.sender_id === me.user.id;
+          if (m.is_call) return (
+            <View style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '82%', backgroundColor: t.card, borderWidth: 1, borderColor: t.line, borderRadius: 18, padding: 12, gap: 8 }}>
+              <Text style={{ color: t.ink, fontSize: 15, fontWeight: '700' }}>📹 {mine ? tr('You started a video call') : tr('{name} started a video call', { name: other?.name })}</Text>
+              {m.call_open ? <Button small title={tr('Join call')} onPress={() => join(m.id)} /> : <Text style={{ color: t.muted, fontSize: 13 }}>{tr('Call ended')}</Text>}
+              <Text style={{ color: t.muted, fontSize: 11 }}>{fmtTime(m.created_at)}</Text>
+            </View>
+          );
           return (
             <View style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '78%', backgroundColor: mine ? C.primary : t.card,
               borderRadius: 18, borderBottomRightRadius: mine ? 4 : 18, borderBottomLeftRadius: mine ? 18 : 4, paddingHorizontal: 14, paddingVertical: 9 }}>

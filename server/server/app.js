@@ -14,6 +14,7 @@ import { createPusher, isPushToken } from './push.js';
 import { createStorage } from './storage.js';
 import { createModerator } from './moderation.js';
 import { createBackups } from './backup.js';
+import { createVideo, CALL_HOURS } from './video.js';
 
 const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
 const MAX_PHOTOS = 6;
@@ -72,6 +73,9 @@ const forbidden = (msg = 'Not allowed.') => new HttpError(403, msg);
 
 /** node:sqlite only binds numbers, strings, null and buffers. */
 const sql = (v) => (v === undefined ? null : typeof v === 'boolean' ? Number(v) : v);
+// What the apps get for a chat message. A call message says whether its call is still open, never the room address itself.
+const MSG_COLS = `id, sender_id, body, created_at, read_at, call_url IS NOT NULL AS is_call,
+  (call_url IS NOT NULL AND created_at > datetime('now', '-${CALL_HOURS} hours')) AS call_open`;
 const str = (v, max = 5000) => (v == null ? null : String(v).trim().slice(0, max));
 const isDate = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v));
 
@@ -88,7 +92,7 @@ export function seedPrograms(db) {
   }
 }
 
-export function createApp(db, { mailer = createMailer(), pusher = createPusher(), storage, identity = createIdentity(), checkout = createCheckout(), revenuecat = createRevenueCat(), backups = createBackups(db), moderator = createModerator() } = {}) {
+export function createApp(db, { mailer = createMailer(), pusher = createPusher(), storage, identity = createIdentity(), checkout = createCheckout(), revenuecat = createRevenueCat(), backups = createBackups(db), moderator = createModerator(), video = createVideo() } = {}) {
   const UPLOAD_DIR = process.env.UPLOAD_DIR || 'data/uploads';
   storage ??= createStorage({ dir: UPLOAD_DIR });
   seedPrograms(db);
@@ -980,7 +984,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const otherId = c.user_a === req.user.id ? c.user_b : c.user_a;
     return {
       other: publicUser(getUser(otherId)),
-      messages: db.prepare('SELECT id, sender_id, body, created_at, read_at FROM messages WHERE conversation_id = ? AND id > ? ORDER BY id').all(c.id, after),
+      messages: db.prepare(`SELECT ${MSG_COLS} FROM messages WHERE conversation_id = ? AND id > ? ORDER BY id`).all(c.id, after),
     };
   }));
 
@@ -993,7 +997,32 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const r = db.prepare('INSERT INTO messages (conversation_id, sender_id, body) VALUES (?,?,?)').run(c.id, req.user.id, body);
     push(c.user_a === req.user.id ? c.user_b : c.user_a, body.length > 140 ? `${body.slice(0, 139)}…` : body, `#/messages/${c.id}`, req.user.name);
     res.status(201);
-    return db.prepare('SELECT id, sender_id, body, created_at, read_at FROM messages WHERE id = ?').get(Number(r.lastInsertRowid));
+    return db.prepare(`SELECT ${MSG_COLS} FROM messages WHERE id = ?`).get(Number(r.lastInsertRowid));
+  }));
+
+  // ---------- video calls ----------
+  // Starting a call posts a call message in the chat; both people join from it while it is open.
+  const openCall = (c) => db.prepare(`SELECT ${MSG_COLS} FROM messages WHERE conversation_id = ? AND call_url IS NOT NULL
+    AND created_at > datetime('now', ?) ORDER BY id DESC LIMIT 1`).get(c.id, `-${CALL_HOURS} hours`);
+  api.post('/conversations/:id/calls', requireAuth, wrap(async (req, res) => {
+    const c = myConversation(req);
+    mustBeVerified(req.user);
+    mustHavePass(req.user);
+    const existing = openCall(c);
+    if (existing) return existing;
+    const url = await video.createRoom();
+    const r = db.prepare('INSERT INTO messages (conversation_id, sender_id, body, call_url) VALUES (?,?,?,?)').run(c.id, req.user.id, '📹 Video call', url);
+    const other = getUser(c.user_a === req.user.id ? c.user_b : c.user_a);
+    push(other.id, translate(other.lang, '{name} started a video call. Tap to join.', { name: req.user.name }), `#/messages/${c.id}`, req.user.name);
+    res.status(201);
+    return db.prepare(`SELECT ${MSG_COLS} FROM messages WHERE id = ?`).get(Number(r.lastInsertRowid));
+  }));
+  api.post('/conversations/:id/calls/:messageId/join', requireAuth, wrap(async (req) => {
+    const c = myConversation(req);
+    const m = db.prepare('SELECT * FROM messages WHERE id = ? AND conversation_id = ? AND call_url IS NOT NULL').get(Number(req.params.messageId), c.id);
+    if (!m) throw notFound();
+    if (openCall(c)?.id !== m.id) throw new HttpError(410, 'This call has ended. Start a new one.');
+    return { url: await video.joinUrl(m.call_url, req.user.name) };
   }));
 
   // ---------- programs & compliance ----------

@@ -675,5 +675,12 @@
   "Lifeguard or swimming instructor": "Livräddare eller simlärare",
   "My certificates": "Mina certifikat",
   "Paediatric first aid": "Första hjälpen för barn",
-  "Police clearance certificate": "Utdrag ur belastningsregistret"
+  "Police clearance certificate": "Utdrag ur belastningsregistret",
+  "Call ended": "Samtalet är slut",
+  "Join call": "Gå med i samtalet",
+  "This call has ended. Start a new one.": "Samtalet är slut. Starta ett nytt.",
+  "Video call": "Videosamtal",
+  "You started a video call": "Du startade ett videosamtal",
+  "{name} started a video call": "{name} startade ett videosamtal",
+  "The call opens in a new tab. PairMundo does not record calls.": "Samtalet öppnas i en ny flik. PairMundo spelar inte in samtal."
 }

@@ -581,5 +581,11 @@
   "My certificates": "Mina certifikat",
   "Paediatric first aid": "Första hjälpen för barn",
   "Police clearance certificate": "Utdrag ur belastningsregistret",
-  "My level in {language}": "Min nivå i {language}"
+  "My level in {language}": "Min nivå i {language}",
+  "Call ended": "Samtalet är slut",
+  "Join call": "Gå med i samtalet",
+  "This call has ended. Start a new one.": "Samtalet är slut. Starta ett nytt.",
+  "Video call": "Videosamtal",
+  "You started a video call": "Du startade ett videosamtal",
+  "{name} started a video call": "{name} startade ett videosamtal"
 }

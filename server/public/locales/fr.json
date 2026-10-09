@@ -675,5 +675,12 @@
   "Lifeguard or swimming instructor": "Maître-nageur ou sauveteur",
   "My certificates": "Mes certificats",
   "Paediatric first aid": "Premiers secours pédiatriques",
-  "Police clearance certificate": "Extrait de casier judiciaire"
+  "Police clearance certificate": "Extrait de casier judiciaire",
+  "Call ended": "Appel terminé",
+  "Join call": "Rejoindre l'appel",
+  "This call has ended. Start a new one.": "Cet appel est terminé. Lance-en un nouveau.",
+  "Video call": "Appel vidéo",
+  "You started a video call": "Tu as lancé un appel vidéo",
+  "{name} started a video call": "{name} a lancé un appel vidéo",
+  "The call opens in a new tab. PairMundo does not record calls.": "L'appel s'ouvre dans un nouvel onglet. PairMundo n'enregistre pas les appels."
 }

@@ -84,6 +84,8 @@ const accept = (from, to, msg, daysAgo) => {
 };
 const c1 = accept(famIds[0], apIds[0], 'Hi Maria! We loved your profile. Would you like to have a video call this week?', 5);
 db.prepare('INSERT INTO messages (conversation_id, sender_id, body) VALUES (?,?,?)').run(c1, apIds[0], 'Hello! Yes, I would love that. Thursday evening works for me.');
+// The Millers have just started that video call.
+db.prepare("INSERT INTO messages (conversation_id, sender_id, body, call_url) VALUES (?,?,'📹 Video call','https://meet.jit.si/PairMundo-demo')").run(c1, famIds[0]);
 db.prepare("INSERT INTO match_requests (from_user, to_user, message) VALUES (?,?,?)").run(apIds[1], famIds[1], 'Guten Tag! I have infant experience and speak some German. I would love to meet you.');
 db.prepare("INSERT INTO match_requests (from_user, to_user, message) VALUES (?,?,?)").run(famIds[3], apIds[7], 'Hi Ana, your experience is exactly what we need for our three kids!');
 

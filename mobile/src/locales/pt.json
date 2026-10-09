@@ -581,5 +581,11 @@
   "My certificates": "Meus certificados",
   "Paediatric first aid": "Primeiros socorros pediátricos",
   "Police clearance certificate": "Certidão de antecedentes criminais",
-  "My level in {language}": "Meu nível de {language}"
+  "My level in {language}": "Meu nível de {language}",
+  "Call ended": "Chamada encerrada",
+  "Join call": "Entrar na chamada",
+  "This call has ended. Start a new one.": "Esta chamada terminou. Inicie uma nova.",
+  "Video call": "Videochamada",
+  "You started a video call": "Você iniciou uma videochamada",
+  "{name} started a video call": "{name} iniciou uma videochamada"
 }
