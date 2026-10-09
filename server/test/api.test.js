@@ -804,3 +804,22 @@ test('ambassadors: referral codes at sign-up, rewards counted once, monthly cap,
   assert.equal((await call(null, 'GET', '/referral/ANA-CO')).status, 404);
   assert.equal((await call(own.token, 'GET', '/me')).body.ambassador, null);
 });
+
+test('au pairs add certificates and language levels; families can show only CPR or first aid', async () => {
+  const fam = await register('certfam@test.io', 'family', 'SE', 'Familjen Cert');
+  const ap = await register('certap@test.io', 'aupair', 'PL', 'Cert Aupair');
+  const plain = await register('plainap@test.io', 'aupair', 'PL', 'Plain Aupair');
+  let r = await call(ap.token, 'PUT', '/me', { profile: {
+    certificates: [{ kind: 'cpr', detail: '  Red Cross, 2026 ' }, { kind: 'cpr', detail: 'again' }, { kind: 'language', detail: 'x'.repeat(200) }, { kind: 'Bad Kind!' }],
+    languages: [{ code: 'en', level: 'C1' }, { code: 'de', level: 'Z9' }, { code: 'en', level: 'A1' }],
+  } });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.profile.certificates.map((c) => c.kind), ['cpr', 'language']);
+  assert.equal(r.body.profile.certificates[0].detail, 'Red Cross, 2026');
+  assert.equal(r.body.profile.certificates[1].detail.length, 80);
+  assert.deepEqual(r.body.profile.languages, [{ code: 'en', level: 'C1' }, { code: 'de', level: 'B2' }]);
+  r = await call(fam.token, 'GET', '/search?cpr=1');
+  const ids = r.body.results.map((x) => x.user.id);
+  assert.ok(ids.includes(ap.id));
+  assert.ok(!ids.includes(plain.id));
+});

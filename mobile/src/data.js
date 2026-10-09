@@ -23,6 +23,15 @@ export const HOBBIES = { travel: ['✈️', 'Travelling'], outdoors: ['⛰️', 
   animals: ['🐾', 'Animals'], movies: ['🎬', 'Movies and series'], sports: ['⚽', 'Sports'], music: ['🎵', 'Music'], reading: ['📚', 'Reading'],
   cooking: ['🍳', 'Cooking and baking'], art: ['🎨', 'Drawing and crafts'], dancing: ['💃', 'Dancing'], photography: ['📷', 'Photography'],
   friends: ['👯', 'Time with friends'], languages: ['🗣️', 'Learning languages'], gaming: ['🎮', 'Games'] };
+/** Certificates an au pair can add, with an example for the short note next to each. */
+export const CERTS = { language: ['🗣️', 'Language certificate', 'For example: IELTS 7.0 or Goethe B2'],
+  cpr: ['❤️', 'CPR for babies and children', 'For example: Red Cross, 2026'], first_aid: ['⛑️', 'Paediatric first aid', 'For example: St John Ambulance, 2025'],
+  childcare: ['🧸', 'Childcare or teaching qualification', 'For example: early childhood education diploma'],
+  swimming: ['🏊', 'Lifeguard or swimming instructor', 'For example: pool lifeguard, 2024'],
+  police: ['📄', 'Police clearance certificate', 'For example: issued March 2026'] };
+/** Language levels on the CEFR scale, best first. */
+export const LEVELS = ['native', 'C2', 'C1', 'B2', 'B1', 'A2', 'A1'];
+export const levelName = (l) => (l === 'native' ? tr('native') : l);
 export const CRIT_LABEL = { reliability: 'Reliability', childcare: 'Childcare', communication: 'Communication', household: 'Household help',
   adaptability: 'Adaptability', respect: 'Respect', accommodation: 'Accommodation', fair_hours: 'Fair hours', support: 'Support' };
 

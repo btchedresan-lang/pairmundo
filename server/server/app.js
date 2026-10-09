@@ -22,7 +22,8 @@ const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 /** Emails are matched without case or spaces, so "Me@x.com " and "me@x.com" are the same account. */
 export const normEmail = (e) => String(e || '').trim().toLowerCase();
 
-const AP_JSON = ['languages', 'preferred_countries', 'age_groups', 'skills', 'traits', 'hobbies'];
+const AP_JSON = ['languages', 'preferred_countries', 'age_groups', 'skills', 'traits', 'hobbies', 'certificates'];
+const LEVELS = ['native', 'C2', 'C1', 'B2', 'B1', 'A2', 'A1'];
 // Picked from fixed lists in the apps, so only short keys are stored.
 const KEY_LISTS = ['traits', 'hobbies'];
 const FAM_JSON = ['children', 'languages', 'required_languages', 'preferred_nationalities'];
@@ -48,6 +49,19 @@ const passPlan = (key, value) => PASS_PLANS.find((p) => p[key] === value);
  *  dollars, whatever the Family Pass costs). Au pair profile rewards count only once the au pair's ID is verified,
  *  and stop at the monthly cap, because a profile alone is easy to fake. */
 export const AMBASSADOR_REWARDS = { currency: 'usd', profile: 200, profile_monthly_cap: 10000, pass: 1500, placement: 4000 };
+
+/** Certificates an au pair adds themselves: one per kind, with a short note such as "IELTS 7.0" or "Red Cross, 2026". */
+const cleanCerts = (list) => {
+  const seen = new Set();
+  return list.filter((c) => c && /^[a-z_]{1,24}$/.test(c.kind) && !seen.has(c.kind) && seen.add(c.kind))
+    .slice(0, 10).map((c) => ({ kind: c.kind, detail: str(c.detail, 80) || null }));
+};
+/** Au pair languages as [{code, level}], with the level on the CEFR scale (or native). */
+const cleanLangs = (list) => {
+  const seen = new Set();
+  return list.filter((l) => l && /^[a-z]{2,3}$/.test(l.code) && !seen.has(l.code) && seen.add(l.code))
+    .slice(0, 12).map((l) => ({ code: l.code, level: LEVELS.includes(l.level) ? l.level : 'B2' }));
+};
 
 class HttpError extends Error {
   constructor(status, message, code) { super(message); this.status = status; this.code = code; }
@@ -464,6 +478,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       if (sets.length) {
         const list = (k) => (Array.isArray(p[k]) ? p[k] : []);
         const vals = sets.map((k) => (KEY_LISTS.includes(k) ? json.str([...new Set(list(k).filter((v) => /^[a-z_]{1,24}$/.test(v)))].slice(0, 12))
+          : k === 'certificates' ? json.str(cleanCerts(list(k)))
+          : k === 'languages' && u.role === 'aupair' ? json.str(cleanLangs(list(k)))
           : jsonFields.includes(k) ? json.str(list(k))
           : ['goal', 'ideal_family'].includes(k) ? str(p[k], 400)
           : typeof p[k] === 'string' ? str(p[k]) : sql(p[k])));
@@ -565,6 +581,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (q.nationality && targetRole === 'aupair') { where.push('p.nationality = ?'); params.push(String(q.nationality).toUpperCase()); }
     if (q.verified === '1') where.push('u.id_verified = 1');
     if (q.driver === '1' && targetRole === 'aupair') where.push('p.drivers_license = 1');
+    if (q.cpr === '1' && targetRole === 'aupair') where.push("EXISTS (SELECT 1 FROM json_each(p.certificates) WHERE json_extract(value, '$.kind') IN ('cpr', 'first_aid'))");
     if (discover) {
       // Hide anyone already swiped on, liked, or matched with; keep people who liked me so I can like them back.
       where.push(`u.id NOT IN (SELECT target_id FROM swipes WHERE user_id = ?)`, `u.id NOT IN (SELECT to_user FROM match_requests WHERE from_user = ? AND status IN ('pending','accepted'))`,

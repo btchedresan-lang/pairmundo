@@ -26,6 +26,10 @@ for (const block of data.matchAll(/export const (COUNTRIES|LANGS|AGE_GROUPS|SKIL
   // Most maps are key: 'Label'; HOBBIES is key: ['emoji', 'Label'].
   for (const m of block[2].matchAll(new RegExp(String.raw`:\s*(?:\[(?:${literal}),\s*)?(?:${literal})`, 'g'))) add(unq(m, 3));
 }
+// CERTS is key: ['emoji', 'Label', 'Example note'].
+for (const block of data.matchAll(/const CERTS = \{([\s\S]*?)\};/g)) {
+  for (const m of block[1].matchAll(new RegExp(String.raw`\[(?:${literal}),\s*(?:${literal}),\s*(?:${literal})\]`, 'g'))) { add(unq(m, 3)); add(unq(m, 5)); }
+}
 add(JSON.parse(read('brand.json')).tagline);
 ['Host family', 'Au pair'].forEach(add);
 // Fixed text the server sends (errors, match reasons, checklist items). Text built from numbers or names stays English for now.

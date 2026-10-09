@@ -39,12 +39,19 @@ const aupairs = [
   ['emma@aupair.test', 'Emma Johansson', 'SE', 'Gothenburg', '2005-01-25', 'SE', [{ code: 'sv', level: 'native' }, { code: 'en', level: 'C2' }, { code: 'de', level: 'A2' }], ['DE', 'AU', 'US'], 2, ['toddler', 'school'], ['swimming', 'music'], 1, '2027-01-05', 12, 'Gap-year before university. Swimming instructor, guitar player, loves the outdoors.', { id: 1 }],
   ['ana@aupair.test', 'Ana Souza', 'BR', 'Curitiba', '1999-05-14', 'BR', [{ code: 'pt', level: 'native' }, { code: 'en', level: 'C1' }, { code: 'es', level: 'B2' }], ['NL', 'DK', 'NO'], 6, ['infant', 'toddler', 'school'], ['first_aid', 'cooking', 'tutoring'], 1, '2026-11-01', 12, 'Pedagogy graduate, six years in childcare. Looking for a Scandinavian or Dutch family.', { id: 1, refs: 1, bg: 1 }],
 ];
+// Certificates a few demo au pairs have added.
+const CERTS = {
+  maria: [{ kind: 'cpr', detail: 'Cruz Roja Colombiana, 2026' }, { kind: 'language', detail: 'IELTS 7.0' }],
+  anna: [{ kind: 'first_aid', detail: 'Polish Red Cross, 2025' }, { kind: 'cpr', detail: 'Infant CPR, 2025' }, { kind: 'language', detail: 'Goethe-Zertifikat B1' }],
+  ana: [{ kind: 'childcare', detail: 'Pedagogy degree' }, { kind: 'cpr', detail: '2026' }, { kind: 'police', detail: 'Issued August 2026' }],
+};
 const apIds = aupairs.map(([email, name, country, city, birth, nat, langs, prefs, years, groups, skills, driver, avail, dur, bio, ver]) => {
   const slug = email.split('@')[0];
   const id = addUser(email, 'aupair', name, country, city, ver, photosFor(slug, (v) => aupairPortrait(name, v, { skin: SKIN[country] })));
   db.prepare(`INSERT INTO aupair_profiles (user_id, birth_date, nationality, languages, preferred_countries, childcare_years, age_groups, skills,
       drivers_license, available_from, duration_months, education, bio) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(id, birth, nat, json.str(langs), json.str(prefs), years, json.str(groups), json.str(skills), driver, avail, dur, 'University', bio);
+  if (CERTS[slug]) db.prepare('UPDATE aupair_profiles SET certificates = ? WHERE user_id = ?').run(json.str(CERTS[slug]), id);
   return id;
 });
 
