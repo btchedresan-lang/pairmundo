@@ -231,6 +231,21 @@ CREATE TABLE IF NOT EXISTS push_tokens (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- References an au pair asks for: PairMundo emails the person a link, and they answer a short form.
+CREATE TABLE IF NOT EXISTS reference_checks (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL,
+  relation TEXT,                                   -- e.g. "Family I babysat for in Kraków"
+  token TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL DEFAULT 'sent',             -- sent | confirmed | declined
+  answers TEXT,                                    -- JSON {months, age_groups, recommend, rating, comment}
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  responded_at TEXT
+);
+CREATE INDEX IF NOT EXISTS reference_checks_user ON reference_checks(user_id);
+
 CREATE TABLE IF NOT EXISTS notifications (
   id INTEGER PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

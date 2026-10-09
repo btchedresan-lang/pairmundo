@@ -91,6 +91,8 @@ const verifyBadges = (v) => [v?.id && `✔ ${tr('ID verified')}`, v?.references 
   .filter(Boolean).map((t) => `<span class="verify">${t}</span>`).join(' ');
 const scoreBadge = (s) => `<span class="score ${s >= 75 ? 'high' : s < 50 ? 'low' : ''}" title="${tr('Match score')}">${s}%</span>`;
 /** <option>s for a { value: 'English label' } map, translated and sorted by label. */
+const chipSet = (name, dict, selected) => `<div class="chips" data-chipset="${name}">${Object.entries(dict).map(([k, v]) =>
+  `<button type="button" class="chip chip-toggle ${(selected || []).includes(k) ? 'on' : ''}" data-v="${k}">${esc(tr(v))}</button>`).join('')}</div>`;
 const options = (obj, selected, blank = '', sort = true) => (blank !== null ? `<option value="">${blank}</option>` : '')
   + Object.entries(trMap(obj)).sort(sort ? (a, b) => a[1].localeCompare(b[1], LANG) : () => 0).map(([k, v]) => `<option value="${k}" ${k === selected ? 'selected' : ''}>${esc(v)}</option>`).join('');
 
@@ -675,7 +677,7 @@ function posterHeader(u, p, badge) {
     <div class="polaroid big">${gallery(u, { cls: 'polaroid-photo' })}<div class="polaroid-cap">${tr('Big dreams · Good vibes · New adventures')}</div></div>
     ${badge}</div>`;
 }
-function posterBody(u, p) {
+function posterBody(u, p, refs = []) {
   const sec = (tint, icon, title, body) => (body ? `<section class="poster-card ${tint}"><h3><span>${icon}</span> ${title}</h3><div class="poster-in">${body}</div></section>` : '');
   const row = (icon, text) => (text ? `<div class="poster-row"><span>${icon}</span><div>${text}</div></div>` : '');
   const para = (text) => (text ? `<p class="poster-p">${esc(text)}</p>` : '');
@@ -695,6 +697,9 @@ function posterBody(u, p) {
     ${sec('yellow', '🗣️', tr('Languages'), (p.languages || []).map((l) => row('💬', `${esc(langName(l.code))} · ${l.level === 'native' ? tr('native') : esc(l.level)}`)).join(''))}
     ${sec('green', '🎓', tr('My certificates'), certs.length ? certs.map((c) => row(CERTS[c.kind][0], `${tr(CERTS[c.kind][1])}${c.detail ? ` · ${esc(c.detail)}` : ''}`)).join('')
       + `<p class="muted small">${tr('Added by {name}. Ask to see them on your video call.', { name: esc(firstName(u.name)) })}</p>` : '')}
+    ${sec('peach', '💌', tr('References'), refs.length ? refs.map((r) => `<div class="ref-item"><div class="spread"><strong>${esc(r.name)}${r.relation ? ` · <span class="muted">${esc(r.relation)}</span>` : ''}</strong>${stars(r.rating)}</div>
+      <div class="small muted">${[trn(r.months, '{n} month', '{n} months'), ...(r.age_groups || []).map((g) => (AGE_GROUPS[g] ? tr(AGE_GROUPS[g]) : g)), r.recommend ? `👍 ${tr('Recommends {name}', { name: esc(firstName(u.name)) })}` : ''].filter(Boolean).join(' · ')}</div>
+      ${r.comment ? `<p class="poster-p">“${esc(r.comment)}”</p>` : ''}</div>`).join('') + `<p class="muted small">${tr('PairMundo emailed these people and they answered themselves.')}</p>` : '')}
     ${sec('blue', '✨', tr('Good to know'), [p.drivers_license && row('🚗', tr("Has a driver's license")), p.non_smoker && row('🚭', tr('Non-smoker')),
       p.ok_with_pets && row('🐾', tr('Happy to live with pets')), p.education && row('🎓', esc(p.education))].filter(Boolean).join(''))}
     ${sec('teal', '🌿', tr('Hobbies and personality'), hobbies.length ? `<div class="poster-grid">${hobbies.map((k) => row(HOBBIES[k][0], tr(HOBBIES[k][1]))).join('')}</div>` : '')}
@@ -749,7 +754,7 @@ views.u = async ([id]) => {
       ${d.match ? `<div class="card"><h3>${tr('Why you match')}</h3>
         ${d.match.reasons.map((r) => `<div class="small" style="color:var(--ok)">✓ ${esc(r)}</div>`).join('')}
         ${d.match.warnings.map((r) => `<div class="small" style="color:var(--warn)">⚠ ${esc(r)}</div>`).join('')}</div>` : ''}
-      ${ap ? `${verifyBadges(u.verification) ? `<div style="margin-bottom:10px">${verifyBadges(u.verification)}</div>` : ''}${posterBody(u, p)}` : `<div class="card"><h3>${tr('About us')}</h3><p style="white-space:pre-wrap;margin-top:0">${esc(p.bio) || `<span class="muted">${tr('No description yet.')}</span>`}</p>
+      ${ap ? `${verifyBadges(u.verification) ? `<div style="margin-bottom:10px">${verifyBadges(u.verification)}</div>` : ''}${posterBody(u, p, d.references)}` : `<div class="card"><h3>${tr('About us')}</h3><p style="white-space:pre-wrap;margin-top:0">${esc(p.bio) || `<span class="muted">${tr('No description yet.')}</span>`}</p>
         <div>${verifyBadges(u.verification) || `<span class="muted small">${tr('Not yet verified')}</span>`}</div></div>
       <div class="card"><h3>${tr('Basics')}</h3><div class="facts">${facts.filter(([, , v]) => v != null && v !== '').map(([i, k, v]) => `<div class="fact"><span>${i}</span><div><div class="muted small">${k}</div>${esc(v)}</div></div>`).join('')}</div></div>
       <div class="card"><h3>${tr('Languages at home')}</h3><div class="chips">${(p.languages || []).map((l) => `<span class="chip">${esc(langName(l))}</span>`).join('')}</div>
@@ -812,8 +817,6 @@ views.profile = async () => {
   await refreshMe();
   const u = me.user; const p = me.profile || {};
   const isAp = u.role === 'aupair';
-  const chipSet = (name, dict, selected) => `<div class="chips" data-chipset="${name}">${Object.entries(dict).map(([k, v]) =>
-    `<button type="button" class="chip chip-toggle ${(selected || []).includes(k) ? 'on' : ''}" data-v="${k}">${esc(tr(v))}</button>`).join('')}</div>`;
   const pass = me.pass;
   render(`<div class="spread"><h1>${tr('My profile')}</h1><span><a href="#/account">🔒 ${tr('Account and safety')}</a> · <button type="button" class="btn secondary sm" id="preview">👁 ${tr('Preview my profile')}</button></span></div>
   ${u.role === 'family' && pass && (pass.required || pass.active) ? `<div class="card spread"><span>💛 <strong>Family Pass</strong> · ${pass.active ? tr('active until {date}', { date: fmtDate(pass.ends_at) }) : tr('not active')}</span>
@@ -866,9 +869,11 @@ views.profile = async () => {
       <h3 style="margin-top:16px">${tr('Au pair must speak')}</h3>${chipSet('required_languages', LANGS, p.required_languages)}
       <div id="programHint" style="margin-top:16px"></div></div>`}
   <div id="err"></div><button class="btn">${tr('Save profile')}</button></form>
+  ${isAp ? '<div class="card" id="refs"></div>' : ''}
   <div class="card spread profile-foot"><a href="#/notifications">🔔 ${tr('Notifications')}</a><a class="btn ghost sm" href="#/logout">${tr('Sign out')}</a></div>`);
 
   renderPhotoGrid(u.photos || []);
+  if (isAp) renderReferences();
   document.querySelectorAll('.chip-toggle').forEach((b) => { b.onclick = () => b.classList.toggle('on'); });
   if (isAp) {
     const $langs = document.getElementById('langs');
@@ -1429,8 +1434,68 @@ views['family-pass'] = async (_args, qs) => {
   }; });
 };
 
+// ---------- references ----------
+// On the au pair's profile page: who they asked, and a form to ask someone new.
+async function renderReferences() {
+  const $r = document.getElementById('refs');
+  if (!$r) return;
+  const { references } = await api('/me/references');
+  const label = { sent: `⏳ ${tr('Waiting for an answer')}`, confirmed: `✔ ${tr('Confirmed')}`, declined: `✖ ${tr('Said they do not know you')}` };
+  $r.innerHTML = `<h2>${tr('References')}</h2>
+    <p class="muted small">${tr("Add people you looked after children for, such as a family you babysat for or a kindergarten you worked at. We email them a short form, and families see their answers on your profile. Their email stays private.")}</p>
+    ${references.map((r) => `<div class="spread ref-row"><div><strong>${esc(r.name)}</strong> <span class="muted small">${esc(r.email)}${r.relation ? ` · ${esc(r.relation)}` : ''}</span><div class="small">${label[r.status] || ''}</div></div>
+      <button type="button" class="btn ghost sm" data-del="${r.id}">${tr('Remove')}</button></div>`).join('')}
+    ${references.filter((r) => r.status !== 'declined').length < 5 ? `<form id="refForm" class="form-grid" style="margin-top:12px">
+      <div class="field"><label>${tr('Name')}</label><input name="name" required maxlength="80"></div>
+      <div class="field"><label>${tr('Email')}</label><input name="email" type="email" required></div>
+      <div class="field"><label>${tr('How you know them')}</label><input name="relation" maxlength="120" placeholder="${tr('For example: family I babysat for in 2025')}"></div>
+      <div class="field" style="align-self:end"><button class="btn">${tr('Ask for a reference')}</button></div></form>` : ''}<div id="refErr"></div>`;
+  $r.querySelectorAll('[data-del]').forEach((b) => { b.onclick = async () => { await api(`/me/references/${b.dataset.del}`, { method: 'DELETE' }); renderReferences(); }; });
+  const f = document.getElementById('refForm');
+  if (f) f.onsubmit = async (e) => {
+    e.preventDefault();
+    try { await api('/me/references', { method: 'POST', body: formData(f) }); toast(tr('Sent. We emailed them a short form.')); renderReferences(); }
+    catch (err) { document.getElementById('refErr').innerHTML = `<div class="alert error">${esc(err.message)}</div>`; }
+  };
+}
+
+// The page a reference opens from their email. It works without an account.
+views.reference = async ([token]) => {
+  let d;
+  try { d = await api(`/references/${token}`); }
+  catch (e) { return render(`<div class="card" style="max-width:520px;margin:32px auto"><div class="alert error">${esc(e.message)}</div></div>`); }
+  const first = esc(d.aupair.first_name);
+  const done = (text) => render(`<div class="card" style="max-width:520px;margin:32px auto;text-align:center"><h1>${tr('Thank you!')}</h1><p>${text}</p></div>`);
+  if (d.status !== 'sent') return done(tr('You already answered. Thank you!'));
+  render(`<div class="card" style="max-width:560px;margin:32px auto">
+    ${d.aupair.photo_url ? `<img src="${esc(d.aupair.photo_url)}" alt="" class="ref-photo">` : ''}
+    <h1>${tr('A reference for {name}', { name: first })}</h1>
+    <p>${tr('Hi {name}! {aupair} named you as a reference on PairMundo, where au pairs and host families find each other. Families will see your answers and your first name, never your email.', { name: esc(String(d.name).split(/\s+/)[0]), aupair: esc(d.aupair.name) })}</p>
+    ${d.relation ? `<p class="muted">${tr('{aupair} wrote: “{relation}”', { aupair: first, relation: esc(d.relation) })}</p>` : ''}
+    <form id="rf">
+      <div class="field"><label>${tr('For how many months did {name} look after children for you?', { name: first })}</label><input name="months" type="number" min="1" max="240" required></div>
+      <div class="field"><label>${tr('How old were the children?')}</label>${chipSet('age_groups', AGE_GROUPS, [])}</div>
+      <div class="field"><label>${tr('Overall, how happy were you?')}</label><select name="rating" required><option value="">${tr('Choose…')}</option>${[5, 4, 3, 2, 1].map((n) => `<option value="${n}">${'★'.repeat(n)}${'☆'.repeat(5 - n)}</option>`).join('')}</select></div>
+      <div class="field"><label>${tr('Would you recommend {name} to another family?', { name: first })}</label>
+        <div class="row"><label class="check"><input type="radio" name="recommend" value="yes" required> ${tr('Yes')}</label><label class="check"><input type="radio" name="recommend" value="no"> ${tr('No')}</label></div></div>
+      <div class="field"><label>${tr('Anything families should know? (optional)')}</label><textarea name="comment" maxlength="600"></textarea></div>
+      <div id="err"></div><button class="btn" style="width:100%">${tr('Send my answers')}</button></form>
+    <p class="small" style="text-align:center;margin-top:14px"><a href="#" id="dontKnow">${tr("I don't know {name}", { name: first })}</a></p></div>`);
+  document.querySelectorAll('.chip-toggle').forEach((b) => { b.onclick = () => b.classList.toggle('on'); });
+  const send = async (body) => {
+    try { await api(`/references/${token}`, { method: 'POST', body }); done(body.knows === false ? tr("Thanks for letting us know. We won't show anything on {name}'s profile.", { name: first }) : tr('Your answers are on {name}\'s profile now. Thank you for helping a family choose well.', { name: first })); }
+    catch (err) { document.getElementById('err').innerHTML = `<div class="alert error">${esc(err.message)}</div>`; }
+  };
+  document.getElementById('dontKnow').onclick = (e) => { e.preventDefault(); send({ knows: false }); };
+  document.getElementById('rf').onsubmit = (e) => {
+    e.preventDefault(); const v = formData(e.target);
+    send({ months: Number(v.months), rating: Number(v.rating), recommend: v.recommend === 'yes', comment: v.comment,
+      age_groups: [...document.querySelectorAll('[data-chipset="age_groups"] .on')].map((b) => b.dataset.v) });
+  };
+};
+
 // ---------- router ----------
-const PUBLIC = new Set(['home', 'login', 'register', 'programs', 'forgot']);
+const PUBLIC = new Set(['home', 'login', 'register', 'programs', 'forgot', 'reference']);
 views.messages = ((orig) => (args) => (args[0] ? orig(args) : go('#/matches')))(views.messages);
 async function route() {
   clearInterval(pollTimer);

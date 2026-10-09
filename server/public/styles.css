@@ -291,3 +291,6 @@ th { color: var(--muted); font-weight: 600; font-size: .8rem; text-transform: up
 .cert-row .cert-detail { width: 100%; }
 @media (max-width: 600px) { .cert-row { grid-template-columns: 1fr; gap: 4px; } }
 .msg.call, .msg.mine.call { background: var(--card); color: var(--ink); border-color: var(--line); display: flex; flex-direction: column; gap: 6px; }
+.ref-item + .ref-item { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
+.ref-row { padding: 8px 0; border-bottom: 1px solid var(--line); gap: 12px; }
+.ref-photo { width: 84px; height: 84px; border-radius: 50%; object-fit: cover; display: block; margin: 0 auto 12px; }
