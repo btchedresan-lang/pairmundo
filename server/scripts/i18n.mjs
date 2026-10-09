@@ -22,6 +22,10 @@ for (const block of web.matchAll(/const (COUNTRIES|LANGS|AGE_GROUPS|SKILLS|TRAIT
   // Most maps are key: 'Label'; HOBBIES is key: ['emoji', 'Label'].
   for (const m of block[2].matchAll(new RegExp(String.raw`:\s*(?:\[(?:${literal}),\s*)?(?:${literal})`, 'g'))) add(unq(m, 3));
 }
+// CERTS is key: ['emoji', 'Label', 'Example note'].
+for (const block of web.matchAll(/const CERTS = \{([\s\S]*?)\};/g)) {
+  for (const m of block[1].matchAll(new RegExp(String.raw`\[(?:${literal}),\s*(?:${literal}),\s*(?:${literal})\]`, 'g'))) { add(unq(m, 3)); add(unq(m, 5)); }
+}
 for (const block of site.matchAll(/options\(\{([^}]*)\}/g)) for (const m of block[1].matchAll(new RegExp(String.raw`:\s*(?:${literal})`, 'g'))) add(unq(m));
 // Fixed text the server sends (errors, checklist items), which the page translates.
 const server = ['app.js', 'matching.js', 'programs.js'].map((f) => read(`server/${f}`)).join('\n');

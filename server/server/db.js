@@ -70,7 +70,8 @@ CREATE TABLE IF NOT EXISTS aupair_profiles (
   traits TEXT NOT NULL DEFAULT '[]',             -- JSON ['patient','caring',...] for the poster profile
   hobbies TEXT NOT NULL DEFAULT '[]',            -- JSON ['travel','skiing',...]
   goal TEXT,                                     -- "My goal" on the poster profile
-  ideal_family TEXT                              -- "My ideal family"
+  ideal_family TEXT,                             -- "My ideal family"
+  certificates TEXT NOT NULL DEFAULT '[]'        -- JSON [{kind, detail}]: language test, CPR, first aid, ...
 );
 
 -- Host family profile
@@ -312,6 +313,7 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
     ALTER TABLE aupair_profiles ADD COLUMN hobbies TEXT NOT NULL DEFAULT '[]';
     ALTER TABLE aupair_profiles ADD COLUMN goal TEXT;
     ALTER TABLE aupair_profiles ADD COLUMN ideal_family TEXT;`);
+  if (!apcols.includes('certificates')) db.exec("ALTER TABLE aupair_profiles ADD COLUMN certificates TEXT NOT NULL DEFAULT '[]'");
   if (!db.prepare('PRAGMA table_info(waitlist)').all().some((c) => c.name === 'source')) db.exec('ALTER TABLE waitlist ADD COLUMN source TEXT');
   // Which flyer or ad (?src= on the website link) brought someone who signed up.
   if (!db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'source')) db.exec('ALTER TABLE users ADD COLUMN source TEXT');

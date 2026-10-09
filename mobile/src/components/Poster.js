@@ -4,7 +4,7 @@ import { View } from 'react-native';
 import { HEADING, HEADING_BOLD, Text } from './Text';
 import { Photo } from './ui';
 import { Gallery } from './SwipeDeck';
-import { AGE_GROUPS, cname, country, firstName, flag, fmtDate, HOBBIES, langName, SKILLS, TRAITS } from '../data';
+import { AGE_GROUPS, CERTS, cname, country, firstName, flag, fmtDate, HOBBIES, langName, SKILLS, TRAITS } from '../data';
 import { tr, trn } from '../i18n';
 import { C, useTheme } from '../theme';
 
@@ -90,6 +90,7 @@ export function PosterBody({ u, p }) {
   const hobbies = (p.hobbies || []).filter((k) => HOBBIES[k]);
   const extra = (u.photos || []).slice(1, 4);
   const months = p.duration_months && trn(p.duration_months, '{n} month', '{n} months');
+  const certs = (p.certificates || []).filter((c) => CERTS[c.kind]);
   const goodToKnow = [p.drivers_license && ['🚗', tr("Has a driver's license")], p.non_smoker && ['🚭', tr('Non-smoker')], p.ok_with_pets && ['🐾', tr('Happy to live with pets')]].filter(Boolean);
 
   return (
@@ -118,6 +119,13 @@ export function PosterBody({ u, p }) {
       {p.languages?.length ? (
         <Section tint="yellow" icon="🗣️" title={tr('Languages')} tilt={0.3}>
           {p.languages.map((l) => <Row key={l.code} icon="💬">{langName(l.code)} · {l.level === 'native' ? tr('native') : l.level}</Row>)}
+        </Section>
+      ) : null}
+
+      {certs.length ? (
+        <Section tint="green" icon="🎓" title={tr('My certificates')} tilt={-0.3}>
+          {certs.map((c) => <Row key={c.kind} icon={CERTS[c.kind][0]}>{tr(CERTS[c.kind][1])}{c.detail ? ` · ${c.detail}` : ''}</Row>)}
+          <Text style={{ color: t.muted, fontSize: 13 }}>{tr('Added by {name}. Ask to see them on your video call.', { name: firstName(u.name) })}</Text>
         </Section>
       ) : null}
 

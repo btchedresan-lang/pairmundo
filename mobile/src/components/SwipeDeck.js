@@ -42,7 +42,8 @@ export function CardCaption({ r, onPress }) {
   const u = r.user; const p = r.profile || {};
   const age = u.role === 'aupair' ? p.age : null;
   const kids = p.children?.length ? `${trn(p.children.length, '{n} child', '{n} kids')} (${p.children.map((c) => c.age).join(', ')})` : '';
-  const langs = (p.languages || []).map((l) => langName(u.role === 'aupair' ? l.code : l));
+  // Au pairs' languages show their level too, such as "English C1".
+  const langs = (p.languages || []).map((l) => (u.role === 'aupair' ? `${langName(l.code)}${l.level && l.level !== 'native' ? ` ${l.level}` : ''}` : langName(l)));
   const sub = u.role === 'aupair'
     ? [p.childcare_years ? tr('{n} yrs childcare', { n: p.childcare_years }) : '', p.available_from ? tr('from {date}', { date: fmtDate(p.available_from) }) : ''].filter(Boolean).join(' · ')
     : [kids, p.start_date ? tr('starts {date}', { date: fmtDate(p.start_date) }) : ''].filter(Boolean).join(' · ');
@@ -55,6 +56,7 @@ export function CardCaption({ r, onPress }) {
         {langs.slice(0, 3).map((l) => <Text key={l} style={styles.glass}>{l}</Text>)}
         {r.rating?.avg ? <Text style={styles.glass}>★ {r.rating.avg}</Text> : null}
         {u.role === 'aupair' && p.drivers_license ? <Text style={styles.glass}>🚗 {tr('Driver')}</Text> : null}
+        {u.role === 'aupair' && (p.certificates || []).some((c) => ['cpr', 'first_aid'].includes(c.kind)) ? <Text style={styles.glass}>❤️ {tr('CPR')}</Text> : null}
       </View>
       {r.match?.reasons?.length ? <Text style={styles.reason}>✓ {tr(r.match.reasons[0])}</Text> : null}
       {r.match?.warnings?.length ? <Text style={styles.warning}>⚠ {tr(r.match.warnings[0])}</Text> : null}

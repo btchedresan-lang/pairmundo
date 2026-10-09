@@ -116,9 +116,9 @@ function FiltersSheet({ initial, isFamily, onApply, onClose }) {
       <CountryPicker label={isFamily ? tr('Au pair lives in') : tr('Family country')} value={f.country} onChange={set('country')} allowAny={tr('Anywhere')} />
       {isFamily ? <CountryPicker label={tr('Nationality')} value={f.nationality} onChange={set('nationality')} allowAny={tr('Any')} /> : null}
       <ChoiceChips label={tr('Speaks')} options={Object.fromEntries(TOP_LANGS.map((k) => [k, langName(k)]))} value={f.language} onChange={set('language')} />
-      <ChoiceChips label={tr('Only show')} options={{ verified: `✔ ${tr('ID verified')}`, ...(isFamily ? { driver: `🚗 ${tr('Drivers')}` } : {}) }} multi
-        value={[f.verified && 'verified', f.driver && 'driver'].filter(Boolean)}
-        onChange={(v) => setF((x) => ({ ...x, verified: v.includes('verified') ? '1' : '', driver: v.includes('driver') ? '1' : '' }))} />
+      <ChoiceChips label={tr('Only show')} options={{ verified: `✔ ${tr('ID verified')}`, ...(isFamily ? { driver: `🚗 ${tr('Drivers')}`, cpr: `❤️ ${tr('CPR or first aid')}` } : {}) }} multi
+        value={[f.verified && 'verified', f.driver && 'driver', f.cpr && 'cpr'].filter(Boolean)}
+        onChange={(v) => setF((x) => ({ ...x, verified: v.includes('verified') ? '1' : '', driver: v.includes('driver') ? '1' : '', cpr: v.includes('cpr') ? '1' : '' }))} />
       <View style={{ flexDirection: 'row', gap: 10 }}>
         <Button title={tr('Clear')} kind="ghost" style={{ flex: 1 }} onPress={() => onApply({})} />
         <Button title={tr('Apply')} style={{ flex: 2 }} onPress={() => onApply(f)} />
