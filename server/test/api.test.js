@@ -824,6 +824,52 @@ test('au pairs add certificates and language levels; families can show only CPR 
   assert.ok(!ids.includes(plain.id));
 });
 
+test('au pair agreement and country paperwork: Sweden, au pair from outside the EU', async () => {
+  const fam = await register('agreefam@test.io', 'family', 'SE', 'Familjen Berg');
+  const ap = await register('agreeap@test.io', 'aupair', 'PH', 'Joy Santos');
+  await call(ap.token, 'PUT', '/me', { profile: { birth_date: '2002-03-03', nationality: 'PH' } });
+  const req = await call(fam.token, 'POST', '/requests', { to_user: ap.id });
+  await call(ap.token, 'POST', `/requests/${req.body.id}/respond`, { action: 'accept' });
+  const r = await call(fam.token, 'POST', '/placements', { other_user_id: ap.id, start_date: '2027-03-01', end_date: '2027-12-31', weekly_hours: 25, pocket_money: 5960 });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  const pid = r.body.id;
+  let p = (await call(ap.token, 'GET', `/placements/${pid}`)).body;
+  // Sweden's three permit steps replace the generic visa step, each linking to Migrationsverket.
+  const titles = p.tasks.map((t) => t.title);
+  assert.ok(titles.includes('Apply online to Migrationsverket for the work permit for au pairs'));
+  assert.ok(!titles.includes('Apply for visa or residence permit'));
+  assert.equal(p.tasks.length, 12);
+  assert.match(p.tasks.find((t) => t.title.startsWith('Apply online')).link, /migrationsverket/);
+  assert.equal(p.agreement, null);
+  assert.equal((await call(ap.token, 'GET', `/placements/${pid}/agreement`)).status, 400);
+
+  await call(ap.token, 'POST', `/placements/${pid}/confirm`);
+  let a = (await call(fam.token, 'GET', `/placements/${pid}/agreement`)).body;
+  assert.deepEqual(a.missing, ['days_off', 'paid_leave_weeks']);
+  assert.equal(a.my_side, 'family');
+  assert.ok(a.sections.some((s) => s.clauses?.some(([text, vars]) => text.includes('{hours} hours a week') && vars.hours === 25)));
+  assert.equal((await call(fam.token, 'POST', `/placements/${pid}/agreement/sign`, { name: 'Erik Berg' })).status, 400);
+  assert.equal((await call(fam.token, 'PUT', `/placements/${pid}/agreement`, { terms: { days_off: 9 } })).status, 400);
+  a = (await call(fam.token, 'PUT', `/placements/${pid}/agreement`, { terms: { days_off: 2, paid_leave_weeks: 2, house_rules: 'No phones at dinner.' } })).body;
+  assert.deepEqual(a.missing, []);
+  assert.ok(a.sections.some((s) => s.text === 'No phones at dinner.'));
+
+  a = (await call(fam.token, 'POST', `/placements/${pid}/agreement/sign`, { name: 'Erik Berg' })).body;
+  assert.equal(a.signatures.family.name, 'Erik Berg');
+  assert.equal((await call(fam.token, 'POST', `/placements/${pid}/agreement/sign`, { name: 'Erik Berg' })).status, 409);
+  // Changing the terms after signing clears the signature.
+  a = (await call(ap.token, 'PUT', `/placements/${pid}/agreement`, { terms: { paid_leave_weeks: 3 } })).body;
+  assert.equal(a.signatures.family, null);
+  await call(fam.token, 'POST', `/placements/${pid}/agreement/sign`, { name: 'Erik Berg' });
+  a = (await call(ap.token, 'POST', `/placements/${pid}/agreement/sign`, { name: 'Joy Santos' })).body;
+  assert.ok(a.signatures.aupair && a.signatures.family);
+  p = (await call(ap.token, 'GET', `/placements/${pid}`)).body;
+  assert.equal(p.tasks.find((t) => t.title === 'Sign au pair agreement / contract').done, 1);
+  assert.ok(p.agreement.aupair_signed_at && p.agreement.family_signed_at);
+  const stranger = await register('agreestranger@test.io', 'family', 'SE');
+  assert.equal((await call(stranger.token, 'GET', `/placements/${pid}/agreement`)).status, 404);
+});
+
 test('certificate checks: an au pair sends proof, an admin checks it, the file is deleted', async () => {
   const ap = await register('proofap@test.io', 'aupair', 'PL', 'Proof Aupair');
   const fam = await register('prooffam@test.io', 'family', 'SE', 'Familjen Proof');

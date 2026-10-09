@@ -5,7 +5,7 @@ import { aupairPortrait, familyPortrait } from './portraits.js';
 import { openDb, json } from './db.js';
 import { seedPrograms } from './app.js';
 import { hashPassword } from './auth.js';
-import { PLACEMENT_TASKS } from './programs.js';
+import { PLACEMENT_TASKS, PROGRAMS, placementTaskList } from './programs.js';
 
 const file = process.env.DB_FILE || 'data/aupair.db';
 if (file !== ':memory:') for (const f of [file, `${file}-wal`, `${file}-shm`]) rmSync(f, { force: true });
@@ -118,5 +118,18 @@ db.prepare('INSERT INTO reviews (placement_id, reviewer_id, reviewee_id, overall
   .run(pid, famIds[5], apIds[2], 5, JSON.stringify({ reliability: 5, childcare: 5, communication: 5, household: 4, adaptability: 5 }), 'Thandi was wonderful with our baby and toddler. Punctual, warm and proactive. We miss her!');
 db.prepare('INSERT INTO reviews (placement_id, reviewer_id, reviewee_id, overall, criteria, comment, response) VALUES (?,?,?,?,?,?,?)')
   .run(pid, apIds[2], famIds[5], 4, JSON.stringify({ respect: 5, accommodation: 4, communication: 4, fair_hours: 4, support: 5 }), 'Kind family who included me in everything. Schedules sometimes changed last minute, but they always made it up.', 'Thank you Thandi, and fair point on the schedules!');
+
+// A confirmed upcoming placement: Maria (from Colombia, so she needs a visa) with Familie Schmidt in Hamburg.
+// The family has filled in and signed the agreement; Maria still has to sign.
+accept(famIds[1], apIds[0], 'Hola Maria! Would you like to spend a year with us in Hamburg?', 5);
+const pid2 = Number(db.prepare(`INSERT INTO placements (aupair_id, family_id, country, start_date, end_date, weekly_hours, pocket_money, status,
+    aupair_confirmed, family_confirmed, created_by) VALUES (?,?,?,?,?,?,?,'confirmed',1,1,?)`)
+  .run(apIds[0], famIds[1], 'DE', '2027-01-15', '2028-01-14', 30, 280, famIds[1]).lastInsertRowid);
+placementTaskList(PROGRAMS.find((p) => p.code === 'DE'), 'CO', '2027-01-15', '2028-01-14').forEach((t, i) => db.prepare(
+  'INSERT INTO placement_tasks (placement_id, title, owner, due_date, sort, link) VALUES (?,?,?,?,?,?)').run(pid2, t.title, t.owner, t.due_date, i, t.link));
+db.prepare("INSERT INTO placement_agreements (placement_id, terms, family_signed_name, family_signed_at) VALUES (?, ?, 'Julia Schmidt', datetime('now', '-1 day'))")
+  .run(pid2, JSON.stringify({ days_off: 1.5, paid_leave_weeks: 4, notice_weeks: 2, language_support: 'EUR 70 a month toward a German course',
+    duties: 'Morning routine with both children, taking the 4-year-old to kindergarten, playtime in the afternoon and light tidying after the children.',
+    house_rules: 'Guests are welcome until 22:00 on weekdays. Please tell us if you will be away overnight.' }));
 
 console.log(`Seeded ${apIds.length} au pairs, ${famIds.length} families, 1 admin into ${file}. Password for all: password123`);

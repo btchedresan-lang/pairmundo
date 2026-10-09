@@ -1062,7 +1062,8 @@ function placementRow(p) {
     <span class="chip ${status}">${statusLabel(p.status)}</span></div>
     <div class="muted small">${cname(p.country)} · ${fmtDate(p.start_date)} – ${fmtDate(p.end_date)} · ${tr('checklist {done}/{total}', { done: p.tasks_done, total: p.tasks_total })}</div></div></a>`;
 }
-views.placements = async ([id]) => {
+views.placements = async ([id, sub]) => {
+  if (id && sub === 'agreement') return agreementPage(id);
   if (id) return placementDetail(id);
   const { placements } = await api('/placements');
   render(`<h1>${tr('Placements')}</h1><div class="card">${placements.map(placementRow).join('') || `<div class="empty">${tr("No placements yet. Once you match, propose one from the other person's profile.")}</div>`}</div>`);
@@ -1130,11 +1131,15 @@ async function placementDetail(id) {
         ${!isAdmin ? next.map((s) => `<button class="btn secondary" data-status="${s}">${markAs[s] || s}</button>`).join('') : ''}
         ${['proposed', 'confirmed', 'active'].includes(p.status) ? `<button class="btn ghost" data-status="cancelled">${tr('Cancel')}</button>` : ''}
         ${!isAdmin ? `<a class="btn ghost" href="#/u/${other.id}">${tr('View {name}', { name: esc(other.name) })}</a>` : ''}</div></div>
+    ${p.agreement ? `<div class="card"><h2>${tr('Au pair agreement')}</h2>
+      <p class="muted small">${tr('PairMundo wrote it from your placement and the country rules. Read it, change what you need and sign it together.')}</p>
+      <div>${p.agreement.aupair_signed_at ? '✓' : '○'} ${tr('au pair')} · ${p.agreement.family_signed_at ? '✓' : '○'} ${tr('family')}</div>
+      <a class="btn ${p.agreement.aupair_signed_at && p.agreement.family_signed_at ? 'ghost' : ''}" style="margin-top:10px" href="#/placements/${p.id}/agreement">${tr('Open the agreement')}</a></div>` : ''}
     <div class="card"><h2>${tr('Program check')}</h2>${complianceBox(p.compliance)}</div>
   </div><div>
     <div class="card"><h2>${tr('Checklist')}</h2><div class="muted small">${tr('{done} of {total} done', { done: p.tasks.filter((t) => t.done).length, total: p.tasks.length })}</div>
       ${p.tasks.map((t) => `<label class="task ${t.done ? 'done' : ''}"><input type="checkbox" data-task="${t.id}" ${t.done ? 'checked' : ''} ${isAdmin ? 'disabled' : ''}>
-        <span class="t" style="flex:1">${esc(tr(t.title))}</span><span class="chip">${t.owner === 'both' ? tr('Both') : t.owner === 'aupair' ? tr('Au pair') : tr('Family')}</span>
+        <span class="t" style="flex:1">${esc(tr(t.title))}${t.link ? ` <a class="small" href="${esc(t.link)}" target="_blank" rel="noopener">${tr('Official site')} ↗</a>` : ''}</span><span class="chip">${t.owner === 'both' ? tr('Both') : t.owner === 'aupair' ? tr('Au pair') : tr('Family')}</span>
         <span class="muted small" style="min-width:90px;text-align:right">${fmtDate(t.due_date)}</span></label>`).join('')}</div>
     ${p.can_review ? `<form class="card" id="review"><h2>${tr('Review {name}', { name: esc(other.name) })}</h2>
       <p class="muted small">${tr('Your review stays hidden until {name} reviews you too, or 14 days after the placement ends.', { name: esc(other.name) })}</p>
@@ -1167,6 +1172,56 @@ async function placementDetail(id) {
     } catch (err) { document.getElementById('err').innerHTML = `<div class="alert error">${esc(err.message)}</div>`; }
   };
 }
+// ---------- au pair agreement ----------
+// The server writes the agreement as [English sentence, values] pairs; each is translated here.
+const clause = ([text, vars]) => tr(text, Object.fromEntries(Object.entries(vars || {}).map(([k, v]) => [k, esc(['start', 'end'].includes(k) ? fmtDate(v) : v)])));
+async function agreementPage(id) {
+  const a = await api(`/placements/${id}/agreement`);
+  const sig = (side, label) => `<div class="sig"><div class="muted small">${label}</div>${a.signatures[side]
+    ? `<div class="sig-name">${esc(a.signatures[side].name)}</div><div class="muted small">${tr('Signed {date}', { date: fmtDate(a.signatures[side].at) })}</div>`
+    : `<div class="muted">${tr('Not signed yet')}</div>`}</div>`;
+  const tm = a.terms;
+  const canSign = a.editable && a.my_side && !a.signatures[a.my_side];
+  render(`<p class="no-print"><a href="#/placements/${id}">← ${tr('Back to the placement')}</a></p>
+  <div class="cols-2"><div>
+    <article class="card agreement"><h1>${tr('Au pair agreement')}</h1>
+      ${a.sections.map((s) => `<h3>${clause(s.title)}</h3>${s.text ? `<p style="white-space:pre-wrap">${esc(s.text)}</p>` : `<ul>${s.clauses.map((x) => `<li>${clause(x)}</li>`).join('')}</ul>`}`).join('')}
+      <div class="sigs">${sig('family', tr('Host family'))}${sig('aupair', tr('Au pair'))}</div>
+    </article>
+    <p class="no-print"><button class="btn ghost" id="print">🖨️ ${tr('Print or save as PDF')}</button></p>
+  </div><div class="no-print">
+    ${canSign ? `<form class="card" id="sign"><h2>${tr('Sign the agreement')}</h2>
+      ${a.missing.length ? `<div class="alert warning">${tr('Fill in the days off, paid holiday and notice period before signing.')}</div>` : ''}
+      <p class="muted small">${tr('Type your full name. Signing means you agree to everything in this agreement.')}</p>
+      <div class="field"><input name="name" required value="${esc(me.user.name)}"></div>
+      <div id="sign-err"></div><button class="btn" ${a.missing.length ? 'disabled' : ''}>${tr('Sign')}</button></form>` : ''}
+    ${a.editable ? `<form class="card" id="terms"><h2>${tr('Change the terms')}</h2>
+      <p class="muted small">${tr('Saving new terms clears both signatures, so you both sign the new version.')}</p>
+      <div class="form-grid">
+        <div class="field"><label>${tr('Days off each week')}</label><input type="number" name="days_off" min="1" max="4" step="0.5" value="${tm.days_off ?? ''}"></div>
+        <div class="field"><label>${tr('Weeks of paid holiday a year')}</label><input type="number" name="paid_leave_weeks" min="0" max="10" step="0.5" value="${tm.paid_leave_weeks ?? ''}"></div>
+        <div class="field"><label>${tr('Notice period (weeks)')}</label><input type="number" name="notice_weeks" min="0" max="12" step="1" value="${tm.notice_weeks ?? ''}"></div></div>
+      <div class="field"><label>${tr('Help with the language course')}</label><input name="language_support" maxlength="200" value="${esc(tm.language_support)}" placeholder="${tr('For example: EUR 70 a month toward the course')}"></div>
+      <div class="field"><label>${tr('Daily duties')}</label><textarea name="duties" maxlength="1500" placeholder="${tr('For example: school runs, playtime after school, tidying the children’s rooms.')}">${esc(tm.duties)}</textarea></div>
+      <div class="field"><label>${tr('House rules')}</label><textarea name="house_rules" maxlength="1500" placeholder="${tr('For example: guests, curfew, using the car.')}">${esc(tm.house_rules)}</textarea></div>
+      <div id="terms-err"></div><button class="btn secondary">${tr('Save terms')}</button></form>` : ''}
+  </div></div>`);
+  document.getElementById('print').onclick = () => window.print();
+  const sf = document.getElementById('sign');
+  if (sf) sf.onsubmit = async (e) => {
+    e.preventDefault();
+    try { await api(`/placements/${id}/agreement/sign`, { method: 'POST', body: { name: sf.name.value } }); toast(tr('Signed')); agreementPage(id); }
+    catch (err) { document.getElementById('sign-err').innerHTML = `<div class="alert error">${esc(err.message)}</div>`; }
+  };
+  const tf = document.getElementById('terms');
+  if (tf) tf.onsubmit = async (e) => {
+    e.preventDefault();
+    if ((a.signatures.aupair || a.signatures.family) && !confirm(tr('Saving new terms clears both signatures, so you both sign the new version.'))) return;
+    try { await api(`/placements/${id}/agreement`, { method: 'PUT', body: { terms: formData(tf) } }); toast(tr('Saved')); agreementPage(id); }
+    catch (err) { document.getElementById('terms-err').innerHTML = `<div class="alert error">${esc(err.message)}</div>`; }
+  };
+}
+
 const starInput = (name) => `<span class="star-input" data-stars="${name}" data-value="">${[1, 2, 3, 4, 5].map((n) => `<button type="button" data-n="${n}" aria-label="${trn(n, '{n} star', '{n} stars')}">★</button>`).join('')}</span>`;
 function bindStarInputs() {
   document.querySelectorAll('.star-input').forEach((g) => g.querySelectorAll('button').forEach((b) => { b.onclick = () => {

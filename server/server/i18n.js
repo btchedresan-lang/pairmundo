@@ -154,6 +154,15 @@ export const DICT = {
   '{country} requires placement through a recognised agency/sponsor.': {
     es: '{country} exige tramitar la estancia con una agencia o patrocinador reconocido.', fr: '{country} exige un placement via une agence ou un sponsor reconnu.',
     de: '{country} verlangt die Vermittlung über eine anerkannte Agentur oder einen Sponsor.', pt: '{country} exige que a estadia seja feita por uma agência ou patrocinador reconhecido.' },
+  '{name} changed the au pair agreement. Read it again and sign it.': {
+    es: '{name} cambió el acuerdo de au pair. Léelo de nuevo y fírmalo.', fr: "{name} a modifié l'accord au pair. Relisez-le et signez-le.",
+    de: '{name} hat die Au-pair-Vereinbarung geändert. Lies sie noch einmal und unterschreibe sie.', pt: '{name} alterou o acordo de au pair. Leia de novo e assine.' },
+  '{name} signed the au pair agreement. Read it and sign it too.': {
+    es: '{name} firmó el acuerdo de au pair. Léelo y fírmalo tú también.', fr: "{name} a signé l'accord au pair. Lisez-le et signez-le à votre tour.",
+    de: '{name} hat die Au-pair-Vereinbarung unterschrieben. Lies sie und unterschreibe auch.', pt: '{name} assinou o acordo de au pair. Leia e assine também.' },
+  'Your au pair agreement is signed by both of you.': {
+    es: 'Los dos habéis firmado el acuerdo de au pair.', fr: "L'accord au pair est signé par vous deux.",
+    de: 'Eure Au-pair-Vereinbarung ist von euch beiden unterschrieben.', pt: 'O acordo de au pair foi assinado por vocês dois.' },
   'PairMundo checked one of your certificates. It now shows a ✔ on your profile.': {
     es: 'PairMundo ha revisado uno de tus certificados. Ahora aparece con un ✔ en tu perfil.', fr: 'PairMundo a vérifié un de vos certificats. Il affiche maintenant un ✔ sur votre profil.',
     de: 'PairMundo hat eines deiner Zertifikate geprüft. Es zeigt jetzt ein ✔ in deinem Profil.', pt: 'A PairMundo verificou um dos seus certificados. Agora ele aparece com um ✔ no seu perfil.' },

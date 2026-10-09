@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { Linking, Pressable, View } from 'react-native';
 import { Text } from '../../components/Text';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { api } from '../../api';
@@ -46,6 +46,14 @@ export default function Placement() {
         {(NEXT[p.status] || []).map((s) => <Button key={s} kind="secondary" title={s === 'active' ? tr('Mark as active') : tr('Mark as completed')} onPress={() => act(() => api(`/placements/${id}/status`, { method: 'POST', body: { status: s } }))} />)}
         {['proposed', 'confirmed', 'active'].includes(p.status) ? <Button kind="ghost" small title={tr('Cancel placement')} onPress={() => act(() => api(`/placements/${id}/status`, { method: 'POST', body: { status: 'cancelled' } }))} /> : null}
       </View>
+      {p.agreement ? (
+        <Card>
+          <T bold>{tr('Au pair agreement')}</T>
+          <T small muted>{tr('PairMundo wrote it from your placement and the country rules. Read it, change what you need and sign it together.')}</T>
+          <T small>{p.agreement.aupair_signed_at ? '✓' : '○'} {tr('au pair')} · {p.agreement.family_signed_at ? '✓' : '○'} {tr('family')}</T>
+          <Button small kind={p.agreement.aupair_signed_at && p.agreement.family_signed_at ? 'ghost' : 'primary'} title={tr('Open the agreement')} onPress={() => router.push(`/agreement/${id}`)} />
+        </Card>
+      ) : null}
       <Card><T bold>{tr('Program check')}</T><ComplianceBox compliance={p.compliance} /></Card>
       <Card>
         <T bold>{tr('Checklist · {done} of {total} done', { done, total: p.tasks.length })}</T>
@@ -58,6 +66,7 @@ export default function Placement() {
             <View style={{ flex: 1 }}>
               <T style={task.done ? { textDecorationLine: 'line-through', color: t.muted } : null}>{tr(task.title)}</T>
               <T small muted>{task.owner === 'both' ? tr('Both') : task.owner === 'aupair' ? tr('Au pair') : tr('Family')} · {fmtDate(task.due_date)}</T>
+              {task.link ? <Pressable onPress={() => Linking.openURL(task.link)} hitSlop={6}><T small style={{ color: C.primary }}>{tr('Official site')} ↗</T></Pressable> : null}
             </View>
           </Pressable>
         ))}
