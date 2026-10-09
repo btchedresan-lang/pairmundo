@@ -782,8 +782,22 @@ test('ambassadors: referral codes at sign-up, rewards counted once, monthly cap,
   assert.equal(r.body.stats.owed_cents, 0);
   assert.equal(r.body.stats.earned_cents, 18050);
 
+  // Someone who joined the waitlist through the link and signs up later without the code still counts, and keeps
+  // the flyer they came from; a code typed at sign-up wins.
+  await join({ email: 'refwait3@test.io', ref_code: 'ana-co', source: 'salon-ostermalm' });
+  await join({ email: 'refwait4@test.io', ref_code: 'ana-co' });
+  await call(null, 'POST', '/auth/register', { email: 'refwait3@test.io', password: 'password123', role: 'family', name: 'W3' });
+  assert.deepEqual({ ...testDb.prepare("SELECT ref_code, source FROM users WHERE email = 'refwait3@test.io'").get() }, { ref_code: 'ANA-CO', source: 'salon-ostermalm' });
+  testDb.prepare("INSERT INTO ambassadors (code, name) VALUES ('OTHER-1', 'Other')").run();
+  await call(null, 'POST', '/auth/register', { email: 'refwait4@test.io', password: 'password123', role: 'family', name: 'W4', ref_code: 'other-1' });
+  assert.equal(testDb.prepare("SELECT ref_code FROM users WHERE email = 'refwait4@test.io'").get().ref_code, 'OTHER-1');
+
   // A paused ambassador's code stops working, and they no longer earn.
   await call(admin, 'POST', `/admin/ambassadors/${amb}`, { active: false });
+  await join({ email: 'refwait5@test.io', ref_code: 'ana-co' });
+  testDb.prepare("UPDATE waitlist SET ref_code = 'ANA-CO' WHERE email = 'refwait5@test.io'").run();
+  await call(null, 'POST', '/auth/register', { email: 'refwait5@test.io', password: 'password123', role: 'family', name: 'W5' });
+  assert.equal(testDb.prepare("SELECT ref_code FROM users WHERE email = 'refwait5@test.io'").get().ref_code, null);
   assert.equal((await call(null, 'GET', '/referral/ANA-CO')).status, 404);
   assert.equal((await call(own.token, 'GET', '/me')).body.ambassador, null);
 });
