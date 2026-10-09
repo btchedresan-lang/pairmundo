@@ -10,6 +10,7 @@ import { tr, trMap } from '../../i18n';
 import { Alert, Button, Card, ChoiceChips, Field, Screen, T } from '../../components/ui';
 import { CountryPicker } from '../../components/pickers';
 import { CertProof, useProofs } from '../../components/CertProof';
+import { MyReferences } from '../../components/References';
 import { brand, C } from '../../theme';
 
 const DESTINATIONS = ['US', 'DE', 'FR', 'NL', 'DK', 'SE', 'ES', 'CH', 'BE', 'IE', 'AU'];
@@ -145,6 +146,8 @@ export default function MyProfile() {
           <ChoiceChips label={tr('Au pair must speak')} options={labels(TOP_LANGS, langName)} value={f.required_languages} onChange={set('required_languages')} multi />
         </Card>
       )}
+
+      {isAp ? <MyReferences /> : null}
 
       {me.pass?.required || me.pass?.active ? (
         <Pressable onPress={() => router.push('/family-pass')}>

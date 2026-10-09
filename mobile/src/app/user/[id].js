@@ -136,7 +136,7 @@ export default function UserProfile() {
             {u.verification.references ? <Chip tone="ok" label={`✔ ${tr('References')}`} /> : null}
             {u.verification.background ? <Chip tone="ok" label={`✔ ${tr('Background check')}`} /> : null}
           </Chips> : null}
-          <View style={{ marginHorizontal: -16 }}><PosterBody u={u} p={p} /></View>
+          <View style={{ marginHorizontal: -16 }}><PosterBody u={u} p={p} refs={d.references} /></View>
         </> : <>
         <Card>
           <T bold>{tr('About us')}</T>

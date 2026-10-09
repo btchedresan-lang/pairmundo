@@ -31,6 +31,13 @@ export const waitlistEmail = (lang, leaveUrl) => {
     text: t(lang, "Thanks for your interest in {app}!\n\nWe'll email you when the iPhone and Android apps are ready. Until then you can already sign up and start matching at https://pairmundo.com.\n\nTo leave the list, open this link: {link}", v) };
 };
 
+/** Asks someone an au pair named to confirm what they know about them. */
+export const referenceEmail = (lang, { aupair, referee, link }) => {
+  const v = { app: APP_NAME, aupair, referee, link };
+  return { subject: t(lang, '{aupair} asked you for a reference on {app}', v),
+    text: t(lang, "Hi {referee},\n\n{aupair} is looking for a host family on {app}, an app where au pairs and host families find each other, and named you as a reference.\n\nCould you answer five short questions about the time {aupair} looked after children for you? It takes about two minutes:\n{link}\n\nFamilies on {app} will see your answers and your first name, never your email.\n\nIf you don't know {aupair}, you can ignore this email or say so on the page.", v) };
+};
+
 /** The code email in the person's language (see i18n.js). */
 export const codeEmail = (purpose, code, lang) => {
   const v = { app: APP_NAME, code };

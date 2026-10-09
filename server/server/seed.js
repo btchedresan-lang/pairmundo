@@ -57,6 +57,15 @@ const apIds = aupairs.map(([email, name, country, city, birth, nat, langs, prefs
   return id;
 });
 
+// Demo references: Maria and Anna each have confirmed ones, and Anna is waiting on one more.
+const addRef = (userId, name, email, relation, answers) => db.prepare(`INSERT INTO reference_checks (user_id, name, email, relation, token, status, answers, responded_at)
+  VALUES (?,?,?,?,?,?,?,?)`).run(userId, name, email, relation, `demo-${email}`, answers ? 'confirmed' : 'sent', answers ? json.str(answers) : null, answers ? '2026-09-20 10:00:00' : null);
+addRef(apIds[0], 'Lucía Pérez', 'lucia@example.com', 'Family I nannied for in Bogotá', { months: 24, rating: 5, recommend: true, age_groups: ['toddler', 'school'], comment: 'Maria was patient, creative and always on time. Our girls still ask about her.' });
+addRef(apIds[1], 'Katarzyna Wiśniewska', 'kasia@example.com', 'Mother of the twins I looked after', { months: 14, rating: 5, recommend: true, age_groups: ['infant'], comment: 'Calm with babies and very organised. We trusted her completely.' });
+addRef(apIds[1], 'Tomasz Zieliński', 'tomasz@example.com', 'Summer babysitting, 2025', { months: 3, rating: 4, recommend: true, age_groups: ['school'], comment: null });
+addRef(apIds[1], 'Przedszkole Słoneczko', 'kindergarten@example.com', 'Kindergarten internship', null);
+db.prepare('UPDATE users SET references_checked = 1 WHERE id IN (?, ?)').run(apIds[0], apIds[1]);
+
 const families = [
   ['millers@aupair.test', 'The Miller Family', 'US', 'Denver, CO', [{ age: 3 }, { age: 7 }], ['en'], ['en'], '2026-12-01', 12, 45, 848, 1, 1, 'Two kids, a golden retriever and a love for skiing. Looking for an outdoorsy au pair to join us.', { id: 1, refs: 1 }],
   ['schmidts@aupair.test', 'Familie Schmidt', 'DE', 'Hamburg', [{ age: 1 }, { age: 4 }], ['de', 'en'], ['de'], '2027-01-15', 12, 30, 280, 0, 0, 'Doctors in Hamburg with a toddler and a baby. We value calm, reliability and some German.', { id: 1 }],

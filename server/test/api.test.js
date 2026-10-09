@@ -850,3 +850,27 @@ test('certificate checks: an au pair sends proof, an admin checks it, the file i
   r = await call(fam.token, 'GET', `/users/${ap.id}`);
   assert.equal(r.body.profile.certificates[0].verified, false);
 });
+
+test('references: an au pair asks, the reference answers by email link, families see it', async () => {
+  const ap = await register('referenceap@test.io', 'aupair', 'PL', 'Ref Aupair');
+  const fam = await register('referencefam@test.io', 'family', 'SE', 'Familjen Ref');
+  assert.equal((await call(ap.token, 'POST', '/me/references', { name: 'Self', email: 'referenceap@test.io' })).status, 400);
+  assert.equal((await call(fam.token, 'POST', '/me/references', { name: 'X', email: 'x@test.io' })).status, 403);
+  let r = await call(ap.token, 'POST', '/me/references', { name: 'Ewa Nowak', email: 'Ewa@Test.io', relation: 'Family I babysat for' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal((await call(ap.token, 'POST', '/me/references', { name: 'Ewa again', email: 'ewa@test.io' })).status, 400);
+  const mail = outbox.find((m) => m.to === 'ewa@test.io');
+  const token = mail.text.match(/#\/reference\/([\w-]+)/)[1];
+  assert.equal((await call(null, 'GET', `/references/${token}`)).body.aupair.first_name, 'Ref');
+  assert.equal((await call(null, 'POST', `/references/${token}`, { months: 0, rating: 5, recommend: true })).status, 400);
+  r = await call(null, 'POST', `/references/${token}`, { months: 18, rating: 5, recommend: true, age_groups: ['toddler', 'nope'], comment: 'Wonderful with our son.' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal((await call(null, 'POST', `/references/${token}`, { months: 18, rating: 5, recommend: true })).status, 409);
+  r = await call(fam.token, 'GET', `/users/${ap.id}`);
+  assert.equal(r.body.user.verification.references, true);
+  assert.deepEqual(r.body.references.map((x) => [x.name, x.months, x.recommend, x.age_groups]), [['Ewa', 18, true, ['toddler']]]);
+  assert.ok(!JSON.stringify(r.body.references).includes('ewa@test.io'));
+  // Removing the only confirmed reference takes the badge away again.
+  await call(ap.token, 'DELETE', `/me/references/${r.body.references[0].id}`);
+  assert.equal((await call(fam.token, 'GET', `/users/${ap.id}`)).body.user.verification.references, false);
+});
