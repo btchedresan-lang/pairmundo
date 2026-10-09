@@ -434,9 +434,10 @@ function landing() {
     .map(([i, t, d]) => `<div class="card feature"><div class="icon">${i}</div><h3>${t}</h3><p class="muted">${d}</p></div>`).join('')}
     </div>
     <section class="card wait-card" style="margin-top:32px"><h2>${tr('Get the app at launch')}</h2>${waitForm('wait2')}<div id="waitMsg2"></div></section>`);
-  // Someone an ambassador invited sees who, so they know they're in the right place.
+  // Someone an ambassador invited sees who, so they know they're in the right place. Not when they scanned a flyer
+  // or a salon card (?src=…): they've never met the ambassador, so a stranger's name would only confuse them.
   const ref = refCode();
-  if (ref) api(`/referral/${encodeURIComponent(ref)}`).then((a) => {
+  if (ref && !adSource()) api(`/referral/${encodeURIComponent(ref)}`).then((a) => {
     document.getElementById('invited').innerHTML = `<div class="alert info" style="text-align:center">👋 ${tr('{name} invited you to PairMundo.', { name: esc(a.name) })}</div>`;
   }).catch(() => { try { localStorage.removeItem('ref'); } catch { /* private mode */ } });
   // Someone who scanned a flyer, or followed an ambassador's link, came for the waitlist, so take them straight to it.
