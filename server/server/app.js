@@ -344,13 +344,18 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (!['aupair', 'family'].includes(role)) throw bad('Choose au pair or host family.');
     if (!str(name)) throw bad('Name is required.');
     // An ambassador's referral code, typed in or carried over from their link.
-    const ambassador = str(req.body?.ref_code) ? ambassadorByCode(referralCode(req.body.ref_code)) : null;
+    let ambassador = str(req.body?.ref_code) ? ambassadorByCode(referralCode(req.body.ref_code)) : null;
     if (str(req.body?.ref_code) && !ambassador) throw bad('That referral code is not valid. Check it, or leave it empty.');
+    // Someone who joined the waitlist from an ambassador's link or a flyer and signs up later in the app keeps
+    // that ambassador and source, so a referral made before launch still counts.
+    const waited = db.prepare('SELECT source, ref_code FROM waitlist WHERE email = ?').get(email);
+    ambassador ??= ambassadorByCode(waited?.ref_code);
+    const source = str(req.body?.source, 60)?.toLowerCase() ?? waited?.source ?? null;
     if (db.prepare('SELECT 1 FROM users WHERE lower(trim(email)) = ?').get(email)) throw new HttpError(409, 'An account with this email already exists.');
     const user = tx(db, () => {
       const r = db.prepare('INSERT INTO users (email, password_hash, role, name, country, city, lang, source, ref_code) VALUES (?,?,?,?,?,?,?,?,?)')
         .run(email, hashPassword(String(password)), role, str(name, 120), str(country, 2)?.toUpperCase() ?? null, str(city, 120), pickLang(req.get('accept-language')),
-          str(req.body?.source, 60)?.toLowerCase() ?? null, ambassador?.code ?? null);
+          source, ambassador?.code ?? null);
       const id = Number(r.lastInsertRowid);
       db.prepare(`INSERT INTO ${role === 'aupair' ? 'aupair_profiles' : 'family_profiles'} (user_id) VALUES (?)`).run(id);
       return getUser(id);
