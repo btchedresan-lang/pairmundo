@@ -47,7 +47,7 @@ const passPlan = (key, value) => PASS_PLANS.find((p) => p[key] === value);
 /** What an ambassador earns for people who join with their referral code, in US cents (ambassadors are paid in
  *  dollars, whatever the Family Pass costs). Au pair profile rewards count only once the au pair's ID is verified,
  *  and stop at the monthly cap, because a profile alone is easy to fake. */
-export const AMBASSADOR_REWARDS = { currency: 'usd', profile: 200, profile_monthly_cap: 4000, pass: 1500, placement: 4000 };
+export const AMBASSADOR_REWARDS = { currency: 'usd', profile: 200, profile_monthly_cap: 10000, pass: 1500, placement: 4000 };
 
 class HttpError extends Error {
   constructor(status, message, code) { super(message); this.status = status; this.code = code; }

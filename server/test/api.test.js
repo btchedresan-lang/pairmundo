@@ -766,7 +766,7 @@ test('ambassadors: referral codes at sign-up, rewards counted once, monthly cap,
   assert.deepEqual([s.families, s.placements, s.earned_cents], [1, 2, 8200]);
 
   // Profile rewards stop at the monthly cap, but the profile still counts.
-  testDb.prepare("INSERT INTO referral_rewards (ambassador_id, user_id, kind, amount_cents) VALUES (?, NULL, 'profile', 3850)").run(amb);
+  testDb.prepare("INSERT INTO referral_rewards (ambassador_id, user_id, kind, amount_cents) VALUES (?, NULL, 'profile', 9850)").run(amb);
   const ap2 = await regRef('refap2@test.io', 'aupair');
   testDb.prepare('UPDATE users SET id_verified = 1 WHERE id = ?').run(ap2.id);
   await call(ap2.token, 'POST', '/me/photos', { data_url: png });
@@ -776,14 +776,14 @@ test('ambassadors: referral codes at sign-up, rewards counted once, monthly cap,
   // The list, the payout sheet, and marking a month paid.
   const month = new Date().toISOString().slice(0, 7);
   const list = (await call(admin, 'GET', `/admin/ambassadors?month=${month}`)).body;
-  assert.equal(list.ambassadors.find((a) => a.id === amb).stats.earned_cents, 12050);
+  assert.equal(list.ambassadors.find((a) => a.id === amb).stats.earned_cents, 18050);
   const csv = await (await fetch(`${base}/admin/ambassadors.csv?month=${month}`, { headers: { Authorization: `Bearer ${admin}` } })).text();
   assert.match(csv, /^code,name,country,contact,active,waitlist,au pairs,families,au pair profiles,family passes,placements,earned \d{4}-\d{2} \(USD\),owed now \(USD\)\n/);
-  assert.match(csv, /\nANA-CO,Ana Gómez,CO,'\+57 300 000,yes,1,2,1,3,0,2,120\.50,120\.50\n/);
+  assert.match(csv, /\nANA-CO,Ana Gómez,CO,'\+57 300 000,yes,1,2,1,3,0,2,180\.50,180\.50\n/);
   r = await call(admin, 'POST', `/admin/ambassadors/${amb}/paid`, { month });
   assert.equal(r.body.marked, 5);
   assert.equal(r.body.stats.owed_cents, 0);
-  assert.equal(r.body.stats.earned_cents, 12050);
+  assert.equal(r.body.stats.earned_cents, 18050);
 
   // Someone who joined the waitlist through the link and signs up later without the code still counts, and keeps
   // the flyer they came from; a code typed at sign-up wins.
