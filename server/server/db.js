@@ -230,6 +230,18 @@ CREATE TABLE IF NOT EXISTS push_tokens (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- A photo or PDF of a certificate an au pair sends in for checking. Only admins see the file, and it is deleted once checked.
+CREATE TABLE IF NOT EXISTS certificate_proofs (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  mime TEXT,
+  data BLOB,
+  status TEXT NOT NULL DEFAULT 'pending',          -- pending | verified | rejected
+  note TEXT,                                       -- why it was rejected, shown to the au pair
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  reviewed_at TEXT,
+  PRIMARY KEY (user_id, kind)
+);
 -- References an au pair asks for: PairMundo emails the person a link, and they answer a short form.
 CREATE TABLE IF NOT EXISTS reference_checks (
   id INTEGER PRIMARY KEY,

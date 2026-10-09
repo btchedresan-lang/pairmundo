@@ -824,6 +824,33 @@ test('au pairs add certificates and language levels; families can show only CPR 
   assert.ok(!ids.includes(plain.id));
 });
 
+test('certificate checks: an au pair sends proof, an admin checks it, the file is deleted', async () => {
+  const ap = await register('proofap@test.io', 'aupair', 'PL', 'Proof Aupair');
+  const fam = await register('prooffam@test.io', 'family', 'SE', 'Familjen Proof');
+  const { hashPassword } = await import('../server/auth.js');
+  testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
+  const png = `data:image/png;base64,${Buffer.from('89504e470d0a1a0a0000', 'hex').toString('base64')}`;
+  assert.equal((await call(ap.token, 'POST', '/me/certificates/cpr/proof', { data_url: png })).status, 400);
+  await call(ap.token, 'PUT', '/me', { profile: { certificates: [{ kind: 'cpr', detail: 'Red Cross' }, { kind: 'language', detail: 'IELTS 7' }] } });
+  assert.equal((await call(ap.token, 'POST', '/me/certificates/cpr/proof', { data_url: 'data:image/png;base64,aGVsbG8=' })).status, 400);
+  let r = await call(ap.token, 'POST', '/me/certificates/cpr/proof', { data_url: png });
+  assert.equal(r.body.proof.status, 'pending');
+  assert.equal((await call(fam.token, 'GET', '/admin/certificates')).status, 403);
+  const queue = (await call(admin, 'GET', '/admin/certificates')).body.proofs.filter((p) => p.user_id === ap.id);
+  assert.deepEqual(queue.map((p) => [p.kind, p.detail]), [['cpr', 'Red Cross']]);
+  const file = await fetch(`${base}/admin/certificates/${ap.id}/cpr/file`, { headers: { Authorization: `Bearer ${admin}` } });
+  assert.equal(file.headers.get('content-type'), 'image/png');
+  assert.equal((await call(admin, 'POST', `/admin/certificates/${ap.id}/cpr`, { status: 'verified' })).status, 200);
+  assert.equal((await fetch(`${base}/admin/certificates/${ap.id}/cpr/file`, { headers: { Authorization: `Bearer ${admin}` } })).status, 404);
+  r = await call(fam.token, 'GET', `/users/${ap.id}`);
+  assert.deepEqual(r.body.profile.certificates.map((c) => [c.kind, c.verified]), [['cpr', true], ['language', false]]);
+  // Changing what the certificate says takes the check away.
+  await call(ap.token, 'PUT', '/me', { profile: { certificates: [{ kind: 'cpr', detail: 'Something else' }] } });
+  r = await call(fam.token, 'GET', `/users/${ap.id}`);
+  assert.equal(r.body.profile.certificates[0].verified, false);
+});
+
 test('references: an au pair asks, the reference answers by email link, families see it', async () => {
   const ap = await register('referenceap@test.io', 'aupair', 'PL', 'Ref Aupair');
   const fam = await register('referencefam@test.io', 'family', 'SE', 'Familjen Ref');
