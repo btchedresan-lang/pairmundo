@@ -2,7 +2,7 @@
 // pastel cards for each part of the profile. Cards with nothing filled in are left out.
 import { View } from 'react-native';
 import { HEADING, HEADING_BOLD, Text } from './Text';
-import { Photo } from './ui';
+import { Photo, Stars } from './ui';
 import { Gallery } from './SwipeDeck';
 import { AGE_GROUPS, CERTS, cname, country, firstName, flag, fmtDate, HOBBIES, langName, SKILLS, TRAITS } from '../data';
 import { tr, trn } from '../i18n';
@@ -83,7 +83,7 @@ export function PosterHeader({ u, p, width, badge }) {
 }
 
 /** Everything below the photo. */
-export function PosterBody({ u, p }) {
+export function PosterBody({ u, p, refs = [] }) {
   const t = useTheme();
   const place = [u.city, country(u.country)].filter(Boolean).join(', ');
   const traits = (p.traits || []).map((k) => (TRAITS[k] ? tr(TRAITS[k]) : k));
@@ -126,6 +126,22 @@ export function PosterBody({ u, p }) {
         <Section tint="green" icon="🎓" title={tr('My certificates')} tilt={-0.3}>
           {certs.map((c) => <Row key={c.kind} icon={CERTS[c.kind][0]}>{tr(CERTS[c.kind][1])}{c.detail ? ` · ${c.detail}` : ''}</Row>)}
           <Text style={{ color: t.muted, fontSize: 13 }}>{tr('Added by {name}. Ask to see them on your video call.', { name: firstName(u.name) })}</Text>
+        </Section>
+      ) : null}
+
+      {refs.length ? (
+        <Section tint="peach" icon="💌" title={tr('References')} tilt={0.3}>
+          {refs.map((r) => (
+            <View key={r.id} style={{ gap: 3 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                <Text style={{ color: t.ink, fontWeight: '700', flex: 1 }}>{r.name}{r.relation ? <Text style={{ fontWeight: '400', color: t.muted }}> · {r.relation}</Text> : null}</Text>
+                <Stars value={r.rating} size={13} />
+              </View>
+              <Text style={{ color: t.muted, fontSize: 13 }}>{[trn(r.months, '{n} month', '{n} months'), ...(r.age_groups || []).map((g) => (AGE_GROUPS[g] ? tr(AGE_GROUPS[g]) : g)), r.recommend ? `👍 ${tr('Recommends {name}', { name: firstName(u.name) })}` : ''].filter(Boolean).join(' · ')}</Text>
+              {r.comment ? <Para>“{r.comment}”</Para> : null}
+            </View>
+          ))}
+          <Text style={{ color: t.muted, fontSize: 13 }}>{tr('PairMundo emailed these people and they answered themselves.')}</Text>
         </Section>
       ) : null}
 
