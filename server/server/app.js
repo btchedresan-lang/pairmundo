@@ -7,7 +7,7 @@ import { hashPassword, verifyPassword, createSession, sessionMiddleware, require
 import { scoreMatch, checkCompliance, ageOn } from './matching.js';
 import { PROGRAMS, REVIEW_CRITERIA, placementTaskList } from './programs.js';
 import { buildAgreement, cleanTerms, defaultTerms, REQUIRED_TERMS } from './agreement.js';
-import { createMailer, codeEmail, waitlistEmail } from './mailer.js';
+import { createMailer, codeEmail, referenceEmail, waitlistEmail } from './mailer.js';
 import { countryName, pickLang, t as translate } from './i18n.js';
 import { createCheckout, createIdentity, verifyWebhook } from './identity.js';
 import { createRevenueCat, storeName, webhookAuthorized } from './revenuecat.js';
@@ -535,6 +535,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       profile: getProfile(u),
       rating: ratingSummary(u.id),
       reviews,
+      references: u.role === 'aupair' ? confirmedReferences(u.id) : [],
       placements_completed: db.prepare(`SELECT COUNT(*) n FROM placements WHERE status = 'completed' AND (aupair_id = ? OR family_id = ?)`).get(u.id, u.id).n,
       match,
       // Who liked you is part of the Family Pass.
@@ -542,6 +543,72 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       favorite: !!db.prepare('SELECT 1 FROM favorites WHERE user_id = ? AND target_id = ?').get(me.id, u.id),
       blocked: iBlocked,
     };
+  }));
+
+  // ---------- references ----------
+  // An au pair names people they looked after children for. PairMundo emails each a private link to a short form,
+  // and families see the answers of those who confirm. A confirmed reference turns on the "References" badge.
+  const MAX_REFERENCES = 5;
+  const refAnswers = (r) => json.parse(r.answers, null);
+  const myReference = (r) => ({ id: r.id, name: r.name, email: r.email, relation: r.relation, status: r.status, created_at: r.created_at, responded_at: r.responded_at });
+  const shownReference = (r) => ({ id: r.id, name: String(r.name).split(/\s+/)[0], relation: r.relation, responded_at: r.responded_at, ...refAnswers(r) });
+  const confirmedReferences = (userId) => db.prepare("SELECT * FROM reference_checks WHERE user_id = ? AND status = 'confirmed' ORDER BY responded_at DESC").all(userId).map(shownReference);
+
+  api.get('/me/references', requireRole('aupair'), wrap((req) => ({
+    references: db.prepare('SELECT * FROM reference_checks WHERE user_id = ? ORDER BY id DESC').all(req.user.id).map(myReference),
+  })));
+  api.post('/me/references', requireRole('aupair'), authLimit, wrap(async (req) => {
+    const u = req.user;
+    const name = str(req.body?.name, 80);
+    const email = normEmail(req.body?.email);
+    const relation = str(req.body?.relation, 120);
+    if (!name) throw bad("Enter the person's name.");
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || email.length > 254) throw bad('Enter a valid email.');
+    if (email === normEmail(u.email)) throw bad('A reference has to be someone else.');
+    if (db.prepare("SELECT 1 FROM reference_checks WHERE user_id = ? AND email = ? AND status != 'declined'").get(u.id, email)) throw bad('You already asked this person.');
+    if (db.prepare("SELECT COUNT(*) n FROM reference_checks WHERE user_id = ? AND status != 'declined'").get(u.id).n >= MAX_REFERENCES) throw bad('You can have up to 5 references.');
+    const token = randomBytes(18).toString('base64url');
+    const id = Number(db.prepare('INSERT INTO reference_checks (user_id, name, email, relation, token) VALUES (?,?,?,?,?)').run(u.id, name, email, relation, token).lastInsertRowid);
+    const { subject, text } = referenceEmail(u.lang, { aupair: u.name, referee: name.split(/\s+/)[0], link: `${publicBase()}/#/reference/${token}` });
+    try { await mailer({ to: email, subject, text }); } catch (e) { console.error('Reference email failed:', e.message); }
+    return { reference: myReference(db.prepare('SELECT * FROM reference_checks WHERE id = ?').get(id)) };
+  }));
+  api.delete('/me/references/:id', requireRole('aupair'), wrap((req) => {
+    db.prepare('DELETE FROM reference_checks WHERE id = ? AND user_id = ?').run(Number(req.params.id), req.user.id);
+    const left = db.prepare("SELECT COUNT(*) n FROM reference_checks WHERE user_id = ? AND status = 'confirmed'").get(req.user.id).n;
+    if (!left) db.prepare('UPDATE users SET references_checked = 0 WHERE id = ?').run(req.user.id);
+    return { ok: true };
+  }));
+  // The form the reference opens from their email. No account needed; the link itself is the key.
+  const referenceByToken = (token) => {
+    const r = db.prepare('SELECT * FROM reference_checks WHERE token = ?').get(String(token || ''));
+    if (!r) throw notFound('This link is not valid any more.');
+    return r;
+  };
+  api.get('/references/:token', wrap((req) => {
+    const r = referenceByToken(req.params.token);
+    const u = getUser(r.user_id);
+    return { aupair: { name: u.name, first_name: String(u.name).split(/\s+/)[0], photo_url: photosOf(u)[0] || null }, name: r.name, relation: r.relation, status: r.status };
+  }));
+  api.post('/references/:token', authLimit, wrap((req) => {
+    const r = referenceByToken(req.params.token);
+    if (r.status !== 'sent') throw new HttpError(409, 'You already answered. Thank you!');
+    const b = req.body || {};
+    if (b.knows === false) {
+      db.prepare("UPDATE reference_checks SET status = 'declined', responded_at = datetime('now') WHERE id = ?").run(r.id);
+      return { ok: true, status: 'declined' };
+    }
+    const months = Math.round(Number(b.months));
+    const rating = Math.round(Number(b.rating));
+    if (!(months >= 1 && months <= 240)) throw bad('Say for how many months.');
+    if (!(rating >= 1 && rating <= 5)) throw bad('Choose a rating from 1 to 5.');
+    if (typeof b.recommend !== 'boolean') throw bad('Say whether you would recommend them.');
+    const answers = { months, rating, recommend: b.recommend, comment: str(b.comment, 600) || null,
+      age_groups: (Array.isArray(b.age_groups) ? b.age_groups : []).filter((g) => ['infant', 'toddler', 'school', 'teen'].includes(g)) };
+    db.prepare("UPDATE reference_checks SET status = 'confirmed', answers = ?, responded_at = datetime('now') WHERE id = ?").run(json.str(answers), r.id);
+    db.prepare('UPDATE users SET references_checked = 1 WHERE id = ?').run(r.user_id);
+    notify(r.user_id, 'verification', '{name} confirmed your reference. Families can now see it on your profile.', { name: String(r.name).split(/\s+/)[0] }, '#/profile');
+    return { ok: true, status: 'confirmed' };
   }));
 
   api.post('/users/:id/block', requireAuth, wrap((req) => {

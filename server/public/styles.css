@@ -304,3 +304,6 @@ th { color: var(--muted); font-weight: 600; font-size: .8rem; text-transform: up
   .cols-2 { display: block; }
   .agreement { border: 0; box-shadow: none; padding: 0; }
 }
+.ref-item + .ref-item { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
+.ref-row { padding: 8px 0; border-bottom: 1px solid var(--line); gap: 12px; }
+.ref-photo { width: 84px; height: 84px; border-radius: 50%; object-fit: cover; display: block; margin: 0 auto 12px; }
