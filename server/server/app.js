@@ -103,6 +103,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   // Stripe signs the exact bytes it sends, so this route reads the raw body before the JSON parser below.
   app.post('/api/stripe/webhook', express.raw({ type: '*/*', limit: '200kb' }), (req, res) => stripeWebhook(req, res));
   app.use('/api/me/photos', express.json({ limit: '8mb' }));
+  app.use('/api/me/certificates', express.json({ limit: '8mb' }));
   app.use(express.json({ limit: '200kb' }));
   // The mobile app talks to this API with a Bearer token. Native apps ignore CORS; this lets its web preview work too.
   const corsOrigin = process.env.CORS_ORIGIN || '*';
@@ -146,6 +147,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       if (!p) return null;
       for (const k of AP_JSON) p[k] = json.parse(p[k]);
       p.age = ageOn(p.birth_date);
+      const checked = new Set(db.prepare("SELECT kind FROM certificate_proofs WHERE user_id = ? AND status = 'verified'").all(user.id).map((r) => r.kind));
+      p.certificates = p.certificates.map((c) => ({ ...c, verified: checked.has(c.kind) }));
       return p;
     }
     if (user.role === 'family') {
@@ -487,7 +490,17 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
           : jsonFields.includes(k) ? json.str(list(k))
           : ['goal', 'ideal_family'].includes(k) ? str(p[k], 400)
           : typeof p[k] === 'string' ? str(p[k]) : sql(p[k])));
+        const oldCerts = table === 'aupair_profiles' && sets.includes('certificates')
+          ? json.parse(db.prepare('SELECT certificates FROM aupair_profiles WHERE user_id = ?').get(u.id)?.certificates) : null;
         db.prepare(`UPDATE ${table} SET ${sets.map((k) => `${k} = ?`).join(', ')} WHERE user_id = ?`).run(...vals, u.id);
+        // A checked certificate stays checked only while it says the same thing.
+        if (oldCerts) {
+          const now = json.parse(vals[sets.indexOf('certificates')]);
+          for (const c of oldCerts) {
+            const same = now.find((n) => n.kind === c.kind);
+            if (!same || (same.detail || null) !== (c.detail || null)) db.prepare('DELETE FROM certificate_proofs WHERE user_id = ? AND kind = ?').run(u.id, c.kind);
+          }
+        }
       }
     });
     checkProfileReward(u.id);
@@ -639,6 +652,51 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     blocked: db.prepare('SELECT u.* FROM blocks b JOIN users u ON u.id = b.target_id WHERE b.user_id = ? ORDER BY b.created_at DESC')
       .all(req.user.id).map(publicUser),
   })));
+
+  // ---------- certificate checks ----------
+  // An au pair sends a photo or PDF of a certificate; an admin compares it with what the profile says and marks it
+  // checked or not. The file is only for that check, so it is deleted as soon as an admin decides.
+  const PROOF_TYPES = { 'image/jpeg': 'ffd8ff', 'image/png': '89504e47', 'image/webp': '52494646', 'application/pdf': '25504446' };
+  api.get('/me/certificates', requireRole('aupair'), wrap((req) => ({
+    proofs: db.prepare('SELECT kind, status, note, created_at, reviewed_at FROM certificate_proofs WHERE user_id = ?').all(req.user.id),
+  })));
+  api.post('/me/certificates/:kind/proof', requireRole('aupair'), wrap((req) => {
+    const kind = String(req.params.kind);
+    const certs = json.parse(db.prepare('SELECT certificates FROM aupair_profiles WHERE user_id = ?').get(req.user.id)?.certificates);
+    if (!certs.some((c) => c.kind === kind)) throw bad('Add this certificate to your profile and save it first.');
+    const m = /^data:(image\/(?:jpeg|png|webp)|application\/pdf);base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body?.data_url || ''));
+    if (!m) throw bad('Upload a photo (JPEG, PNG or WebP) or a PDF.');
+    const buf = Buffer.from(m[2], 'base64');
+    if (buf.length > MAX_PHOTO_BYTES) throw bad('Files must be under 5 MB.');
+    const real = Object.entries(PROOF_TYPES).find(([, sig]) => buf.subarray(0, 4).toString('hex').startsWith(sig.slice(0, 8)))?.[0];
+    if (!real || (real === 'image/webp' && buf.subarray(8, 12).toString() !== 'WEBP')) throw bad('That file is not a valid image or PDF.');
+    db.prepare(`INSERT INTO certificate_proofs (user_id, kind, mime, data, status) VALUES (?,?,?,?,'pending')
+      ON CONFLICT(user_id, kind) DO UPDATE SET mime = excluded.mime, data = excluded.data, status = 'pending', note = NULL, created_at = datetime('now'), reviewed_at = NULL`)
+      .run(req.user.id, kind, real, buf);
+    return { proof: db.prepare('SELECT kind, status, note, created_at FROM certificate_proofs WHERE user_id = ? AND kind = ?').get(req.user.id, kind) };
+  }));
+  api.get('/admin/certificates', requireRole('admin'), wrap(() => ({
+    proofs: db.prepare(`SELECT c.user_id, c.kind, c.mime, c.status, c.created_at, u.name, u.email, p.certificates FROM certificate_proofs c
+        JOIN users u ON u.id = c.user_id JOIN aupair_profiles p ON p.user_id = c.user_id WHERE c.status = 'pending' ORDER BY c.created_at`).all()
+      .map(({ certificates, ...r }) => ({ ...r, detail: json.parse(certificates).find((x) => x.kind === r.kind)?.detail || null })),
+  })));
+  api.get('/admin/certificates/:userId/:kind/file', requireRole('admin'), (req, res) => {
+    const r = db.prepare('SELECT mime, data FROM certificate_proofs WHERE user_id = ? AND kind = ?').get(Number(req.params.userId), String(req.params.kind));
+    if (!r?.data) return res.status(404).json({ error: 'Not found.' });
+    res.set({ 'Content-Type': r.mime, 'Cache-Control': 'no-store', 'Content-Disposition': 'inline' }).send(Buffer.from(r.data));
+  });
+  api.post('/admin/certificates/:userId/:kind', requireRole('admin'), wrap((req) => {
+    const status = req.body?.status;
+    if (!['verified', 'rejected'].includes(status)) throw bad('Choose verified or rejected.');
+    const userId = Number(req.params.userId);
+    const kind = String(req.params.kind);
+    const done = db.prepare(`UPDATE certificate_proofs SET status = ?, note = ?, data = NULL, mime = NULL, reviewed_at = datetime('now')
+      WHERE user_id = ? AND kind = ? AND status = 'pending'`).run(status, str(req.body?.note, 300), userId, kind).changes;
+    if (!done) throw notFound();
+    if (status === 'verified') notify(userId, 'verification', 'PairMundo checked one of your certificates. It now shows a ✔ on your profile.', {}, '#/profile');
+    else notify(userId, 'verification', "We couldn't confirm one of your certificates. Open your profile to see why and send a clearer copy.", {}, '#/profile');
+    return { ok: true };
+  }));
 
   // ---------- search & matching ----------
   const findCandidates = (me, q, discover = false) => {
@@ -1392,6 +1450,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       aupairs: n("SELECT COUNT(*) n FROM users WHERE role = 'aupair'"),
       families: n("SELECT COUNT(*) n FROM users WHERE role = 'family'"),
       pending_verification: n("SELECT COUNT(*) n FROM users WHERE role != 'admin' AND id_verified = 0"),
+      pending_certificates: n("SELECT COUNT(*) n FROM certificate_proofs WHERE status = 'pending'"),
       open_requests: n("SELECT COUNT(*) n FROM match_requests WHERE status = 'pending'"),
       matches: n("SELECT COUNT(*) n FROM match_requests WHERE status = 'accepted'"),
       placements_active: n("SELECT COUNT(*) n FROM placements WHERE status IN ('confirmed','active')"),

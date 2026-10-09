@@ -157,6 +157,12 @@ export const DICT = {
   '{name} started a video call. Tap to join.': {
     es: '{name} ha iniciado una videollamada. Toca para unirte.', fr: '{name} a lancé un appel vidéo. Touchez pour rejoindre.',
     de: '{name} hat einen Videoanruf gestartet. Tippe, um beizutreten.', pt: '{name} iniciou uma videochamada. Toque para entrar.' },
+  'PairMundo checked one of your certificates. It now shows a ✔ on your profile.': {
+    es: 'PairMundo ha revisado uno de tus certificados. Ahora aparece con un ✔ en tu perfil.', fr: 'PairMundo a vérifié un de vos certificats. Il affiche maintenant un ✔ sur votre profil.',
+    de: 'PairMundo hat eines deiner Zertifikate geprüft. Es zeigt jetzt ein ✔ in deinem Profil.', pt: 'A PairMundo verificou um dos seus certificados. Agora ele aparece com um ✔ no seu perfil.' },
+  "We couldn't confirm one of your certificates. Open your profile to see why and send a clearer copy.": {
+    es: 'No pudimos confirmar uno de tus certificados. Abre tu perfil para ver por qué y envía una copia más clara.', fr: "Nous n'avons pas pu confirmer un de vos certificats. Ouvrez votre profil pour voir pourquoi et envoyez une copie plus nette.",
+    de: 'Wir konnten eines deiner Zertifikate nicht bestätigen. Öffne dein Profil, um den Grund zu sehen, und schick eine deutlichere Kopie.', pt: 'Não conseguimos confirmar um dos seus certificados. Abra seu perfil para ver o motivo e envie uma cópia mais nítida.' },
 };
 
 // Swedish lives in its own file, keyed by the same English text.
