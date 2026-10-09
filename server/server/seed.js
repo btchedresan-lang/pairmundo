@@ -52,6 +52,8 @@ const apIds = aupairs.map(([email, name, country, city, birth, nat, langs, prefs
       drivers_license, available_from, duration_months, education, bio) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(id, birth, nat, json.str(langs), json.str(prefs), years, json.str(groups), json.str(skills), driver, avail, dur, 'University', bio);
   if (CERTS[slug]) db.prepare('UPDATE aupair_profiles SET certificates = ? WHERE user_id = ?').run(json.str(CERTS[slug]), id);
+  // PairMundo has already checked Anna's first aid and CPR certificates; the photos were deleted after review.
+  if (slug === 'anna') for (const kind of ['first_aid', 'cpr']) db.prepare("INSERT INTO certificate_proofs (user_id, kind, status, reviewed_at) VALUES (?, ?, 'verified', datetime('now'))").run(id, kind);
   return id;
 });
 

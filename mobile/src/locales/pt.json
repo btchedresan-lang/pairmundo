@@ -563,7 +563,6 @@
   "This month": "Este mês",
   "You earn {profile} for each au pair who completes their profile and verifies their ID, {pass} when a family buys their first Family Pass, and {placement} when a stay starts. Only people who join with your link or code count.": "Você ganha {profile} por cada au pair que completa o perfil e verifica a identidade, {pass} quando uma família compra o primeiro Family Pass e {placement} quando uma estadia começa. Só contam as pessoas que entram com o seu link ou código.",
   "Your code": "Seu código",
-  "Add the certificates you have. Families can ask to see them on your video call, so keep a photo or copy ready.": "Adicione os certificados que você tem. As famílias podem pedir para vê-los na videochamada, então tenha uma foto ou cópia à mão.",
   "Added by {name}. Ask to see them on your video call.": "Adicionado por {name}. Peça para vê-los na videochamada.",
   "CPR": "RCP",
   "CPR for babies and children": "RCP para bebês e crianças",
@@ -581,5 +580,18 @@
   "My certificates": "Meus certificados",
   "Paediatric first aid": "Primeiros socorros pediátricos",
   "Police clearance certificate": "Certidão de antecedentes criminais",
-  "My level in {language}": "Meu nível de {language}"
+  "My level in {language}": "Meu nível de {language}",
+  "Add the certificates you have. Send us a photo of one and we check it, so families see a ✔ next to it. We delete the photo once we have checked it.": "Adicione os certificados que você tem. Envie uma foto de um deles e nós verificamos, para que as famílias vejam um ✔ ao lado. Apagamos a foto assim que verificarmos.",
+  "Add this certificate to your profile and save it first.": "Primeiro adicione este certificado ao seu perfil e salve.",
+  "Checked by PairMundo": "Verificado pela PairMundo",
+  "Choose verified or rejected.": "Escolha verificado ou rejeitado.",
+  "Files must be under 5 MB.": "Os arquivos devem ter menos de 5 MB.",
+  "Get it checked": "Pedir verificação",
+  "Send a new copy": "Enviar uma nova cópia",
+  "That file is not a valid image or PDF.": "Esse arquivo não é uma imagem ou PDF válido.",
+  "Upload a photo (JPEG, PNG or WebP) or a PDF.": "Envie uma foto (JPEG, PNG ou WebP) ou um PDF.",
+  "We are checking it": "Estamos verificando",
+  "We couldn't confirm it": "Não conseguimos confirmar",
+  "✔ PairMundo has seen these certificates.": "✔ A PairMundo viu estes certificados.",
+  "✔ marks what PairMundo has seen. Ask {name} to show you the others on your video call.": "✔ indica o que a PairMundo viu. Peça a {name} para mostrar os outros na videochamada."
 }

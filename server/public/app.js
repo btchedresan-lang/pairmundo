@@ -693,8 +693,8 @@ function posterBody(u, p) {
       ...(p.age_groups || []).map((g) => row('👶', AGE_GROUPS[g] ? tr(AGE_GROUPS[g]) : esc(g))),
       p.skills?.length && `<div class="poster-sub">${tr('I can help with:')}</div><ul class="poster-list">${p.skills.map((s) => `<li>${SKILLS[s] ? tr(SKILLS[s]) : esc(s)}</li>`).join('')}</ul>`].filter(Boolean).join(''))}
     ${sec('yellow', '🗣️', tr('Languages'), (p.languages || []).map((l) => row('💬', `${esc(langName(l.code))} · ${l.level === 'native' ? tr('native') : esc(l.level)}`)).join(''))}
-    ${sec('green', '🎓', tr('My certificates'), certs.length ? certs.map((c) => row(CERTS[c.kind][0], `${tr(CERTS[c.kind][1])}${c.detail ? ` · ${esc(c.detail)}` : ''}`)).join('')
-      + `<p class="muted small">${tr('Added by {name}. Ask to see them on your video call.', { name: esc(firstName(u.name)) })}</p>` : '')}
+    ${sec('green', '🎓', tr('My certificates'), certs.length ? certs.map((c) => row(CERTS[c.kind][0], `${tr(CERTS[c.kind][1])}${c.detail ? ` · ${esc(c.detail)}` : ''}${c.verified ? ` <span class="tick" title="${tr('Checked by PairMundo')}">✔</span>` : ''}`)).join('')
+      + `<p class="muted small">${certs.every((c) => c.verified) ? tr('✔ PairMundo has seen these certificates.') : certs.some((c) => c.verified) ? tr('✔ marks what PairMundo has seen. Ask {name} to show you the others on your video call.', { name: esc(firstName(u.name)) }) : tr('Added by {name}. Ask to see them on your video call.', { name: esc(firstName(u.name)) })}</p>` : '')}
     ${sec('blue', '✨', tr('Good to know'), [p.drivers_license && row('🚗', tr("Has a driver's license")), p.non_smoker && row('🚭', tr('Non-smoker')),
       p.ok_with_pets && row('🐾', tr('Happy to live with pets')), p.education && row('🎓', esc(p.education))].filter(Boolean).join(''))}
     ${sec('teal', '🌿', tr('Hobbies and personality'), hobbies.length ? `<div class="poster-grid">${hobbies.map((k) => row(HOBBIES[k][0], tr(HOBBIES[k][1]))).join('')}</div>` : '')}
@@ -840,10 +840,11 @@ views.profile = async () => {
         <label class="check"><input type="checkbox" name="non_smoker" ${p.non_smoker !== 0 ? 'checked' : ''}> ${tr('Non-smoker')}</label>
         <label class="check"><input type="checkbox" name="ok_with_pets" ${p.ok_with_pets !== 0 ? 'checked' : ''}> ${tr('OK with pets')}</label></div>
       <h3 style="margin-top:16px">${tr('Languages')}</h3><div id="langs"></div><button type="button" class="btn ghost sm" id="addLang">+ ${tr('Add language')}</button>
-      <h3 style="margin-top:16px">${tr('Certificates')}</h3><p class="muted small">${tr('Add the certificates you have. Families can ask to see them on your video call, so keep a photo or copy ready.')}</p>
+      <h3 style="margin-top:16px">${tr('Certificates')}</h3><p class="muted small">${tr('Add the certificates you have. Send us a photo of one and we check it, so families see a ✔ next to it. We delete the photo once we have checked it.')}</p>
       <div class="cert-list">${Object.entries(CERTS).map(([k, [i, l, ex]]) => { const c = (p.certificates || []).find((x) => x.kind === k);
         return `<div class="cert-row"><label class="check"><input type="checkbox" class="cert-on" data-kind="${k}" ${c ? 'checked' : ''}> ${i} ${tr(l)}</label>
-          <input class="cert-detail" data-kind="${k}" maxlength="80" placeholder="${tr(ex)}" value="${esc(c?.detail)}"></div>`; }).join('')}</div>
+          <input class="cert-detail" data-kind="${k}" maxlength="80" placeholder="${tr(ex)}" value="${esc(c?.detail)}">
+          ${c ? `<div class="cert-proof small" data-proof="${k}"></div>` : ''}</div>`; }).join('')}</div>
       <h3 style="margin-top:16px">${tr('Experience with')}</h3>${chipSet('age_groups', AGE_GROUPS, p.age_groups)}
       <h3 style="margin-top:16px">${tr('Skills')}</h3>${chipSet('skills', SKILLS, p.skills)}
       <h3 style="margin-top:16px">${tr("Countries I'd like to go to")}</h3><p class="muted small">${tr("Leave empty if you're open to anywhere.")}</p>
@@ -869,6 +870,7 @@ views.profile = async () => {
   <div class="card spread profile-foot"><a href="#/notifications">🔔 ${tr('Notifications')}</a><a class="btn ghost sm" href="#/logout">${tr('Sign out')}</a></div>`);
 
   renderPhotoGrid(u.photos || []);
+  if (isAp) renderProofs(p.certificates || []);
   document.querySelectorAll('.chip-toggle').forEach((b) => { b.onclick = () => b.classList.toggle('on'); });
   if (isAp) {
     const $langs = document.getElementById('langs');
@@ -1225,7 +1227,7 @@ async function adminBackup() {
 }
 views.admin = async ([tab = 'overview', id], qs) => {
   if (me.user.role !== 'admin') return go('#/');
-  const tabs = { overview: 'Overview', users: 'Users & verification', reports: 'Reports', programs: 'Program rules', placements: 'Placements', waitlist: 'Waitlist', ambassadors: 'Ambassadors' };
+  const tabs = { overview: 'Overview', users: 'Users & verification', reports: 'Reports', programs: 'Program rules', placements: 'Placements', waitlist: 'Waitlist', ambassadors: 'Ambassadors', certificates: 'Certificates' };
   const head = `<h1>Program administration</h1><div class="row" style="margin-bottom:16px">${Object.entries(tabs).map(([k, v]) =>
     `<a class="btn ${k === tab ? '' : 'ghost'} sm" href="#/admin/${k}">${v}</a>`).join('')}</div>`;
   if (tab === 'overview') {
@@ -1288,6 +1290,28 @@ views.admin = async ([tab = 'overview', id], qs) => {
       ${w.people.map((p) => `<tr><td>${esc(p.email)}</td><td>${role(p.role)}</td><td>${cname(p.country) || '—'}</td><td>${esc(LANGUAGES[p.lang] || p.lang)}</td><td>${esc(p.source || '—')}</td><td>${fmtTime(p.created_at)}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">Nobody yet.</td></tr>'}</table></div>`);
   }
   if (tab === 'ambassadors') return adminAmbassadors(head, id, qs);
+  if (tab === 'certificates') {
+    const { proofs } = await api('/admin/certificates');
+    render(`${head}<p class="muted">Compare each file with what the au pair wrote. Approving adds a ✔ to the certificate on their profile. The file is deleted either way.</p>
+      ${proofs.map((p) => `<div class="card cert-review" data-u="${p.user_id}" data-k="${p.kind}"><div class="spread"><div><strong><a href="#/u/${p.user_id}">${esc(p.name)}</a></strong>
+        <span class="muted small">${esc(p.email)} · sent ${fmtTime(p.created_at)}</span>
+        <div>${CERTS[p.kind] ? `${CERTS[p.kind][0]} ${CERTS[p.kind][1]}` : esc(p.kind)}${p.detail ? `: <strong>${esc(p.detail)}</strong>` : ''}</div></div>
+        <div class="row"><button class="btn sm" data-ok>✔ Approve</button><button class="btn ghost sm" data-no>✖ Reject</button></div></div>
+        <div class="cert-file muted small">Loading file…</div></div>`).join('') || '<div class="empty">No certificates waiting. 🎉</div>'}`);
+    document.querySelectorAll('.cert-review').forEach(async (card) => {
+      const { u, k } = card.dataset;
+      const decide = async (status, note) => { await api(`/admin/certificates/${u}/${k}`, { method: 'POST', body: { status, note } }); toast('Saved'); views.admin(['certificates']); };
+      card.querySelector('[data-ok]').onclick = () => decide('verified');
+      card.querySelector('[data-no]').onclick = () => { const note = prompt('Why? The au pair sees this, e.g. "The name is not readable."'); if (note !== null) decide('rejected', note); };
+      // The file needs the admin's sign-in, so it is fetched and shown from memory rather than linked.
+      const res = await fetch(`/api/admin/certificates/${u}/${k}/file`, { credentials: 'same-origin' });
+      const box = card.querySelector('.cert-file');
+      if (!res.ok) { box.textContent = 'File not found.'; return; }
+      const url = URL.createObjectURL(await res.blob());
+      box.innerHTML = res.headers.get('content-type') === 'application/pdf' ? `<iframe src="${url}" title="Certificate" class="cert-pdf"></iframe>` : `<img src="${url}" alt="Certificate" class="cert-img">`;
+    });
+    return;
+  }
   if (tab === 'placements') {
     const { placements } = await api('/placements');
     return render(`${head}<div class="card">${placements.map(placementRow).join('') || '<div class="empty">No placements yet.</div>'}</div>`);
@@ -1408,6 +1432,32 @@ views['family-pass'] = async (_args, qs) => {
     catch (e) { b.disabled = false; if (!needsCode(e)) toast(e.message); }
   }; });
 };
+
+// ---------- certificate checks ----------
+// Under each saved certificate on the au pair's profile page: its check status and a button to send a photo or PDF.
+async function renderProofs(certs) {
+  const { proofs } = await api('/me/certificates').catch(() => ({ proofs: [] }));
+  const byKind = Object.fromEntries(proofs.map((x) => [x.kind, x]));
+  document.querySelectorAll('[data-proof]').forEach((el) => {
+    const k = el.dataset.proof; const pr = byKind[k];
+    const saved = certs.some((c) => c.kind === k);
+    const status = pr?.status === 'verified' ? `<span class="ok-text">✔ ${tr('Checked by PairMundo')}</span>`
+      : pr?.status === 'pending' ? `⏳ ${tr('We are checking it')}`
+        : pr?.status === 'rejected' ? `<span class="err-text">✖ ${tr("We couldn't confirm it")}${pr.note ? `: ${esc(pr.note)}` : ''}</span>` : '';
+    el.innerHTML = `${status} ${saved && pr?.status !== 'verified' ? `<label class="btn ghost sm">${pr ? tr('Send a new copy') : tr('Get it checked')}<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" hidden></label>` : ''}`;
+    const input = el.querySelector('input[type=file]');
+    if (input) input.onchange = () => {
+      const file = input.files[0]; if (!file) return;
+      if (file.size > 5 * 1024 * 1024) return toast(tr('Files must be under 5 MB.'));
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try { await api(`/me/certificates/${k}/proof`, { method: 'POST', body: { data_url: reader.result } }); toast(tr('Sent. We will check it soon.')); renderProofs(certs); }
+        catch (e) { toast(e.message); }
+      };
+      reader.readAsDataURL(file);
+    };
+  });
+}
 
 // ---------- router ----------
 const PUBLIC = new Set(['home', 'login', 'register', 'programs', 'forgot']);

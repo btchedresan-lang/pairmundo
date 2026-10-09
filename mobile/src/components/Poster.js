@@ -124,8 +124,10 @@ export function PosterBody({ u, p }) {
 
       {certs.length ? (
         <Section tint="green" icon="🎓" title={tr('My certificates')} tilt={-0.3}>
-          {certs.map((c) => <Row key={c.kind} icon={CERTS[c.kind][0]}>{tr(CERTS[c.kind][1])}{c.detail ? ` · ${c.detail}` : ''}</Row>)}
-          <Text style={{ color: t.muted, fontSize: 13 }}>{tr('Added by {name}. Ask to see them on your video call.', { name: firstName(u.name) })}</Text>
+          {certs.map((c) => <Row key={c.kind} icon={CERTS[c.kind][0]}>{tr(CERTS[c.kind][1])}{c.detail ? ` · ${c.detail}` : ''}{c.verified ? <Text style={{ color: C.ok, fontWeight: '700' }}> ✔</Text> : null}</Row>)}
+          <Text style={{ color: t.muted, fontSize: 13 }}>{certs.every((c) => c.verified) ? tr('✔ PairMundo has seen these certificates.')
+            : certs.some((c) => c.verified) ? tr('✔ marks what PairMundo has seen. Ask {name} to show you the others on your video call.', { name: firstName(u.name) })
+              : tr('Added by {name}. Ask to see them on your video call.', { name: firstName(u.name) })}</Text>
         </Section>
       ) : null}
 

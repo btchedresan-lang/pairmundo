@@ -9,6 +9,7 @@ import { PhotoGrid } from '../../components/PhotoGrid';
 import { tr, trMap } from '../../i18n';
 import { Alert, Button, Card, ChoiceChips, Field, Screen, T } from '../../components/ui';
 import { CountryPicker } from '../../components/pickers';
+import { CertProof, useProofs } from '../../components/CertProof';
 import { brand, C } from '../../theme';
 
 const DESTINATIONS = ['US', 'DE', 'FR', 'NL', 'DK', 'SE', 'ES', 'CH', 'BE', 'IE', 'AU'];
@@ -19,6 +20,7 @@ export default function MyProfile() {
   const isAp = me.user.role === 'aupair';
   const [msg, setMsg] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [proofs, reloadProofs] = useProofs();
 
   const [f, setF] = useState(() => {
     const p = me.profile || {};
@@ -117,11 +119,16 @@ export default function MyProfile() {
       {isAp ? (
         <Card>
           <T h2>{tr('Certificates')}</T>
-          <T small muted>{tr('Add the certificates you have. Families can ask to see them on your video call, so keep a photo or copy ready.')}</T>
+          <T small muted>{tr('Add the certificates you have. Send us a photo of one and we check it, so families see a ✔ next to it. We delete the photo once we have checked it.')}</T>
           <ChoiceChips options={Object.fromEntries(Object.entries(CERTS).map(([k, [i, l]]) => [k, `${i} ${tr(l)}`]))} value={f.certs} onChange={set('certs')} multi />
           {f.certs.filter((k) => CERTS[k]).map((k) => (
-            <Field key={k} label={tr(CERTS[k][1])} value={f.certDetail[k] || ''} placeholder={tr(CERTS[k][2])}
-              onChangeText={(v) => setF((x) => ({ ...x, certDetail: { ...x.certDetail, [k]: v } }))} />
+            <View key={k}>
+              <Field label={tr(CERTS[k][1])} value={f.certDetail[k] || ''} placeholder={tr(CERTS[k][2])}
+                onChangeText={(v) => setF((x) => ({ ...x, certDetail: { ...x.certDetail, [k]: v } }))} />
+              {/* A photo can only be sent for a certificate that is saved as shown, since changing it clears the check. */}
+              <CertProof kind={k} proof={proofs[k]} onSent={reloadProofs}
+                saved={(me.profile?.certificates || []).some((c) => c.kind === k && (c.detail || '') === (f.certDetail[k] || ''))} />
+            </View>
           ))}
         </Card>
       ) : (

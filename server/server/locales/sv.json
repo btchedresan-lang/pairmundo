@@ -47,5 +47,7 @@
   "End date must be after start date.": "Slutdatumet måste vara efter startdatumet.",
   "Duration of ~{months} months exceeds the {max}-month maximum.": "En längd på ~{months} månader överskrider maxgränsen på {max} månader.",
   "Duration of ~{months} months is below the usual {min}-month minimum.": "En längd på ~{months} månader är kortare än den vanliga minimitiden på {min} månader.",
-  "{country} requires placement through a recognised agency/sponsor.": "{country} kräver att vistelsen förmedlas via en godkänd byrå/sponsor."
+  "{country} requires placement through a recognised agency/sponsor.": "{country} kräver att vistelsen förmedlas via en godkänd byrå/sponsor.",
+  "PairMundo checked one of your certificates. It now shows a ✔ on your profile.": "PairMundo har kontrollerat ett av dina certifikat. Det visas nu med en ✔ i din profil.",
+  "We couldn't confirm one of your certificates. Open your profile to see why and send a clearer copy.": "Vi kunde inte bekräfta ett av dina certifikat. Öppna din profil för att se varför och skicka en tydligare kopia."
 }

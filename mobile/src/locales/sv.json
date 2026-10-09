@@ -563,7 +563,6 @@
   "This month": "Den här månaden",
   "You earn {profile} for each au pair who completes their profile and verifies their ID, {pass} when a family buys their first Family Pass, and {placement} when a stay starts. Only people who join with your link or code count.": "Du tjänar {profile} för varje au pair som gör klart sin profil och verifierar sitt id, {pass} när en familj köper sitt första Family Pass och {placement} när en vistelse börjar. Bara personer som går med via din länk eller kod räknas.",
   "Your code": "Din kod",
-  "Add the certificates you have. Families can ask to see them on your video call, so keep a photo or copy ready.": "Lägg till de certifikat du har. Familjer kan vilja se dem under videosamtalet, så ha ett foto eller en kopia redo.",
   "Added by {name}. Ask to see them on your video call.": "Tillagt av {name}. Be att få se dem under videosamtalet.",
   "CPR": "HLR",
   "CPR for babies and children": "HLR för spädbarn och barn",
@@ -581,5 +580,18 @@
   "My certificates": "Mina certifikat",
   "Paediatric first aid": "Första hjälpen för barn",
   "Police clearance certificate": "Utdrag ur belastningsregistret",
-  "My level in {language}": "Min nivå i {language}"
+  "My level in {language}": "Min nivå i {language}",
+  "Add the certificates you have. Send us a photo of one and we check it, so families see a ✔ next to it. We delete the photo once we have checked it.": "Lägg till de certifikat du har. Skicka ett foto av ett så kontrollerar vi det, och familjer ser en ✔ bredvid. Vi raderar fotot så snart vi har kontrollerat det.",
+  "Add this certificate to your profile and save it first.": "Lägg först till certifikatet i din profil och spara.",
+  "Checked by PairMundo": "Kontrollerat av PairMundo",
+  "Choose verified or rejected.": "Välj godkänt eller avvisat.",
+  "Files must be under 5 MB.": "Filer måste vara mindre än 5 MB.",
+  "Get it checked": "Få det kontrollerat",
+  "Send a new copy": "Skicka en ny kopia",
+  "That file is not a valid image or PDF.": "Filen är inte en giltig bild eller PDF.",
+  "Upload a photo (JPEG, PNG or WebP) or a PDF.": "Ladda upp ett foto (JPEG, PNG eller WebP) eller en PDF.",
+  "We are checking it": "Vi kontrollerar det",
+  "We couldn't confirm it": "Vi kunde inte bekräfta det",
+  "✔ PairMundo has seen these certificates.": "✔ PairMundo har sett de här certifikaten.",
+  "✔ marks what PairMundo has seen. Ask {name} to show you the others on your video call.": "✔ visar vad PairMundo har sett. Be {name} visa de andra under videosamtalet."
 }
