@@ -161,7 +161,17 @@ CREATE TABLE IF NOT EXISTS placement_tasks (
   owner TEXT NOT NULL CHECK (owner IN ('aupair','family','both')),
   due_date TEXT,
   done INTEGER NOT NULL DEFAULT 0,
-  sort INTEGER NOT NULL DEFAULT 0
+  sort INTEGER NOT NULL DEFAULT 0,
+  link TEXT                                        -- official page for a country paperwork step
+);
+
+-- The au pair agreement for a placement. Changing the terms clears both signatures.
+CREATE TABLE IF NOT EXISTS placement_agreements (
+  placement_id INTEGER PRIMARY KEY REFERENCES placements(id) ON DELETE CASCADE,
+  terms TEXT NOT NULL DEFAULT '{}',
+  aupair_signed_name TEXT, aupair_signed_at TEXT,
+  family_signed_name TEXT, family_signed_at TEXT,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Two-way reviews, only allowed between participants of a placement that has started.
@@ -313,6 +323,7 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
     ALTER TABLE aupair_profiles ADD COLUMN hobbies TEXT NOT NULL DEFAULT '[]';
     ALTER TABLE aupair_profiles ADD COLUMN goal TEXT;
     ALTER TABLE aupair_profiles ADD COLUMN ideal_family TEXT;`);
+  if (!db.prepare('PRAGMA table_info(placement_tasks)').all().some((c) => c.name === 'link')) db.exec('ALTER TABLE placement_tasks ADD COLUMN link TEXT');
   if (!apcols.includes('certificates')) db.exec("ALTER TABLE aupair_profiles ADD COLUMN certificates TEXT NOT NULL DEFAULT '[]'");
   if (!db.prepare('PRAGMA table_info(waitlist)').all().some((c) => c.name === 'source')) db.exec('ALTER TABLE waitlist ADD COLUMN source TEXT');
   // Which flyer or ad (?src= on the website link) brought someone who signed up.

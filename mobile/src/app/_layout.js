@@ -47,6 +47,7 @@ function RootStack() {
         <Stack.Screen name="user/[id]" options={{ title: '' }} />
         <Stack.Screen name="chat/[id]" options={{ title: tr('Chat') }} />
         <Stack.Screen name="placement/[id]" options={{ title: tr('Placement') }} />
+        <Stack.Screen name="agreement/[id]" options={{ title: tr('Au pair agreement') }} />
         <Stack.Screen name="new-placement/[id]" options={{ title: tr('Propose placement'), presentation: 'modal' }} />
         <Stack.Screen name="verify-email" options={{ title: tr('Confirm email') }} />
         <Stack.Screen name="family-pass" options={{ title: 'Family Pass', presentation: 'modal' }} />

@@ -5,9 +5,10 @@ import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto
 import { json, tx } from './db.js';
 import { hashPassword, verifyPassword, createSession, sessionMiddleware, requireAuth, requireRole, rateLimit } from './auth.js';
 import { scoreMatch, checkCompliance, ageOn } from './matching.js';
-import { PROGRAMS, REVIEW_CRITERIA, PLACEMENT_TASKS } from './programs.js';
+import { PROGRAMS, REVIEW_CRITERIA, placementTaskList } from './programs.js';
+import { buildAgreement, cleanTerms, defaultTerms, REQUIRED_TERMS } from './agreement.js';
 import { createMailer, codeEmail, waitlistEmail } from './mailer.js';
-import { pickLang, t as translate } from './i18n.js';
+import { countryName, pickLang, t as translate } from './i18n.js';
 import { createCheckout, createIdentity, verifyWebhook } from './identity.js';
 import { createRevenueCat, storeName, webhookAuthorized } from './revenuecat.js';
 import { createPusher, isPushToken } from './push.js';
@@ -1061,12 +1062,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
         .run(ap.id, fam.id, fam.country || '', b.start_date, b.end_date, weekly, money,
           req.user.role === 'aupair' ? 1 : 0, req.user.role === 'family' ? 1 : 0, req.user.id);
       const pid = Number(r.lastInsertRowid);
-      const start = new Date(b.start_date).getTime(); const end = new Date(b.end_date).getTime();
-      const ins = db.prepare('INSERT INTO placement_tasks (placement_id, title, owner, due_date, sort) VALUES (?,?,?,?,?)');
-      PLACEMENT_TASKS.forEach((t, i) => {
-        const due = t.offset === 'mid' ? (start + end) / 2 : t.offset === 'end' ? end : start + t.offset * 86400000;
-        ins.run(pid, t.title, t.owner, new Date(due).toISOString().slice(0, 10), i);
-      });
+      const ins = db.prepare('INSERT INTO placement_tasks (placement_id, title, owner, due_date, sort, link) VALUES (?,?,?,?,?,?)');
+      placementTaskList(program, getProfile(ap)?.nationality, b.start_date, b.end_date).forEach((t, i) => ins.run(pid, t.title, t.owner, t.due_date, i, t.link));
       return pid;
     });
     notify(other.id, 'placement', '{name} proposed a placement. Review and confirm it.', { name: req.user.name }, `#/placements/${id}`);
@@ -1089,11 +1086,88 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       program: program ? { code: program.code, name: program.name, currency: program.currency, visa: program.visa } : null,
       compliance: checkCompliance(program, { ...p, birth_date: getProfile(ap)?.birth_date, nationality: getProfile(ap)?.nationality }, me.lang),
       tasks: db.prepare('SELECT * FROM placement_tasks WHERE placement_id = ? ORDER BY sort').all(p.id),
+      agreement: agreementStatus(p),
       my_review: myReview ? { ...myReview, criteria: json.parse(myReview.criteria, {}) } : null,
       can_review: me.role !== 'admin' && ['active', 'completed'].includes(p.status) && !myReview,
       review_criteria: REVIEW_CRITERIA[me.id === p.aupair_id ? 'family' : 'aupair'],
     };
   };
+
+  // ---------- au pair agreement ----------
+  const AGREEMENT_OPEN = ['confirmed', 'active', 'completed'];
+  const agreementRow = (p) => db.prepare('SELECT * FROM placement_agreements WHERE placement_id = ?').get(p.id);
+  const agreementStatus = (p) => {
+    if (!AGREEMENT_OPEN.includes(p.status)) return null;
+    const a = agreementRow(p);
+    return { aupair_signed_at: a?.aupair_signed_at || null, family_signed_at: a?.family_signed_at || null };
+  };
+  const agreementView = (p, me, lang) => {
+    const a = agreementRow(p);
+    const terms = { ...defaultTerms(p.country), ...json.parse(a?.terms, {}) };
+    const ap = getUser(p.aupair_id); const fam = getUser(p.family_id);
+    const program = getProgram(p.country);
+    const nat = getProfile(ap)?.nationality;
+    const signed = (side) => (a?.[`${side}_signed_at`] ? { name: a[`${side}_signed_name`], at: a[`${side}_signed_at`] } : null);
+    return {
+      placement_id: p.id, status: p.status, terms,
+      missing: REQUIRED_TERMS.filter((k) => terms[k] == null),
+      signatures: { aupair: signed('aupair'), family: signed('family') },
+      my_side: me.id === p.aupair_id ? 'aupair' : me.id === p.family_id ? 'family' : null,
+      editable: me.role !== 'admin' && ['confirmed', 'active'].includes(p.status),
+      sections: buildAgreement({ placement: p, program, aupair: ap, family: fam, terms,
+        countryName: regionName(lang, p.country), nationalityName: nat ? regionName(lang, nat) : '' }),
+    };
+  };
+  const loadAgreementPlacement = (req) => {
+    const p = loadPlacement(req);
+    if (!AGREEMENT_OPEN.includes(p.status)) throw bad('The agreement opens once both of you have confirmed the placement.');
+    return p;
+  };
+  // Country names in the reader's language, English included.
+  const regionName = (lang, code) => countryName(lang === 'en' ? 'en-GB' : lang, code, code);
+  const reqLang = (req) => pickLang(req.get('accept-language')) || req.user.lang || 'en';
+
+  api.get('/placements/:id/agreement', requireAuth, wrap((req) => agreementView(loadAgreementPlacement(req), req.user, reqLang(req))));
+
+  api.put('/placements/:id/agreement', requireRole('aupair', 'family'), wrap((req) => {
+    const p = loadAgreementPlacement(req);
+    if (!['confirmed', 'active'].includes(p.status)) throw bad('This agreement can no longer be changed.');
+    const a = agreementRow(p);
+    const terms = cleanTerms(req.body?.terms || {}, { ...defaultTerms(p.country), ...json.parse(a?.terms, {}) }, bad);
+    const wasSigned = a?.aupair_signed_at || a?.family_signed_at;
+    // New terms need both signatures again.
+    db.prepare(`INSERT INTO placement_agreements (placement_id, terms) VALUES (?, ?)
+      ON CONFLICT(placement_id) DO UPDATE SET terms = excluded.terms, aupair_signed_name = NULL, aupair_signed_at = NULL,
+        family_signed_name = NULL, family_signed_at = NULL, updated_at = datetime('now')`).run(p.id, json.str(terms));
+    const other = req.user.id === p.aupair_id ? p.family_id : p.aupair_id;
+    if (wasSigned) {
+      db.prepare("UPDATE placement_tasks SET done = 0 WHERE placement_id = ? AND title = 'Sign au pair agreement / contract'").run(p.id);
+      notify(other, 'placement', '{name} changed the au pair agreement. Read it again and sign it.', { name: req.user.name }, `#/placements/${p.id}/agreement`);
+    }
+    return agreementView(p, req.user, reqLang(req));
+  }));
+
+  api.post('/placements/:id/agreement/sign', requireRole('aupair', 'family'), wrap((req) => {
+    const p = loadAgreementPlacement(req);
+    if (!['confirmed', 'active'].includes(p.status)) throw bad('This agreement can no longer be changed.');
+    const name = str(req.body?.name, 120);
+    if (!name || name.length < 2) throw bad('Type your full name to sign.');
+    const view = agreementView(p, req.user, reqLang(req));
+    if (view.missing.length) throw bad('Fill in the days off, paid holiday and notice period before signing.');
+    const side = req.user.id === p.aupair_id ? 'aupair' : 'family';
+    if (view.signatures[side]) throw new HttpError(409, 'You have already signed this agreement.');
+    db.prepare(`INSERT INTO placement_agreements (placement_id, terms) VALUES (?, ?) ON CONFLICT(placement_id) DO NOTHING`).run(p.id, json.str(view.terms));
+    db.prepare(`UPDATE placement_agreements SET ${side}_signed_name = ?, ${side}_signed_at = datetime('now') WHERE placement_id = ?`).run(name, p.id);
+    const a = agreementRow(p);
+    const other = side === 'aupair' ? p.family_id : p.aupair_id;
+    if (a.aupair_signed_at && a.family_signed_at) {
+      db.prepare("UPDATE placement_tasks SET done = 1 WHERE placement_id = ? AND title = 'Sign au pair agreement / contract'").run(p.id);
+      notify(other, 'placement', 'Your au pair agreement is signed by both of you.', {}, `#/placements/${p.id}/agreement`);
+    } else {
+      notify(other, 'placement', '{name} signed the au pair agreement. Read it and sign it too.', { name: req.user.name }, `#/placements/${p.id}/agreement`);
+    }
+    return agreementView(p, req.user, reqLang(req));
+  }));
 
   api.get('/placements', requireAuth, wrap((req) => {
     const rows = req.user.role === 'admin'

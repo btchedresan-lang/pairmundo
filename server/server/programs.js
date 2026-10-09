@@ -156,7 +156,7 @@ export const REVIEW_CRITERIA = {
 /** Standard placement checklist; dates are relative to start (days). */
 export const PLACEMENT_TASKS = [
   { title: 'Sign au pair agreement / contract', owner: 'both', offset: -60 },
-  { title: 'Apply for visa or residence permit', owner: 'aupair', offset: -56 },
+  { title: 'Apply for visa or residence permit', owner: 'aupair', offset: -56, paperwork: true },
   { title: 'Arrange health, accident and liability insurance', owner: 'family', offset: -30 },
   { title: 'Book travel', owner: 'aupair', offset: -21 },
   { title: 'Enrol in language course', owner: 'aupair', offset: -7 },
@@ -166,3 +166,112 @@ export const PLACEMENT_TASKS = [
   { title: 'Mid-term review', owner: 'both', offset: 'mid' },
   { title: 'Leave review for each other', owner: 'both', offset: 'end' },
 ];
+
+// Country paperwork that replaces the generic visa step above. "visa" is for au pairs who need a visa or permit,
+// "eu" for EU/EEA citizens moving under free movement. Days are relative to the start date.
+// Indicative, like the rules above: each step links to the country's official source.
+export const PAPERWORK = {
+  US: {
+    visa: [
+      { title: 'Choose a State Department designated au pair sponsor', owner: 'family', offset: -75 },
+      { title: 'Get form DS-2019 from the sponsor and pay the SEVIS fee', owner: 'aupair', offset: -60 },
+      { title: 'Book and attend the J-1 visa interview at a US embassy', owner: 'aupair', offset: -45 },
+      { title: "Attend the sponsor's arrival orientation", owner: 'aupair', offset: 0 },
+    ],
+  },
+  DE: {
+    visa: [
+      { title: 'Book a visa appointment at the German embassy and bring proof of A1 German', owner: 'aupair', offset: -60 },
+      { title: 'Register your address at the Bürgeramt (Anmeldung) within 14 days', owner: 'aupair', offset: 14 },
+      { title: 'Apply for the residence permit at the local Ausländerbehörde', owner: 'aupair', offset: 30 },
+    ],
+    eu: [{ title: 'Register your address at the Bürgeramt (Anmeldung) within 14 days', owner: 'aupair', offset: 14 }],
+  },
+  FR: {
+    visa: [
+      { title: 'Have the au pair agreement approved by the DREETS', owner: 'family', offset: -60 },
+      { title: 'Enrol in French classes', owner: 'aupair', offset: -50 },
+      { title: 'Apply for the long-stay au pair visa on france-visas.gouv.fr', owner: 'aupair', offset: -45 },
+      { title: 'Validate the visa online with OFII within 3 months of arrival', owner: 'aupair', offset: 60 },
+    ],
+  },
+  NL: {
+    visa: [
+      { title: 'The recognised au pair agency applies to the IND for the residence permit', owner: 'family', offset: -75 },
+      { title: 'Collect the entry visa (MVV) at the Dutch embassy if you need one', owner: 'aupair', offset: -30 },
+      { title: 'Register at the town hall (BRP) after arrival', owner: 'aupair', offset: 5 },
+    ],
+    eu: [{ title: 'Register at the town hall (BRP) after arrival', owner: 'aupair', offset: 5 }],
+  },
+  DK: {
+    visa: [
+      { title: 'Sign the standard au pair contract from SIRI', owner: 'both', offset: -75 },
+      { title: 'Family pays the fee and applies on nyidanmark.dk', owner: 'family', offset: -70 },
+      { title: 'Give your biometrics within 14 days of applying', owner: 'aupair', offset: -60 },
+      { title: 'Register for a CPR number after arrival', owner: 'aupair', offset: 7 },
+    ],
+    eu: [{ title: 'Register for a CPR number after arrival', owner: 'aupair', offset: 7 }],
+  },
+  SE: {
+    visa: [
+      { title: 'Sign up for a Swedish course of at least 15 hours a week', owner: 'aupair', offset: -90 },
+      { title: 'Apply online to Migrationsverket for the work permit for au pairs', owner: 'aupair', offset: -90 },
+      { title: 'Register with Skatteverket after arrival', owner: 'aupair', offset: 7 },
+    ],
+    eu: [{ title: 'Register with Skatteverket after arrival', owner: 'aupair', offset: 7 }],
+  },
+  ES: {
+    visa: [
+      { title: 'Enrol in a language course and apply for the student visa at the Spanish consulate', owner: 'aupair', offset: -75 },
+      { title: 'Apply for the TIE residence card within one month of arrival', owner: 'aupair', offset: 30 },
+    ],
+    eu: [{ title: 'Register at the Central Register of Foreign Nationals if you stay more than 3 months', owner: 'aupair', offset: 60 }],
+  },
+  CH: {
+    visa: [
+      { title: 'Sign the cantonal standard contract', owner: 'both', offset: -90 },
+      { title: 'Family applies for the permit at the cantonal migration office', owner: 'family', offset: -85 },
+      { title: 'Register with the commune within 14 days of arrival', owner: 'aupair', offset: 14 },
+    ],
+    eu: [{ title: 'Register with the commune within 14 days of arrival', owner: 'aupair', offset: 14 }],
+  },
+  BE: {
+    visa: [
+      { title: 'Family applies for the single permit for au pairs with the regional authority', owner: 'family', offset: -90 },
+      { title: 'Register with the commune within 8 days of arrival', owner: 'aupair', offset: 8 },
+    ],
+    eu: [{ title: 'Register with the commune within 8 days of arrival', owner: 'aupair', offset: 8 }],
+  },
+  IE: {
+    visa: [
+      { title: 'Get a Working Holiday Authorisation or another right to work', owner: 'aupair', offset: -60 },
+      { title: 'Family registers as an employer with Revenue', owner: 'family', offset: -14 },
+      { title: 'Apply for a PPS number after arrival', owner: 'aupair', offset: 14 },
+    ],
+    eu: [
+      { title: 'Family registers as an employer with Revenue', owner: 'family', offset: -14 },
+      { title: 'Apply for a PPS number after arrival', owner: 'aupair', offset: 14 },
+    ],
+  },
+};
+
+/** Starting terms for the au pair agreement, where the country's rules set them. Both sides can change them before signing. */
+export const AGREEMENT_DEFAULTS = {
+  US: { days_off: 1.5, paid_leave_weeks: 2 },
+  DE: { days_off: 1.5, paid_leave_weeks: 4 },
+  FR: { days_off: 1 },
+  NL: { days_off: 2 },
+  ES: { days_off: 1 },
+};
+
+/** The checklist for a new placement, with the country's paperwork in place of the generic visa step. */
+export function placementTaskList(program, nationality, startDate, endDate) {
+  const start = new Date(startDate).getTime(); const end = new Date(endDate).getTime();
+  const steps = PAPERWORK[program?.code];
+  const free = EU_EEA.has(nationality) && EU_EEA.has(program?.code);
+  return PLACEMENT_TASKS.flatMap((t) => (t.paperwork && steps ? (free ? steps.eu || [] : steps.visa).map((s) => ({ ...s, link: program.official_source })) : [t]))
+    .map((t) => {
+      const due = t.offset === 'mid' ? (start + end) / 2 : t.offset === 'end' ? end : start + t.offset * 86400000;
+      return { title: t.title, owner: t.owner, link: t.link || null, due_date: new Date(due).toISOString().slice(0, 10) };
+    });
+}

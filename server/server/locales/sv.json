@@ -47,5 +47,8 @@
   "End date must be after start date.": "Slutdatumet måste vara efter startdatumet.",
   "Duration of ~{months} months exceeds the {max}-month maximum.": "En längd på ~{months} månader överskrider maxgränsen på {max} månader.",
   "Duration of ~{months} months is below the usual {min}-month minimum.": "En längd på ~{months} månader är kortare än den vanliga minimitiden på {min} månader.",
-  "{country} requires placement through a recognised agency/sponsor.": "{country} kräver att vistelsen förmedlas via en godkänd byrå/sponsor."
+  "{country} requires placement through a recognised agency/sponsor.": "{country} kräver att vistelsen förmedlas via en godkänd byrå/sponsor.",
+  "{name} changed the au pair agreement. Read it again and sign it.": "{name} har ändrat au pair-avtalet. Läs det igen och skriv under.",
+  "{name} signed the au pair agreement. Read it and sign it too.": "{name} har skrivit under au pair-avtalet. Läs det och skriv under du också.",
+  "Your au pair agreement is signed by both of you.": "Ert au pair-avtal är underskrivet av er båda."
 }
