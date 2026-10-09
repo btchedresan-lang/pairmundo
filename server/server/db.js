@@ -134,7 +134,8 @@ CREATE TABLE IF NOT EXISTS messages (
   sender_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   body TEXT NOT NULL,
   read_at TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  call_url TEXT                                    -- set on a "started a video call" message: the call room
 );
 
 -- A confirmed placement between an au pair and a family. Reviews hang off this.
@@ -350,6 +351,7 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
     ALTER TABLE aupair_profiles ADD COLUMN hobbies TEXT NOT NULL DEFAULT '[]';
     ALTER TABLE aupair_profiles ADD COLUMN goal TEXT;
     ALTER TABLE aupair_profiles ADD COLUMN ideal_family TEXT;`);
+  if (!db.prepare('PRAGMA table_info(messages)').all().some((c) => c.name === 'call_url')) db.exec('ALTER TABLE messages ADD COLUMN call_url TEXT');
   if (!db.prepare('PRAGMA table_info(placement_tasks)').all().some((c) => c.name === 'link')) db.exec('ALTER TABLE placement_tasks ADD COLUMN link TEXT');
   if (!apcols.includes('certificates')) db.exec("ALTER TABLE aupair_profiles ADD COLUMN certificates TEXT NOT NULL DEFAULT '[]'");
   if (!db.prepare('PRAGMA table_info(waitlist)').all().some((c) => c.name === 'source')) db.exec('ALTER TABLE waitlist ADD COLUMN source TEXT');

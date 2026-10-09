@@ -1016,14 +1016,18 @@ views.messages = async ([convId]) => {
   const data = await api(`/conversations/${active}/messages`);
   const $chat = document.getElementById('chat');
   $chat.innerHTML = `<div class="chat-head spread"><a href="#/u/${data.other.id}"><strong>${esc(data.other.name)}</strong></a>
-      <span class="muted small">${cname(data.other.country)} <button class="btn ghost sm" id="reportBlock">⚑ ${tr('Report and block')}</button></span></div>
+      <span class="muted small">${cname(data.other.country)} <button class="btn sm" id="startCall" title="${tr('The call opens in a new tab. PairMundo does not record calls.')}">📹 ${tr('Video call')}</button> <button class="btn ghost sm" id="reportBlock">⚑ ${tr('Report and block')}</button></span></div>
     <div class="chat-msgs" id="msgs"></div>
     <form class="chat-form" id="send"><textarea name="body" placeholder="${tr('Write a message… (Enter to send)')}" required></textarea><button class="btn">${tr('Send')}</button></form>`;
   const $msgs = document.getElementById('msgs');
   let lastId = 0;
   const add = (list) => {
     for (const m of list) {
-      $msgs.insertAdjacentHTML('beforeend', `<div class="msg ${m.sender_id === me.user.id ? 'mine' : ''}">${esc(m.body)}<time>${fmtTime(m.created_at)}</time></div>`);
+      const mine = m.sender_id === me.user.id;
+      $msgs.insertAdjacentHTML('beforeend', m.is_call
+        ? `<div class="msg call ${mine ? 'mine' : ''}"><strong>📹 ${mine ? tr('You started a video call') : tr('{name} started a video call', { name: esc(data.other.name) })}</strong>
+          <div>${m.call_open ? `<button class="btn sm" data-join="${m.id}">${tr('Join call')}</button>` : `<span class="muted small">${tr('Call ended')}</span>`}</div><time>${fmtTime(m.created_at)}</time></div>`
+        : `<div class="msg ${mine ? 'mine' : ''}">${esc(m.body)}<time>${fmtTime(m.created_at)}</time></div>`);
       lastId = Math.max(lastId, m.id);
     }
     $msgs.scrollTop = $msgs.scrollHeight;
@@ -1039,6 +1043,22 @@ views.messages = async ([convId]) => {
       const m = await api(`/conversations/${active}/messages`, { method: 'POST', body: { body } });
       if (m.id > lastId) add([m]);
     } catch (err) { form.body.value = body; if (err.data?.code === 'pass_required') return go('#/family-pass'); if (!needsCode(err)) toast(err.message); }
+  };
+  // The call opens in a new tab. The tab is opened right away, before the server answers, so browsers don't block it.
+  const joinCall = async (messageId, tab = window.open('', '_blank')) => {
+    try {
+      const { url } = await api(`/conversations/${active}/calls/${messageId}/join`, { method: 'POST' });
+      if (tab) { tab.opener = null; tab.location = url; } else location.href = url;
+    } catch (err) { tab?.close(); toast(err.message); }
+  };
+  $msgs.onclick = (e) => { const b = e.target.closest('[data-join]'); if (b) joinCall(b.dataset.join); };
+  document.getElementById('startCall').onclick = async () => {
+    const tab = window.open('', '_blank');
+    try {
+      const m = await api(`/conversations/${active}/calls`, { method: 'POST' });
+      if (m.id > lastId) add([m]);
+      joinCall(m.id, tab);
+    } catch (err) { tab?.close(); if (err.data?.code === 'pass_required') return go('#/family-pass'); if (!needsCode(err)) toast(err.message); }
   };
   document.getElementById('reportBlock').onclick = async () => {
     const reason = prompt(tr('What happened? Our safety team reviews every report. Leave empty to just block.'));

@@ -86,6 +86,12 @@ Turn on payments first, then `FAMILY_PASS`, so families are never locked out wit
 
 Free trial: set `FAMILY_TRIAL_DAYS` (for example `14`, at most 90) and every family that signs up from then on starts with that many days of the pass for free. Families who signed up earlier don't get it automatically; an admin can give any family free days with **+ Free days** in Admin → Users & verification.
 
+## Video calls
+
+Matched families and au pairs can start a video call from their chat. It works with no setup: each call gets a hard-to-guess room on the free Jitsi Meet service (meet.jit.si). Jitsi may ask the first person in the room to sign in with Google, GitHub or Facebook.
+
+For private rooms with no sign-in, create a free account at [daily.co](https://dashboard.daily.co), copy the API key from **Developers**, and add it on Render as `DAILY_API_KEY`. Each call then gets its own private Daily room that closes after two hours, and only the two people in the chat can get in. To use your own Jitsi server instead, set `JITSI_DOMAIN`.
+
 ## Pointing the phone app at the live server
 
 Build the app with `EXPO_PUBLIC_API_URL=https://your-render-address` (or `https://api.pairmundo.com` once the domain is set up). See `mobile/README.md`.

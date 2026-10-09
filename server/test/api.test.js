@@ -824,6 +824,45 @@ test('au pairs add certificates and language levels; families can show only CPR 
   assert.ok(!ids.includes(plain.id));
 });
 
+test('video calls: start from a chat, join while open, private Daily rooms when a key is set', async () => {
+  const fam = await register('callfam@test.io', 'family', 'SE', 'Familjen Lind');
+  const ap = await register('callap@test.io', 'aupair', 'PH', 'Rosa Cruz');
+  const stranger = await register('callstranger@test.io', 'aupair', 'PH');
+  const req = await call(fam.token, 'POST', '/requests', { to_user: ap.id });
+  await call(ap.token, 'POST', `/requests/${req.body.id}/respond`, { action: 'accept' });
+  const conv = (await call(ap.token, 'POST', '/conversations', { user_id: fam.id })).body.id;
+
+  const started = await call(ap.token, 'POST', `/conversations/${conv}/calls`);
+  assert.equal(started.status, 201);
+  assert.equal(started.body.is_call, 1);
+  assert.equal(started.body.call_open, 1);
+  assert.equal(started.body.call_url, undefined);
+  // Starting again while the call is open returns the same call instead of a second one.
+  assert.equal((await call(fam.token, 'POST', `/conversations/${conv}/calls`)).body.id, started.body.id);
+  const join = await call(fam.token, 'POST', `/conversations/${conv}/calls/${started.body.id}/join`);
+  assert.match(join.body.url, /^https:\/\/meet\.jit\.si\/PairMundo-[0-9a-f]{24}#userInfo\.displayName=/);
+  assert.equal((await call(stranger.token, 'POST', `/conversations/${conv}/calls/${started.body.id}/join`)).status, 404);
+  const msgs = (await call(fam.token, 'GET', `/conversations/${conv}/messages`)).body.messages;
+  assert.equal(msgs.filter((m) => m.is_call).length, 1);
+  // After two hours the call is closed.
+  testDb.prepare("UPDATE messages SET created_at = datetime('now', '-3 hours') WHERE id = ?").run(started.body.id);
+  assert.equal((await call(fam.token, 'POST', `/conversations/${conv}/calls/${started.body.id}/join`)).status, 410);
+  assert.notEqual((await call(fam.token, 'POST', `/conversations/${conv}/calls`)).body.id, started.body.id);
+
+  const { createVideo } = await import('../server/video.js');
+  const sent = [];
+  const fake = async (url, opts) => {
+    sent.push([url, JSON.parse(opts.body)]);
+    return { ok: true, json: async () => (url.endsWith('/rooms') ? { url: 'https://pairmundo.daily.co/abc123' } : { token: 'tok' }) };
+  };
+  const v = createVideo({ apiKey: 'k', fetchImpl: fake });
+  const room = await v.createRoom();
+  assert.equal(room, 'https://pairmundo.daily.co/abc123');
+  assert.equal(sent[0][1].privacy, 'private');
+  assert.equal(await v.joinUrl(room, 'Rosa Cruz'), 'https://pairmundo.daily.co/abc123?t=tok');
+  assert.equal(sent[1][1].properties.room_name, 'abc123');
+});
+
 test('au pair agreement and country paperwork: Sweden, au pair from outside the EU', async () => {
   const fam = await register('agreefam@test.io', 'family', 'SE', 'Familjen Berg');
   const ap = await register('agreeap@test.io', 'aupair', 'PH', 'Joy Santos');
