@@ -563,7 +563,7 @@ views.account = async () => {
     .map(([label, k]) => `<tr><td>${label}</td><td>${amb.this_month[k]}</td><td>${amb.total[k]}</td></tr>`).join('')}
       <tr><td><strong>${tr('Earned')}</strong></td><td><strong>${usd(amb.this_month.earned_cents)}</strong></td><td><strong>${usd(amb.total.earned_cents)}</strong></td></tr></table>
     <p>${tr('Not paid out yet')}: <strong>${usd(amb.total.owed_cents)}</strong></p>
-    <p class="muted small">${tr('You earn {profile} for each au pair who completes their profile, {pass} when a family buys their first Family Pass, and {placement} when a stay starts. Only people who join with your link or code count.', { profile: usd(amb.rewards.profile), pass: usd(amb.rewards.pass), placement: usd(amb.rewards.placement) })}</p></div>` : '';
+    <p class="muted small">${tr('You earn {profile} for each au pair who completes their profile and verifies their ID, {pass} when a family buys their first Family Pass, and {placement} when a stay starts. Only people who join with your link or code count.', { profile: usd(amb.rewards.profile), pass: usd(amb.rewards.pass), placement: usd(amb.rewards.placement) })}</p></div>` : '';
   render(`<h1>${tr('Account and safety')}</h1>${ambCard}
     <div class="card"><h2>${tr('Email')}</h2><p>${esc(me.user.email)} ${me.user.email_verified ? `<span class="chip ok">✓ ${tr('Confirmed')}</span>` : `<a class="chip warn" href="#/verify">${tr('Not confirmed yet. Click to enter your code.')}</a>`}</p></div>
     <div class="card"><h2>${tr('ID check')}</h2>${idCard}</div>
@@ -1346,7 +1346,7 @@ async function adminAmbassadors(head, id, qs) {
   const { ambassadors, rewards } = await api(`/admin/ambassadors?month=${month}`);
   render(`${head}<div class="spread"><form id="monthPick" class="row"><label>Month</label><input type="month" name="month" value="${esc(month)}" style="width:auto"></form>
       <a class="btn sm" href="/api/admin/ambassadors.csv?month=${esc(month)}">⬇ Payout sheet for ${esc(month)} (CSV)</a></div>
-    <p class="muted small">Rewards: ${usd(rewards.profile)} per completed au pair profile (up to ${usd(rewards.profile_monthly_cap)} a month), ${usd(rewards.pass)} for a family's first Family Pass, ${usd(rewards.placement)} per referred side when a stay starts.</p>
+    <p class="muted small">Rewards: ${usd(rewards.profile)} per completed, ID-verified au pair profile (up to ${usd(rewards.profile_monthly_cap)} a month), ${usd(rewards.pass)} for a family's first Family Pass, ${usd(rewards.placement)} per referred side when a stay starts.</p>
     <div class="card table-wrap"><table><tr><th>Ambassador</th>${statHead}</tr>
       ${ambassadors.map((a) => `<tr><td><a href="#/admin/ambassadors/${a.id}"><strong>${esc(a.name)}</strong></a> ${a.active ? '' : '<span class="chip warn">Paused</span>'}
         <div class="muted small"><code>${esc(a.code)}</code>${a.country ? ` · ${cname(a.country)}` : ''}</div></td>${statCells(a.stats)}</tr>`).join('')

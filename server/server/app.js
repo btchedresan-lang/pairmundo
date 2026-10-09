@@ -45,7 +45,8 @@ export const PASS_PLANS = [
 export const FAMILY_PASS = PASS_PLANS[1];
 const passPlan = (key, value) => PASS_PLANS.find((p) => p[key] === value);
 /** What an ambassador earns for people who join with their referral code, in US cents (ambassadors are paid in
- *  dollars, whatever the Family Pass costs). Au pair profile rewards stop at the monthly cap. */
+ *  dollars, whatever the Family Pass costs). Au pair profile rewards count only once the au pair's ID is verified,
+ *  and stop at the monthly cap, because a profile alone is easy to fake. */
 export const AMBASSADOR_REWARDS = { currency: 'usd', profile: 200, profile_monthly_cap: 10000, pass: 1500, placement: 4000 };
 
 class HttpError extends Error {
@@ -265,10 +266,11 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     }
     db.prepare('INSERT OR IGNORE INTO referral_rewards (ambassador_id, user_id, kind, amount_cents, note) VALUES (?,?,?,?,?)').run(a.id, u.id, kind, Math.round(amount), note);
   };
-  /** An au pair's profile counts once it has what families look at: a photo, about me, nationality, age, languages and dates. */
+  /** An au pair's profile counts once it has what families look at (a photo, about me, nationality, age, languages and
+   *  dates) and their ID is verified. */
   const checkProfileReward = (userId) => {
     const u = getUser(userId);
-    if (u?.role !== 'aupair' || !u.ref_code || !u.email_verified) return;
+    if (u?.role !== 'aupair' || !u.ref_code || !u.email_verified || !u.id_verified) return;
     const p = db.prepare('SELECT * FROM aupair_profiles WHERE user_id = ?').get(u.id);
     if (photosOf(u).length && p?.bio && p.nationality && p.birth_date && json.parse(p.languages).length && p.available_from) {
       addReward(u.id, 'profile', AMBASSADOR_REWARDS.profile, 'Au pair profile complete');
@@ -761,6 +763,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (status === 'verified' && u && !u.id_verified) {
       db.prepare('UPDATE users SET id_verified = 1 WHERE id = ?').run(userId);
       notify(userId, 'verification', 'Your ID is verified. Your profile now shows the ID verified badge.', {}, '#/profile');
+      checkProfileReward(userId);
     }
   };
   const latestIdCheck = (userId) => db.prepare('SELECT * FROM id_checks WHERE user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1').get(userId);
@@ -1305,6 +1308,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     db.prepare(`UPDATE users SET ${sets.map((k) => `${map[k]} = ?`).join(', ')} WHERE id = ?`).run(...sets.map((k) => (req.body[k] ? 1 : 0)), u.id);
     if (req.body.suspended) db.prepare('DELETE FROM sessions WHERE user_id = ?').run(u.id);
     if (sets.some((k) => k !== 'suspended' && req.body[k])) notify(u.id, 'verification', 'Your profile has a new verification badge.', {}, '#/profile');
+    if (req.body.id_verified) checkProfileReward(u.id);
     return { ...publicUser(getUser(u.id)), suspended: !!getUser(u.id).suspended };
   }));
   api.get('/admin/reports', requireRole('admin'), wrap(() => ({

@@ -655,7 +655,7 @@
   "That code is already taken.": "Den koden är redan tagen.",
   "That referral code is not valid. Check it, or leave it empty.": "Inbjudningskoden är inte giltig. Kontrollera den eller lämna fältet tomt.",
   "This month": "Den här månaden",
-  "You earn {profile} for each au pair who completes their profile, {pass} when a family buys their first Family Pass, and {placement} when a stay starts. Only people who join with your link or code count.": "Du tjänar {profile} för varje au pair som gör klart sin profil, {pass} när en familj köper sitt första Family Pass och {placement} när en vistelse börjar. Bara personer som går med via din länk eller kod räknas.",
+  "You earn {profile} for each au pair who completes their profile and verifies their ID, {pass} when a family buys their first Family Pass, and {placement} when a stay starts. Only people who join with your link or code count.": "Du tjänar {profile} för varje au pair som gör klart sin profil och verifierar sitt id, {pass} när en familj köper sitt första Family Pass och {placement} när en vistelse börjar. Bara personer som går med via din länk eller kod räknas.",
   "Your code": "Din kod",
   "{name} invited you to PairMundo.": "{name} har bjudit in dig till PairMundo."
 }

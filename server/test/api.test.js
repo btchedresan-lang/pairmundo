@@ -731,7 +731,7 @@ test('ambassadors: referral codes at sign-up, rewards counted once, monthly cap,
   await join({ email: 'refwait2@test.io', ref_code: 'NOPE' });
   assert.equal(testDb.prepare("SELECT ref_code FROM waitlist WHERE email = 'refwait2@test.io'").get().ref_code, null);
 
-  // The profile reward comes once the profile is complete, photo included, and only once.
+  // The profile reward comes once the profile is complete, photo included, and the ID is verified, and only once.
   const stats = async () => (await call(admin, 'GET', `/admin/ambassadors/${amb}`)).body.stats;
   const profile = { bio: 'Hola', nationality: 'CO', birth_date: '2003-01-01', languages: [{ code: 'es', level: 'C2' }], available_from: '2027-01-01' };
   await call(ap.token, 'PUT', '/me', { profile });
@@ -739,6 +739,8 @@ test('ambassadors: referral codes at sign-up, rewards counted once, monthly cap,
   const png = `data:image/png;base64,${Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex').toString('base64')}`;
   assert.equal((await call(ap.token, 'POST', '/me/photos', { data_url: png })).status, 201);
   await call(ap.token, 'PUT', '/me', { profile });
+  assert.equal((await stats()).profiles, 0, 'no reward before the ID check');
+  assert.equal((await call(admin, 'POST', `/admin/users/${ap.id}`, { id_verified: true })).status, 200);
   let s = await stats();
   assert.deepEqual([s.waitlist, s.aupairs, s.profiles, s.earned_cents, s.owed_cents], [1, 1, 1, 200, 200]);
 
@@ -766,6 +768,7 @@ test('ambassadors: referral codes at sign-up, rewards counted once, monthly cap,
   // Profile rewards stop at the monthly cap, but the profile still counts.
   testDb.prepare("INSERT INTO referral_rewards (ambassador_id, user_id, kind, amount_cents) VALUES (?, NULL, 'profile', 9850)").run(amb);
   const ap2 = await regRef('refap2@test.io', 'aupair');
+  testDb.prepare('UPDATE users SET id_verified = 1 WHERE id = ?').run(ap2.id);
   await call(ap2.token, 'POST', '/me/photos', { data_url: png });
   await call(ap2.token, 'PUT', '/me', { profile });
   assert.deepEqual({ ...testDb.prepare("SELECT amount_cents FROM referral_rewards WHERE user_id = ? AND kind = 'profile'").get(ap2.id) }, { amount_cents: 0 });

@@ -142,7 +142,7 @@ function AmbassadorCard({ amb }) {
       {rows.map(([label, k]) => row(label, amb.this_month[k], amb.total[k]))}
       {row(tr('Earned'), usd(amb.this_month.earned_cents), usd(amb.total.earned_cents), true)}
       <T>{tr('Not paid out yet')}: <T bold>{usd(amb.total.owed_cents)}</T></T>
-      <T small muted>{tr("You earn {profile} for each au pair who completes their profile, {pass} when a family buys their first Family Pass, and {placement} when a stay starts. Only people who join with your link or code count.",
+      <T small muted>{tr("You earn {profile} for each au pair who completes their profile and verifies their ID, {pass} when a family buys their first Family Pass, and {placement} when a stay starts. Only people who join with your link or code count.",
         { profile: usd(amb.rewards.profile), pass: usd(amb.rewards.pass), placement: usd(amb.rewards.placement) })}</T>
     </Card>
   );

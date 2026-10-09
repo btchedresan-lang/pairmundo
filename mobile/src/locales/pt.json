@@ -561,6 +561,6 @@
   "That code is already taken.": "Esse código já está em uso.",
   "That referral code is not valid. Check it, or leave it empty.": "Esse código de convite não é válido. Confira ou deixe em branco.",
   "This month": "Este mês",
-  "You earn {profile} for each au pair who completes their profile, {pass} when a family buys their first Family Pass, and {placement} when a stay starts. Only people who join with your link or code count.": "Você ganha {profile} por cada au pair que completa o perfil, {pass} quando uma família compra o primeiro Family Pass e {placement} quando uma estadia começa. Só contam as pessoas que entram com o seu link ou código.",
+  "You earn {profile} for each au pair who completes their profile and verifies their ID, {pass} when a family buys their first Family Pass, and {placement} when a stay starts. Only people who join with your link or code count.": "Você ganha {profile} por cada au pair que completa o perfil e verifica a identidade, {pass} quando uma família compra o primeiro Family Pass e {placement} quando uma estadia começa. Só contam as pessoas que entram com o seu link ou código.",
   "Your code": "Seu código"
 }
