@@ -163,6 +163,12 @@ export const DICT = {
   'Your au pair agreement is signed by both of you.': {
     es: 'Los dos habéis firmado el acuerdo de au pair.', fr: "L'accord au pair est signé par vous deux.",
     de: 'Eure Au-pair-Vereinbarung ist von euch beiden unterschrieben.', pt: 'O acordo de au pair foi assinado por vocês dois.' },
+  'PairMundo checked one of your certificates. It now shows a ✔ on your profile.': {
+    es: 'PairMundo ha revisado uno de tus certificados. Ahora aparece con un ✔ en tu perfil.', fr: 'PairMundo a vérifié un de vos certificats. Il affiche maintenant un ✔ sur votre profil.',
+    de: 'PairMundo hat eines deiner Zertifikate geprüft. Es zeigt jetzt ein ✔ in deinem Profil.', pt: 'A PairMundo verificou um dos seus certificados. Agora ele aparece com um ✔ no seu perfil.' },
+  "We couldn't confirm one of your certificates. Open your profile to see why and send a clearer copy.": {
+    es: 'No pudimos confirmar uno de tus certificados. Abre tu perfil para ver por qué y envía una copia más clara.', fr: "Nous n'avons pas pu confirmer un de vos certificats. Ouvrez votre profil pour voir pourquoi et envoyez une copie plus nette.",
+    de: 'Wir konnten eines deiner Zertifikate nicht bestätigen. Öffne dein Profil, um den Grund zu sehen, und schick eine deutlichere Kopie.', pt: 'Não conseguimos confirmar um dos seus certificados. Abra seu perfil para ver o motivo e envie uma cópia mais nítida.' },
 };
 
 // Swedish lives in its own file, keyed by the same English text.

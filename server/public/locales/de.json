@@ -658,7 +658,6 @@
   "You earn {profile} for each au pair who completes their profile and verifies their ID, {pass} when a family buys their first Family Pass, and {placement} when a stay starts. Only people who join with your link or code count.": "Du verdienst {profile} für jedes Au-pair, das sein Profil vervollständigt und seinen Ausweis verifiziert, {pass}, wenn eine Familie ihren ersten Family Pass kauft, und {placement}, wenn ein Aufenthalt beginnt. Es zählen nur Personen, die mit deinem Link oder Code beitreten.",
   "Your code": "Dein Code",
   "{name} invited you to PairMundo.": "{name} hat dich zu PairMundo eingeladen.",
-  "Add the certificates you have. Families can ask to see them on your video call, so keep a photo or copy ready.": "Füge deine Zertifikate hinzu. Familien können sie beim Videoanruf sehen wollen, halte also ein Foto oder eine Kopie bereit.",
   "Added by {name}. Ask to see them on your video call.": "Von {name} angegeben. Lass sie dir beim Videoanruf zeigen.",
   "CPR": "HLW",
   "CPR for babies and children": "HLW für Babys und Kinder",
@@ -794,5 +793,19 @@
   "You already asked this person.": "Du hast diese Person schon gefragt.",
   "You can have up to 5 references.": "Du kannst bis zu 5 Referenzen haben.",
   "Your answers are on {name}'s profile now. Thank you for helping a family choose well.": "Deine Antworten stehen jetzt auf dem Profil von {name}. Danke, dass du einer Familie bei der Wahl hilfst.",
-  "{aupair} wrote: “{relation}”": "{aupair} schrieb: „{relation}“"
+  "{aupair} wrote: “{relation}”": "{aupair} schrieb: „{relation}“",
+  "Add the certificates you have. Send us a photo of one and we check it, so families see a ✔ next to it. We delete the photo once we have checked it.": "Füge deine Zertifikate hinzu. Schick uns ein Foto davon und wir prüfen es, damit Familien ein ✔ daneben sehen. Wir löschen das Foto, sobald wir es geprüft haben.",
+  "Add this certificate to your profile and save it first.": "Füge dieses Zertifikat zuerst deinem Profil hinzu und speichere es.",
+  "Checked by PairMundo": "Von PairMundo geprüft",
+  "Choose verified or rejected.": "Wähle bestätigt oder abgelehnt.",
+  "Files must be under 5 MB.": "Dateien müssen kleiner als 5 MB sein.",
+  "Get it checked": "Prüfen lassen",
+  "Send a new copy": "Neue Kopie senden",
+  "Sent. We will check it soon.": "Gesendet. Wir prüfen es bald.",
+  "That file is not a valid image or PDF.": "Diese Datei ist kein gültiges Bild oder PDF.",
+  "Upload a photo (JPEG, PNG or WebP) or a PDF.": "Lade ein Foto (JPEG, PNG oder WebP) oder ein PDF hoch.",
+  "We are checking it": "Wir prüfen es",
+  "We couldn't confirm it": "Wir konnten es nicht bestätigen",
+  "✔ PairMundo has seen these certificates.": "✔ PairMundo hat diese Zertifikate gesehen.",
+  "✔ marks what PairMundo has seen. Ask {name} to show you the others on your video call.": "✔ zeigt, was PairMundo gesehen hat. Bitte {name}, dir die anderen beim Videoanruf zu zeigen."
 }
