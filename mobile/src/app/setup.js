@@ -30,6 +30,7 @@ export default function Setup() {
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
+  const [dragging, setDragging] = useState(false); // a photo is being moved, so the page must not scroll
   const [f, setF] = useState(() => (isAp ? {
     birth_date: p.birth_date || '', nationality: p.nationality || null, available_from: p.available_from || '',
     duration_months: String(p.duration_months ?? ''), languages: (p.languages || []).map((l) => l.code),
@@ -64,7 +65,7 @@ export default function Setup() {
 
   const titles = [tr('Add your photos'), tr('The basics'), isAp ? tr('About you') : tr('About your family')];
   return (
-    <Screen>
+    <Screen scrollEnabled={!dragging}>
       <View style={{ flexDirection: 'row', gap: 6, marginTop: 8 }}>
         {Array.from({ length: STEPS }, (_, i) => <View key={i} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: i <= step ? C.primary : t.line }} />)}
       </View>
@@ -73,7 +74,7 @@ export default function Setup() {
 
       {step === 0 ? <>
         <T muted>{isAp ? tr('Families decide in seconds. A clear, smiling, recent photo of your face works best.') : tr('Au pairs want to see who they would live with. A friendly family photo works best.')}</T>
-        <PhotoGrid photos={photos} onChange={(list) => setMe((m) => ({ ...m, user: { ...m.user, photos: list, photo_url: list[0] || null } }))} />
+        <PhotoGrid onDragging={setDragging} photos={photos} onChange={(list) => setMe((m) => ({ ...m, user: { ...m.user, photos: list, photo_url: list[0] || null } }))} />
         <Button title={tr('Next')} onPress={() => setStep(1)} disabled={!photos.length} />
       </> : null}
 

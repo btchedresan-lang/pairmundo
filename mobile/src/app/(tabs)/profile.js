@@ -21,6 +21,7 @@ export default function MyProfile() {
   const isAp = me.user.role === 'aupair';
   const [msg, setMsg] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [dragging, setDragging] = useState(false); // a photo is being moved, so the page must not scroll
   const [proofs, reloadProofs] = useProofs();
 
   const [f, setF] = useState(() => {
@@ -74,14 +75,14 @@ export default function MyProfile() {
   );
 
   return (
-    <Screen>
+    <Screen scrollEnabled={!dragging}>
       <Button title={`👁 ${tr('Preview my profile')}`} kind="secondary" onPress={preview} disabled={busy} />
       <Card>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <T h2>{tr('Photos')}</T>
         </View>
         <T small muted>{isAp ? tr("Your first photo is what people see when they swipe. Clear, smiling, recent photos work best. Photos with children need their parents' permission.") : tr('Your first photo is what people see when they swipe. Clear, smiling, recent photos work best, and a family photo helps.')}</T>
-        <PhotoGrid photos={me.user.photos || []} onChange={(photos) => setMe((m) => ({ ...m, user: { ...m.user, photos, photo_url: photos[0] || null } }))} />
+        <PhotoGrid onDragging={setDragging} photos={me.user.photos || []} onChange={(photos) => setMe((m) => ({ ...m, user: { ...m.user, photos, photo_url: photos[0] || null } }))} />
       </Card>
 
       <Card>
