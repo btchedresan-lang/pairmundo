@@ -90,7 +90,8 @@ CREATE TABLE IF NOT EXISTS family_profiles (
   private_room INTEGER NOT NULL DEFAULT 1,
   preferred_nationalities TEXT NOT NULL DEFAULT '[]',
   bio TEXT,
-  visible INTEGER NOT NULL DEFAULT 1
+  visible INTEGER NOT NULL DEFAULT 1,
+  wants_sitter TEXT                              -- onboarding question, private: 'yes' | 'maybe' | 'no' | NULL (not answered)
 );
 
 -- Swipe decisions. A like also creates (or accepts) a match_request; passes just hide the card.
@@ -361,6 +362,7 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
     ALTER TABLE aupair_profiles ADD COLUMN ideal_family TEXT;`);
   if (!db.prepare('PRAGMA table_info(messages)').all().some((c) => c.name === 'call_url')) db.exec('ALTER TABLE messages ADD COLUMN call_url TEXT');
   if (!db.prepare('PRAGMA table_info(placement_tasks)').all().some((c) => c.name === 'link')) db.exec('ALTER TABLE placement_tasks ADD COLUMN link TEXT');
+  if (!db.prepare('PRAGMA table_info(family_profiles)').all().some((c) => c.name === 'wants_sitter')) db.exec('ALTER TABLE family_profiles ADD COLUMN wants_sitter TEXT');
   if (!apcols.includes('certificates')) db.exec("ALTER TABLE aupair_profiles ADD COLUMN certificates TEXT NOT NULL DEFAULT '[]'");
   if (!db.prepare('PRAGMA table_info(waitlist)').all().some((c) => c.name === 'source')) db.exec('ALTER TABLE waitlist ADD COLUMN source TEXT');
   // Which flyer or ad (?src= on the website link) brought someone who signed up.

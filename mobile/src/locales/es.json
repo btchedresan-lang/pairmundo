@@ -709,5 +709,9 @@
   "PairMundo wrote this from the au pair rules for {country}. It is not legal advice, and some countries also ask for their own official form. Check the program guide.": "PairMundo redactó este acuerdo a partir de las normas del programa de {country}. No es asesoramiento legal, y algunos países piden además su propio formulario oficial. Consulta la guía del programa.",
   "The family meets the other duties of the au pair program in {country}, as listed in the program guide.": "La familia cumple las demás obligaciones del programa de au pair de {country}, que figuran en la guía del programa.",
   "Leave call": "Salir de la llamada",
-  "The ID check isn't working right now. Please try again later.": "La verificación de identidad no funciona en este momento. Inténtalo más tarde."
+  "The ID check isn't working right now. Please try again later.": "La verificación de identidad no funciona en este momento. Inténtalo más tarde.",
+  "Would you also use PairMundo to find a babysitter for evenings, or when your au pair is away?": "¿Usaríais también PairMundo para encontrar una canguro por las tardes o cuando vuestra au pair no esté?",
+  "Optional. It helps us decide what to build next. Au pairs never see your answer.": "Opcional. Nos ayuda a decidir qué crear después. Las au pairs nunca ven vuestra respuesta.",
+  "Maybe": "Quizás",
+  "Answer yes, maybe or no.": "Responde sí, quizás o no."
 }

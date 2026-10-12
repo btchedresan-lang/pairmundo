@@ -32,6 +32,8 @@ const FAM_JSON = ['children', 'languages', 'required_languages', 'preferred_nati
 const AP_FIELDS = ['birth_date', 'nationality', 'gender', 'childcare_years', 'drivers_license', 'non_smoker', 'ok_with_pets', 'available_from', 'duration_months', 'education', 'bio', 'video_url', 'visible', 'goal', 'ideal_family', ...AP_JSON];
 const FAM_FIELDS = ['start_date', 'duration_months', 'weekly_hours', 'pocket_money', 'needs_driver', 'has_pets', 'smoking_household', 'private_room', 'bio', 'visible', ...FAM_JSON];
 const USER_FIELDS = ['name', 'country', 'city'];
+// Asked during family onboarding: "Would you also use PairMundo to find a babysitter?" Private: only the family and admins see it.
+const SITTER_ANSWERS = ['yes', 'maybe', 'no'];
 // Reviews become visible once both sides have reviewed, or 14 days after the placement ends.
 const REVIEW_REVEAL_DAYS = 14;
 const CODE_MINUTES = 30;
@@ -156,9 +158,16 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       const p = db.prepare('SELECT * FROM family_profiles WHERE user_id = ?').get(user.id);
       if (!p) return null;
       for (const k of FAM_JSON) p[k] = json.parse(p[k]);
+      delete p.wants_sitter;
       return p;
     }
     return null;
+  };
+  /** The member's own profile, with the private answers others must not see. */
+  const ownProfile = (user) => {
+    const p = getProfile(user);
+    if (p && user.role === 'family') p.wants_sitter = db.prepare('SELECT wants_sitter FROM family_profiles WHERE user_id = ?').get(user.id)?.wants_sitter ?? null;
+    return p;
   };
 
   const visibleReviewsSql = `r.hidden = 0 AND (
@@ -463,7 +472,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const u = req.user;
     return {
       user: { ...publicUser(u), email: u.email, email_verified: !!u.email_verified },
-      profile: getProfile(u),
+      profile: ownProfile(u),
       profile_missing: profileGaps(u),
       pass: passView(u),
       rating: ratingSummary(u.id),
@@ -491,6 +500,10 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       const [table, fields, jsonFields] = u.role === 'aupair' ? ['aupair_profiles', AP_FIELDS, AP_JSON]
         : u.role === 'family' ? ['family_profiles', FAM_FIELDS, FAM_JSON] : [null, [], []];
       if (!table) return;
+      if (u.role === 'family' && 'wants_sitter' in p) {
+        if (p.wants_sitter !== null && !SITTER_ANSWERS.includes(p.wants_sitter)) throw bad('Answer yes, maybe or no.');
+        db.prepare('UPDATE family_profiles SET wants_sitter = ? WHERE user_id = ?').run(p.wants_sitter, u.id);
+      }
       const sets = fields.filter((k) => k in p);
       for (const k of ['birth_date', 'available_from', 'start_date']) {
         if (k in p && p[k] && !isDate(p[k])) throw bad(`${k} must be YYYY-MM-DD.`);
@@ -518,7 +531,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     });
     checkProfileReward(u.id);
     const fresh = getUser(u.id);
-    return { user: publicUser(fresh), profile: getProfile(fresh) };
+    return { user: publicUser(fresh), profile: ownProfile(fresh) };
   }));
 
   // Deletes the account and everything tied to it. Placements and reviews with the other person go too.
@@ -1584,6 +1597,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       reviews: n('SELECT COUNT(*) n FROM reviews'),
       open_reports: n("SELECT COUNT(*) n FROM reports WHERE status = 'open'"),
       waitlist: n('SELECT COUNT(*) n FROM waitlist'),
+      sitter_interest: Object.fromEntries([...SITTER_ANSWERS, null].map((a) => [a ?? 'unanswered',
+        n(`SELECT COUNT(*) n FROM users u JOIN family_profiles f ON f.user_id = u.id WHERE u.role = 'family' AND f.wants_sitter ${a ? '= ?' : 'IS NULL'}`, ...(a ? [a] : []))])),
       by_country: db.prepare("SELECT country, role, COUNT(*) n FROM users WHERE role != 'admin' GROUP BY country, role ORDER BY n DESC").all(),
     };
   }));

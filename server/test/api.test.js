@@ -1051,3 +1051,25 @@ test('references: an au pair asks, the reference answers by email link, families
   await call(ap.token, 'DELETE', `/me/references/${r.body.references[0].id}`);
   assert.equal((await call(fam.token, 'GET', `/users/${ap.id}`)).body.user.verification.references, false);
 });
+
+test('babysitter question: a family answers in onboarding, only they and admins see it', async () => {
+  const fam = await register('sitter-fam@test.io', 'family', 'SE', 'Familjen Sitter');
+  const ap = await register('sitter-ap@test.io', 'aupair', 'ES', 'Lucia Sitter');
+  assert.equal((await call(fam.token, 'GET', '/me')).body.profile.wants_sitter, null);
+  assert.equal((await call(fam.token, 'PUT', '/me', { profile: { wants_sitter: 'sometimes' } })).status, 400);
+  const r = await call(fam.token, 'PUT', '/me', { profile: { bio: 'We live in Stockholm.', wants_sitter: 'yes' } });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.profile.wants_sitter, 'yes');
+  assert.equal((await call(fam.token, 'GET', '/me')).body.profile.wants_sitter, 'yes');
+  // Au pairs never see the answer.
+  assert.equal('wants_sitter' in (await call(ap.token, 'GET', `/users/${fam.id}`)).body.profile, false);
+  // Admins see the totals on the overview.
+  const { hashPassword } = await import('../server/auth.js');
+  testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
+  const s = (await call(admin, 'GET', '/admin/stats')).body.sitter_interest;
+  assert.ok(s.yes >= 1);
+  assert.deepEqual(Object.keys(s), ['yes', 'maybe', 'no', 'unanswered']);
+  // Clearing the answer is allowed.
+  assert.equal((await call(fam.token, 'PUT', '/me', { profile: { wants_sitter: null } })).body.profile.wants_sitter, null);
+});
