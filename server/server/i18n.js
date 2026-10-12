@@ -103,6 +103,21 @@ export const DICT = {
   'Renew it in the app, or on the website: {link}': {
     es: 'Renuévalo en la app o en la web: {link}', fr: "Renouvelez-le dans l'app ou sur le site : {link}",
     de: 'Verlängere ihn in der App oder auf der Website: {link}', pt: 'Renove no app ou no site: {link}' },
+  "{name}'s stay with you ends on {date}. Finding your next au pair usually takes about 3 months, so now is a good time to start looking.": {
+    es: 'La estancia de {name} con vosotros termina el {date}. Encontrar a vuestro próximo au pair suele llevar unos 3 meses, así que es un buen momento para empezar a buscar.',
+    fr: "Le séjour de {name} chez vous se termine le {date}. Trouver votre prochain au pair prend en général environ 3 mois : c'est le bon moment pour commencer à chercher.",
+    de: 'Der Aufenthalt von {name} bei euch endet am {date}. Die Suche nach dem nächsten Au-pair dauert meist etwa 3 Monate, also ist jetzt ein guter Zeitpunkt, damit anzufangen.',
+    pt: 'A estadia de {name} com vocês termina em {date}. Encontrar o próximo au pair costuma levar cerca de 3 meses, então agora é um bom momento para começar a procurar.' },
+  'If your au pair year ends in the next few months, now is a good time to start looking for your next au pair. It usually takes about 3 months.': {
+    es: 'Si vuestro año de au pair termina en los próximos meses, es un buen momento para empezar a buscar a vuestro próximo au pair. Suele llevar unos 3 meses.',
+    fr: "Si votre année au pair se termine dans les prochains mois, c'est le bon moment pour chercher votre prochain au pair. Cela prend en général environ 3 mois.",
+    de: 'Wenn euer Au-pair-Jahr in den nächsten Monaten endet, ist jetzt ein guter Zeitpunkt, nach dem nächsten Au-pair zu suchen. Das dauert meist etwa 3 Monate.',
+    pt: 'Se o ano de au pair de vocês termina nos próximos meses, agora é um bom momento para começar a procurar o próximo au pair. Costuma levar cerca de 3 meses.' },
+  'Time to find your next au pair': {
+    es: 'Es hora de buscar a vuestro próximo au pair', fr: 'Il est temps de trouver votre prochain au pair', de: 'Zeit, euer nächstes Au-pair zu finden', pt: 'Hora de encontrar o próximo au pair' },
+  'Start looking in the app, or on the website: {link}': {
+    es: 'Empieza a buscar en la app o en la web: {link}', fr: "Commencez à chercher dans l'app ou sur le site : {link}",
+    de: 'Fang in der App oder auf der Website an zu suchen: {link}', pt: 'Comece a procurar no app ou no site: {link}' },
   // Match reasons and warnings (matching.js)
   'Wants to go to {country}': { es: 'Quiere ir a {country}', fr: 'Destination souhaitée : {country}', de: 'Möchte nach {country}', pt: 'Quer ir para {country}' },
   "Destination is not in the au pair's preferred countries": {

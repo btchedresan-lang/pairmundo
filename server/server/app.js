@@ -875,6 +875,43 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     return sent;
   };
   app.sendPassReminders = sendPassReminders;
+
+  // Families usually replace their au pair every 12 months, and finding the next one takes about 3 months.
+  // So about 3 months before an au pair's stay ends, nudge the family to start looking again. A family with no
+  // placement in the app gets the nudge about 9 months after their last pass ended, when they most likely found someone.
+  const SEARCH_NUDGES = {
+    placement: "{name}'s stay with you ends on {date}. Finding your next au pair usually takes about 3 months, so now is a good time to start looking.",
+    pass: 'If your au pair year ends in the next few months, now is a good time to start looking for your next au pair. It usually takes about 3 months.',
+  };
+  const sendSearchNudges = () => {
+    const due = [
+      // Confirmed or running stays ending in 60 to 90 days, the family's latest one only.
+      ...db.prepare(`SELECT p.family_id user_id, 'placement:' || p.id anchor, 'placement' kind, p.end_date, a.name FROM placements p
+        JOIN users a ON a.id = p.aupair_id
+        WHERE p.status IN ('confirmed', 'active') AND date(p.end_date) BETWEEN date('now', '+60 days') AND date('now', '+90 days')
+          AND p.end_date = (SELECT MAX(end_date) FROM placements WHERE family_id = p.family_id AND status != 'cancelled')`).all(),
+      // Families whose last pass ended 9 to 10 months ago, with no pass now and no stay in the app after it.
+      ...db.prepare(`SELECT user_id, 'pass:' || ends_at anchor, 'pass' kind FROM (SELECT user_id, MAX(ends_at) ends_at FROM passes GROUP BY user_id) last
+        WHERE ends_at BETWEEN datetime('now', '-300 days') AND datetime('now', '-270 days')
+          AND NOT EXISTS (SELECT 1 FROM placements pl WHERE pl.family_id = last.user_id AND pl.status != 'cancelled' AND pl.end_date >= date(last.ends_at))`).all(),
+    ];
+    let sent = 0;
+    for (const r of due) {
+      const u = getUser(r.user_id);
+      if (!u || u.role !== 'family' || u.suspended) continue;
+      if (!db.prepare('INSERT OR IGNORE INTO search_nudges (user_id, anchor) VALUES (?,?)').run(r.user_id, r.anchor).changes) continue;
+      let date = r.end_date;
+      try { date = new Intl.DateTimeFormat(u.lang || 'en', { dateStyle: 'long', timeZone: 'UTC' }).format(new Date(`${r.end_date}T00:00:00Z`)); } catch { /* keep YYYY-MM-DD */ }
+      const vars = { name: String(r.name || '').split(/\s+/)[0], date };
+      notify(r.user_id, 'search', SEARCH_NUDGES[r.kind], vars, '#/discover');
+      const subject = translate(u.lang, 'Time to find your next au pair');
+      const text = `${translate(u.lang, SEARCH_NUDGES[r.kind], vars)}\n\n${translate(u.lang, 'Start looking in the app, or on the website: {link}', { link: `${publicBase()}/#/discover` })}`;
+      Promise.resolve(mailer({ to: u.email, subject, text })).catch((e) => console.error('Search nudge email failed:', e.message));
+      sent++;
+    }
+    return sent;
+  };
+  app.sendSearchNudges = sendSearchNudges;
   const mustHavePass = (u) => {
     if (needsPass(u)) throw new HttpError(402, 'Get the Family Pass to message au pairs.', 'pass_required');
   };
