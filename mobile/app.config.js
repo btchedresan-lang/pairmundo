@@ -15,6 +15,8 @@ module.exports = {
       supportsTablet: false, bundleIdentifier: brand.bundleId,
       // In-app video calls (src/app/call.js).
       infoPlist: {
+        // The app only uses standard HTTPS, so App Store uploads skip the export-compliance question.
+        ITSAppUsesNonExemptEncryption: false,
         NSCameraUsageDescription: `${brand.name} needs your camera for video calls with families and au pairs.`,
         NSMicrophoneUsageDescription: `${brand.name} needs your microphone for video calls with families and au pairs.`,
       },
