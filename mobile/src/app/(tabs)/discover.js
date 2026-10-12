@@ -9,6 +9,7 @@ import { tr } from '../../i18n';
 import { Alert, Button, ChoiceChips, Empty, Loading, RoundButton, T, useInsets } from '../../components/ui';
 import { CountryPicker, MatchModal } from '../../components/pickers';
 import { SwipeDeck } from '../../components/SwipeDeck';
+import { askToFinishProfile } from '../setup';
 import { brand, C, useTheme } from '../../theme';
 
 const TOP_LANGS = ['en', 'es', 'fr', 'de', 'it', 'pt', 'nl', 'sv', 'da', 'pl'];
@@ -38,8 +39,9 @@ export default function Discover() {
       const res = await api('/swipe', { method: 'POST', body: { target_id: card.user.id, direction } });
       if (res.matched) { setMatch({ other: res.other || card.user, conversation_id: res.conversation_id }); refresh().catch(() => {}); }
     } catch (e) {
-      // Put the card back so the like isn't lost, then ask for the email code.
+      // Put the card back so the like isn't lost, then ask for the email code or the missing photo and bio.
       if (e.data?.code === 'email_unverified') { setDeck((d) => [card, ...d]); router.push('/verify-email'); }
+      else if (e.data?.code === 'profile_incomplete') { setDeck((d) => [card, ...d]); askToFinishProfile(); }
       else setError(e.message);
     }
   };
@@ -69,9 +71,9 @@ export default function Discover() {
           <Alert level="warning" text={`📧 ${tr('Confirm your email to start liking. Tap to enter your code.')}`} />
         </Pressable>
       ) : null}
-      {!me.user.photos?.length ? (
-        <Pressable onPress={() => router.navigate('/profile')} style={{ marginHorizontal: 16, marginBottom: 8 }}>
-          <Alert level="warning" text={`📸 ${isFamily ? tr('Add a photo so au pairs can see you. Tap here.') : tr('Add a photo so families can see you. Tap here.')}`} />
+      {me.profile_missing?.length ? (
+        <Pressable onPress={() => router.push('/setup?back=1')} style={{ marginHorizontal: 16, marginBottom: 8 }}>
+          <Alert level="warning" text={`📸 ${isFamily ? tr('Add a photo and a few words so au pairs can see you. Tap here.') : tr('Add a photo and a few words so families can see you. Tap here.')}`} />
         </Pressable>
       ) : null}
       {error ? <View style={{ marginHorizontal: 16, marginBottom: 8 }}><Alert level="error" text={error} /></View> : null}

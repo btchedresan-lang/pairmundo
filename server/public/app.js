@@ -203,7 +203,7 @@ views.discover = async (_, query) => {
   const completeness = profileCompleteness();
   render(`<div class="discover">
     ${!me.user.email_verified ? `<a class="alert warning nudge" href="#/verify">📧 ${tr('Confirm your email to start liking. Click to enter your code.')}</a>` : ''}
-    ${!(me.user.photos?.length) ? `<a class="alert warning nudge" href="#/profile">📸 ${isFamily ? tr('Add a photo so au pairs can see you. Profiles with photos get far more matches.') : tr('Add a photo so families can see you. Profiles with photos get far more matches.')}</a>`
+    ${me.profile_missing?.length ? `<a class="alert warning nudge" href="#/profile">📸 ${isFamily ? tr('Add a photo and a few words so au pairs can see you. Profiles with photos get far more matches.') : tr('Add a photo and a few words so families can see you. Profiles with photos get far more matches.')}</a>`
     : completeness < 70 ? `<a class="alert info nudge" href="#/profile">${tr('Your profile is {n}% complete. Finish it to improve your matches →', { n: completeness })}</a>` : ''}
     <div class="disc-head"><button class="btn ghost sm" id="toggleFilters">⚙ ${tr('Filters')}${nFilters ? ` (${nFilters})` : ''}</button>
       <a class="btn ghost sm" href="#/search${deckQuery ? `?${deckQuery}` : ''}">☰ ${tr('List view')}</a></div>
@@ -604,8 +604,12 @@ views.account = async () => {
   };
 };
 
-/** Liking and messaging need a confirmed email; send people to enter their code. */
-const needsCode = (e) => { if (e.data?.code !== 'email_unverified') return false; toast(e.message); go('#/verify'); return true; };
+/** Liking and messaging need a confirmed email, and a photo and bio; send people to whichever is missing. */
+const needsCode = (e) => {
+  const to = { email_unverified: '#/verify', profile_incomplete: '#/profile' }[e.data?.code];
+  if (!to) return false;
+  toast(e.message); go(to); return true;
+};
 
 const blockUser = async (u, reason) => {
   if (!confirm(tr("Block {name}? You won't see each other anywhere, and your chat closes. They aren't told.", { name: u.name }))) return false;

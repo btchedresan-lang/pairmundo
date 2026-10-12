@@ -28,11 +28,18 @@ const call = async (token, method, path, body) => {
   });
   return { status: res.status, body: await res.json() };
 };
-const register = async (email, role, country, name = email) => {
+/** Gives a member a photo and a bio, which others need to see them in Discover and which they need to like. */
+const completeProfile = async (token, id, name = 'me') => {
+  testDb.prepare('UPDATE users SET photo_url = ?, photos = ? WHERE id = ?').run('/uploads/test.jpg', JSON.stringify(['/uploads/test.jpg']), id);
+  assert.equal((await call(token, 'PUT', '/me', { profile: { bio: `Hi, I am ${name}.` } })).status, 200);
+};
+/** Signs up, confirms the email and, unless `complete` is false, fills in the profile basics. */
+const register = async (email, role, country, name = email, { complete = true } = {}) => {
   const r = await call(null, 'POST', '/auth/register', { email, password: 'password123', role, name, country });
   assert.equal(r.status, 201, JSON.stringify(r.body));
   const v = await call(r.body.token, 'POST', '/auth/verify-email', { code: lastCode(email) });
   assert.equal(v.status, 200, JSON.stringify(v.body));
+  if (complete) await completeProfile(r.body.token, r.body.user.id, name);
   return { token: r.body.token, id: r.body.user.id };
 };
 
@@ -173,7 +180,7 @@ test('swiping: mutual like makes a match, pass hides, undo restores, photos uplo
   const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
   r = await call(ap.token, 'POST', '/me/photos', { data_url: `data:image/png;base64,${png}` });
   assert.equal(r.status, 201);
-  const first = r.body.photos[0];
+  const first = r.body.photos.at(-1);
   const img = await fetch(base.replace('/api', '') + first);
   assert.equal(img.status, 200);
   assert.equal((await call(ap.token, 'POST', '/me/photos', { data_url: `data:image/png;base64,${Buffer.from('<svg onload=alert(1)>').toString('base64')}` })).status, 400);
@@ -240,6 +247,31 @@ test('program corrections reach an existing database unless an admin edited the 
   assert.equal(db.prepare("SELECT status FROM country_programs WHERE code = 'NO'").get().status, 'open', 'admin edit kept');
 });
 
+test('a photo and a bio are needed to appear in Discover and to like; browsing works without them', async () => {
+  const fam = await register('gatefam@test.io', 'family', 'IE', 'Gate Family');
+  const ap = await register('gateap@test.io', 'aupair', 'BR', 'Gate Aupair', { complete: false });
+  assert.deepEqual((await call(ap.token, 'GET', '/me')).body.profile_missing, ['photo', 'bio']);
+
+  // The new au pair can browse, but nobody sees them yet and they can't like.
+  assert.ok((await call(ap.token, 'GET', '/discover')).body.results.some((x) => x.user.id === fam.id));
+  assert.ok(!(await call(fam.token, 'GET', '/discover')).body.results.some((x) => x.user.id === ap.id));
+  assert.ok(!(await call(fam.token, 'GET', '/search')).body.results.some((x) => x.user.id === ap.id));
+  let r = await call(ap.token, 'POST', '/swipe', { target_id: fam.id, direction: 'like' });
+  assert.equal(r.status, 403);
+  assert.equal(r.body.code, 'profile_incomplete');
+  assert.equal((await call(ap.token, 'POST', '/requests', { to_user: fam.id })).body.code, 'profile_incomplete');
+
+  // A bio alone isn't enough; the photo completes it.
+  await call(ap.token, 'PUT', '/me', { profile: { bio: '   ' } });
+  assert.deepEqual((await call(ap.token, 'GET', '/me')).body.profile_missing, ['photo', 'bio']);
+  await call(ap.token, 'PUT', '/me', { profile: { bio: 'Hi!' } });
+  assert.deepEqual((await call(ap.token, 'GET', '/me')).body.profile_missing, ['photo']);
+  await completeProfile(ap.token, ap.id);
+  assert.deepEqual((await call(ap.token, 'GET', '/me')).body.profile_missing, []);
+  assert.ok((await call(fam.token, 'GET', '/discover')).body.results.some((x) => x.user.id === ap.id));
+  assert.equal((await call(ap.token, 'POST', '/swipe', { target_id: fam.id, direction: 'like' })).status, 200);
+});
+
 test('email verification gates liking; forgot password resets with a code', async () => {
   const r = await call(null, 'POST', '/auth/register', { email: 'new@test.io', password: 'password123', role: 'aupair', name: 'New', country: 'PE' });
   assert.equal(r.status, 201);
@@ -255,6 +287,7 @@ test('email verification gates liking; forgot password resets with a code', asyn
   assert.equal((await call(r.body.token, 'POST', '/auth/verify-email', { code: lastCode('new@test.io') })).status, 200);
   assert.equal((await call(r.body.token, 'GET', '/me')).body.user.email_verified, true);
   await call(r.body.token, 'POST', '/swipe/undo');
+  await completeProfile(r.body.token, r.body.user.id, 'New');
   assert.equal((await call(r.body.token, 'POST', '/swipe', { target_id: fam.id, direction: 'like' })).status, 200);
 
   // Forgot password: same answer for unknown emails, code resets and signs out old sessions.
@@ -383,6 +416,7 @@ test('emails and notifications use the language of each person’s app', async (
   assert.match(mail.subject, /^Tu código de PairMundo: \d{6}$/);
   assert.match(mail.text, /Tu código de confirmación es \d{6}/);
   await call(es.token, 'POST', '/auth/verify-email', { code: lastCode('es@test.io') });
+  await completeProfile(es.token, es.user.id, 'Lucía');
 
   // A German-speaking family; the server learns its language from the app's requests.
   const de = await register('de@test.io', 'family', 'DE', 'Familie Weber');
