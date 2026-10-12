@@ -974,7 +974,13 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const today = db.prepare("SELECT COUNT(*) n FROM id_checks WHERE user_id = ? AND created_at > datetime('now', '-1 day')").get(req.user.id).n;
     if (today >= ID_CHECKS_PER_DAY) throw new HttpError(429, 'You have started several ID checks today. Try again tomorrow.');
     // The website gets people back to its own Account page; the apps use a page that points back to the app.
-    const s = await identity.start(req.user, req.body?.from === 'web' ? `${publicBase()}/#/account` : `${publicBase()}/id-check-done`);
+    let s;
+    try { s = await identity.start(req.user, req.body?.from === 'web' ? `${publicBase()}/#/account` : `${publicBase()}/id-check-done`); }
+    catch (e) {
+      // Usually Stripe Identity isn't activated on the Stripe account yet; Stripe's reason is in the server log.
+      console.error('ID check start failed:', e.message);
+      throw new HttpError(503, "The ID check isn't working right now. Please try again later.");
+    }
     db.prepare('INSERT INTO id_checks (session_id, user_id, status) VALUES (?,?,?)').run(s.id, req.user.id, s.status || 'requires_input');
     return { url: s.url };
   }));
