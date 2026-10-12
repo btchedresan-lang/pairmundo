@@ -2,13 +2,14 @@
 // Each step saves as you go. "Skip for now" remembers the choice on this phone; the Profile tab has everything too.
 import { useState } from 'react';
 import { View } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import { AGE_GROUPS, langName, SKILLS, TOP_LANGS } from '../data';
 import { tr, trMap } from '../i18n';
 import { store } from '../storage';
 import { Alert, Button, ChoiceChips, Field, Screen, T } from '../components/ui';
+import { confirmAsync } from '../components/dialogs';
 import { CountryPicker } from '../components/pickers';
 import { PhotoGrid } from '../components/PhotoGrid';
 import { C, useTheme } from '../theme';
@@ -22,8 +23,16 @@ export const needsSetup = (me) => !!me && me.user.role !== 'admin' && (!(me.user
 /** Where "skip" or "done" is remembered on this device (SecureStore keys allow letters, digits, - and _). */
 export const setupKey = (id) => `setup-done-${id}`;
 
+/** Others only see you, and you can only like, once you have a photo and a bio. Offers the short setup and returns here after. */
+export async function askToFinishProfile() {
+  if (await confirmAsync(tr('Finish your profile first'), tr('Add a photo and a few words about you first, so they can like you back.'), tr('Finish profile'))) {
+    router.push('/setup?back=1');
+  }
+}
+
 export default function Setup() {
   const { me, refresh, setMe } = useAuth();
+  const { back } = useLocalSearchParams(); // opened from a like: return to the same card when done
   const t = useTheme();
   const isAp = me.user.role === 'aupair';
   const p = me.profile || {};
@@ -44,7 +53,7 @@ export default function Setup() {
 
   const finish = async () => {
     await store.set(setupKey(me.user.id), '1');
-    router.replace('/discover');
+    if (back && router.canGoBack()) router.back(); else router.replace('/discover');
   };
   const saveAndNext = async (profile) => {
     setErr(null); setBusy(true);

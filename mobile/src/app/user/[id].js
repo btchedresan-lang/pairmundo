@@ -12,6 +12,7 @@ import { MatchModal } from '../../components/pickers';
 import { PosterBody, PosterHeader } from '../../components/Poster';
 import { confirmAsync } from '../../components/dialogs';
 import { C } from '../../theme';
+import { askToFinishProfile } from '../setup';
 
 const W = Math.min(Dimensions.get('window').width, 520);
 
@@ -49,7 +50,11 @@ export default function UserProfile() {
       if (res.matched) { setMatch({ other: u, conversation_id: res.conversation_id }); load(); }
       else if (direction === 'pass') router.back();
       else { setNote(direction === 'super' ? `★ ${tr('Super like sent')}` : `♥ ${tr('Liked')}`); load(); }
-    } catch (e) { if (e.data?.code === 'email_unverified') router.push('/verify-email'); else setError(e.message); }
+    } catch (e) {
+      if (e.data?.code === 'email_unverified') router.push('/verify-email');
+      else if (e.data?.code === 'profile_incomplete') askToFinishProfile();
+      else setError(e.message);
+    }
   };
   const block = async () => {
     if (!(await confirmAsync(tr('Block {name}?', { name: u.name }), tr("You won't see each other anywhere in the app, and your chat closes. They aren't told."), tr('Block'), true))) return;

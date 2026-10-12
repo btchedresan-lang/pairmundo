@@ -257,6 +257,17 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   const mustBeVerified = (user) => {
     if (user.role !== 'admin' && !user.email_verified) throw new HttpError(403, 'Confirm your email first. We sent you a 6-digit code.', 'email_unverified');
   };
+  /** What a member still needs before others see them in Discover and before they can like: a photo and a few words. */
+  const profileGaps = (user) => {
+    if (!['aupair', 'family'].includes(user.role)) return [];
+    const bio = db.prepare(`SELECT bio FROM ${user.role === 'aupair' ? 'aupair_profiles' : 'family_profiles'} WHERE user_id = ?`).get(user.id)?.bio;
+    return [...(photosOf(user).length ? [] : ['photo']), ...(String(bio ?? '').trim() ? [] : ['bio'])];
+  };
+  /** Liking and contacting someone need a confirmed email and a profile they can like back. */
+  const mustBeReady = (user) => {
+    mustBeVerified(user);
+    if (profileGaps(user).length) throw new HttpError(403, 'Add a photo and a few words about you first, so they can like you back.', 'profile_incomplete');
+  };
 
   const wrap = (fn) => (req, res, next) => {
     try {
@@ -453,6 +464,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     return {
       user: { ...publicUser(u), email: u.email, email_verified: !!u.email_verified },
       profile: getProfile(u),
+      profile_missing: profileGaps(u),
       pass: passView(u),
       rating: ratingSummary(u.id),
       ambassador: db.prepare('SELECT code FROM ambassadors WHERE user_id = ? AND active = 1').get(u.id) ?? null,
@@ -705,7 +717,9 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const lockLikes = needsPass(me);
     const targetRole = me.role === 'family' ? 'aupair' : 'family';
     const table = targetRole === 'aupair' ? 'aupair_profiles' : 'family_profiles';
-    const where = ['u.role = ?', 'u.suspended = 0', 'p.visible = 1', notBlocked('u.id')];
+    // Profiles without a photo or a description stay out of other people's results until they add them.
+    const where = ['u.role = ?', 'u.suspended = 0', 'p.visible = 1', notBlocked('u.id'),
+      "(json_array_length(coalesce(u.photos, '[]')) > 0 OR u.photo_url IS NOT NULL)", "trim(coalesce(p.bio, '')) <> ''"];
     const params = [targetRole, me.id, me.id];
     if (q.country) { where.push('u.country = ?'); params.push(String(q.country).toUpperCase()); }
     if (q.nationality && targetRole === 'aupair') { where.push('p.nationality = ?'); params.push(String(q.nationality).toUpperCase()); }
@@ -763,7 +777,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const t = getUser(target_id);
     if (!t || t.suspended || t.role === me.role || t.role === 'admin') throw bad('You can only swipe on the other side (au pair ↔ host family).');
     if (blockedBetween(me.id, t.id)) throw notFound('Profile not found.');
-    if (direction !== 'pass') mustBeVerified(me);
+    if (direction !== 'pass') mustBeReady(me);
     db.prepare('INSERT OR REPLACE INTO swipes (user_id, target_id, direction) VALUES (?,?,?)').run(me.id, t.id, direction);
     const theirs = db.prepare("SELECT * FROM match_requests WHERE from_user = ? AND to_user = ? AND status = 'pending'").get(t.id, me.id);
     if (direction === 'pass') {
@@ -1058,7 +1072,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const to = getUser(req.body?.to_user);
     if (!to || to.suspended || to.role === req.user.role || to.role === 'admin') throw bad('You can only contact the other side (au pair ↔ host family).');
     if (blockedBetween(req.user.id, to.id)) throw notFound('Profile not found.');
-    mustBeVerified(req.user);
+    mustBeReady(req.user);
     const open = db.prepare(`SELECT id FROM match_requests WHERE status IN ('pending','accepted')
         AND ((from_user = ? AND to_user = ?) OR (from_user = ? AND to_user = ?))`).get(req.user.id, to.id, to.id, req.user.id);
     if (open) throw new HttpError(409, 'You already have an open request with this person.');
@@ -1092,6 +1106,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       db.prepare("UPDATE match_requests SET status = 'withdrawn', responded_at = datetime('now') WHERE id = ?").run(r.id);
     } else if (action === 'accept' || action === 'decline') {
       if (r.to_user !== me) throw forbidden();
+      if (action === 'accept') mustBeReady(req.user);
       const status = action === 'accept' ? 'accepted' : 'declined';
       if (status === 'accepted') acceptRequest(r);
       else db.prepare("UPDATE match_requests SET status = 'declined', responded_at = datetime('now') WHERE id = ?").run(r.id);
