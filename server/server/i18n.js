@@ -91,6 +91,18 @@ export const DICT = {
   'Your Family Pass is active. You can now message au pairs and see who liked you.': {
     es: 'Tu Family Pass está activo. Ya puedes escribir a au pairs y ver a quién le gustas.', fr: 'Votre Family Pass est actif. Vous pouvez maintenant écrire aux au pairs et voir qui vous a liké.',
     de: 'Dein Family Pass ist aktiv. Du kannst jetzt Au-pairs schreiben und sehen, wer dich mag.', pt: 'Seu Family Pass está ativo. Agora você pode mandar mensagens para au pairs e ver quem curtiu você.' },
+  'Your Family Pass ends in {days} days. Renew it to keep messaging au pairs.': {
+    es: 'Tu Family Pass termina en {days} días. Renuévalo para seguir escribiendo a au pairs.', fr: 'Votre Family Pass se termine dans {days} jours. Renouvelez-le pour continuer à écrire aux au pairs.',
+    de: 'Dein Family Pass endet in {days} Tagen. Verlängere ihn, um Au-pairs weiter schreiben zu können.', pt: 'Seu Family Pass termina em {days} dias. Renove para continuar mandando mensagens para au pairs.' },
+  'Your Family Pass ends within 24 hours. Renew it to keep messaging au pairs.': {
+    es: 'Tu Family Pass termina en menos de 24 horas. Renuévalo para seguir escribiendo a au pairs.', fr: 'Votre Family Pass se termine dans moins de 24 heures. Renouvelez-le pour continuer à écrire aux au pairs.',
+    de: 'Dein Family Pass endet in weniger als 24 Stunden. Verlängere ihn, um Au-pairs weiter schreiben zu können.', pt: 'Seu Family Pass termina em menos de 24 horas. Renove para continuar mandando mensagens para au pairs.' },
+  'Your Family Pass has ended. Get a new one to keep messaging au pairs and see who liked you.': {
+    es: 'Tu Family Pass ha terminado. Consigue uno nuevo para seguir escribiendo a au pairs y ver a quién le gustas.', fr: "Votre Family Pass est terminé. Prenez-en un nouveau pour continuer à écrire aux au pairs et voir qui vous a liké.",
+    de: 'Dein Family Pass ist abgelaufen. Hol dir einen neuen, um Au-pairs weiter zu schreiben und zu sehen, wer dich mag.', pt: 'Seu Family Pass terminou. Adquira um novo para continuar mandando mensagens para au pairs e ver quem curtiu você.' },
+  'Renew it in the app, or on the website: {link}': {
+    es: 'Renuévalo en la app o en la web: {link}', fr: "Renouvelez-le dans l'app ou sur le site : {link}",
+    de: 'Verlängere ihn in der App oder auf der Website: {link}', pt: 'Renove no app ou no site: {link}' },
   // Match reasons and warnings (matching.js)
   'Wants to go to {country}': { es: 'Quiere ir a {country}', fr: 'Destination souhaitée : {country}', de: 'Möchte nach {country}', pt: 'Quer ir para {country}' },
   "Destination is not in the au pair's preferred countries": {
