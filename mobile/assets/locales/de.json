@@ -1,5 +1,7 @@
 {
   "ios": {
-    "NSPhotoLibraryUsageDescription": "PairMundo braucht Zugriff auf deine Fotos, damit du sie zu deinem Profil hinzufügen kannst."
+    "NSPhotoLibraryUsageDescription": "PairMundo braucht Zugriff auf deine Fotos, damit du sie zu deinem Profil hinzufügen kannst.",
+    "NSCameraUsageDescription": "PairMundo braucht deine Kamera für Videoanrufe mit Familien und Au-pairs.",
+    "NSMicrophoneUsageDescription": "PairMundo braucht dein Mikrofon für Videoanrufe mit Familien und Au-pairs."
   }
 }

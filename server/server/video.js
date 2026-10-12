@@ -26,7 +26,8 @@ export function createVideo({ apiKey = process.env.DAILY_API_KEY, jitsiDomain = 
     /** The link one person opens to join. */
     async joinUrl(roomUrl, name) {
       if (!roomUrl.startsWith('https://') || !apiKey || !/\.daily\.co\//.test(roomUrl)) {
-        return `${roomUrl}#userInfo.displayName=${encodeURIComponent(JSON.stringify(name))}`;
+        // On phones, meet.jit.si otherwise stops at a "download the Jitsi Meet app" page; this lets people join in the browser.
+        return `${roomUrl}#userInfo.displayName=${encodeURIComponent(JSON.stringify(name))}&config.disableDeepLinking=true`;
       }
       const { token } = await daily('/meeting-tokens', { properties: { room_name: roomUrl.split('/').pop(), user_name: name, exp: exp() } });
       return `${roomUrl}?t=${token}`;

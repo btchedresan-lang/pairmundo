@@ -889,7 +889,8 @@ test('video calls: start from a chat, join while open, private Daily rooms when 
   // Starting again while the call is open returns the same call instead of a second one.
   assert.equal((await call(fam.token, 'POST', `/conversations/${conv}/calls`)).body.id, started.body.id);
   const join = await call(fam.token, 'POST', `/conversations/${conv}/calls/${started.body.id}/join`);
-  assert.match(join.body.url, /^https:\/\/meet\.jit\.si\/PairMundo-[0-9a-f]{24}#userInfo\.displayName=/);
+  assert.match(join.body.url, /^https:\/\/meet\.jit\.si\/PairMundo-[0-9a-f]{24}#userInfo\.displayName=.*&config\.disableDeepLinking=true$/);
+  assert.equal(join.body.in_app, false);
   assert.equal((await call(stranger.token, 'POST', `/conversations/${conv}/calls/${started.body.id}/join`)).status, 404);
   const msgs = (await call(fam.token, 'GET', `/conversations/${conv}/messages`)).body.messages;
   assert.equal(msgs.filter((m) => m.is_call).length, 1);
