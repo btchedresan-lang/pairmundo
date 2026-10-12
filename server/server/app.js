@@ -1177,7 +1177,9 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const m = db.prepare('SELECT * FROM messages WHERE id = ? AND conversation_id = ? AND call_url IS NOT NULL').get(Number(req.params.messageId), c.id);
     if (!m) throw notFound();
     if (openCall(c)?.id !== m.id) throw new HttpError(410, 'This call has ended. Start a new one.');
-    return { url: await video.joinUrl(m.call_url, req.user.name) };
+    const url = await video.joinUrl(m.call_url, req.user.name);
+    // Private Daily rooms open inside the phone app. Jitsi rooms open in the browser, since Jitsi's sign-in doesn't work inside an app.
+    return { url, in_app: /^https:\/\/[^/]+\.daily\.co\//.test(url) };
   }));
 
   // ---------- programs & compliance ----------

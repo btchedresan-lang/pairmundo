@@ -49,10 +49,14 @@ export default function Chat() {
     }
   };
 
-  // Calls open in the phone's browser, which asks for the camera and microphone.
+  // Private Daily calls open on the in-app call screen; Jitsi calls (and calls on the web) open in the browser.
   const [calling, setCalling] = useState(false);
   const join = async (messageId) => {
-    try { const { url } = await api(`/conversations/${id}/calls/${messageId}/join`, { method: 'POST' }); await Linking.openURL(url); }
+    try {
+      const { url, in_app } = await api(`/conversations/${id}/calls/${messageId}/join`, { method: 'POST' });
+      if (in_app && Platform.OS !== 'web') router.push({ pathname: '/call', params: { url, name: other?.name ?? '' } });
+      else await Linking.openURL(url);
+    }
     catch (e) { setError(e.message); }
   };
   const startCall = async () => {

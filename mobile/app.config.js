@@ -11,9 +11,17 @@ module.exports = {
     orientation: 'portrait',
     icon: './assets/icon.png',
     userInterfaceStyle: 'light',
-    ios: { supportsTablet: false, bundleIdentifier: brand.bundleId },
+    ios: {
+      supportsTablet: false, bundleIdentifier: brand.bundleId,
+      // In-app video calls (src/app/call.js).
+      infoPlist: {
+        NSCameraUsageDescription: `${brand.name} needs your camera for video calls with families and au pairs.`,
+        NSMicrophoneUsageDescription: `${brand.name} needs your microphone for video calls with families and au pairs.`,
+      },
+    },
     android: {
       package: brand.bundleId,
+      permissions: ['android.permission.CAMERA', 'android.permission.RECORD_AUDIO', 'android.permission.MODIFY_AUDIO_SETTINGS'],
       adaptiveIcon: {
         backgroundColor: brand.primary,
         foregroundImage: './assets/android-icon-foreground.png',
