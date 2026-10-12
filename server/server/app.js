@@ -846,6 +846,35 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (!quiet) notify(userId, 'pass', 'Your Family Pass is active. You can now message au pairs and see who liked you.', {}, '#/likes');
     return true;
   };
+  // Reminders as a family's pass runs out: a few days before, on the last day, and once just after it ends.
+  // Sent in the app, by push and by email. Renewing moves the end date, so the reminders start over for the new one.
+  const PASS_REMINDERS = {
+    soon: 'Your Family Pass ends in {days} days. Renew it to keep messaging au pairs.',
+    last_day: 'Your Family Pass ends within 24 hours. Renew it to keep messaging au pairs.',
+    ended: 'Your Family Pass has ended. Get a new one to keep messaging au pairs and see who liked you.',
+  };
+  const sendPassReminders = () => {
+    if (!passRequired()) return 0;
+    // Each family's last pass (later passes start when earlier ones end), from 2 days ago to 3 days ahead.
+    const rows = db.prepare(`SELECT p.user_id, MAX(p.ends_at) ends_at FROM passes p JOIN users u ON u.id = p.user_id
+      WHERE u.role = 'family' AND u.suspended = 0 GROUP BY p.user_id
+      HAVING MAX(p.ends_at) > datetime('now', '-2 days') AND MAX(p.ends_at) <= datetime('now', '+3 days')`).all();
+    let sent = 0;
+    for (const r of rows) {
+      const left = Date.parse(r.ends_at.replace(' ', 'T') + 'Z') - Date.now();
+      const kind = left <= 0 ? 'ended' : left <= 86400000 ? 'last_day' : 'soon';
+      if (!db.prepare('INSERT OR IGNORE INTO pass_reminders (user_id, ends_at, kind) VALUES (?,?,?)').run(r.user_id, r.ends_at, kind).changes) continue;
+      const vars = { days: Math.ceil(left / 86400000) };
+      notify(r.user_id, 'pass', PASS_REMINDERS[kind], vars, '#/family-pass');
+      const u = getUser(r.user_id);
+      const subject = translate(u.lang, PASS_REMINDERS[kind], vars);
+      const text = `${subject}\n\n${translate(u.lang, 'Renew it in the app, or on the website: {link}', { link: `${publicBase()}/#/family-pass` })}`;
+      Promise.resolve(mailer({ to: u.email, subject, text })).catch((e) => console.error('Pass reminder email failed:', e.message));
+      sent++;
+    }
+    return sent;
+  };
+  app.sendPassReminders = sendPassReminders;
   const mustHavePass = (u) => {
     if (needsPass(u)) throw new HttpError(402, 'Get the Family Pass to message au pairs.', 'pass_required');
   };

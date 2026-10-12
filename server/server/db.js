@@ -223,6 +223,14 @@ CREATE TABLE IF NOT EXISTS passes (
   UNIQUE (source, ref)
 );
 CREATE INDEX IF NOT EXISTS passes_user ON passes(user_id, ends_at);
+-- Reminders already sent about a pass running out, so each one goes out once per end date.
+CREATE TABLE IF NOT EXISTS pass_reminders (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  ends_at TEXT NOT NULL,
+  kind TEXT NOT NULL,                             -- soon | last_day | ended
+  sent_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (user_id, ends_at, kind)
+);
 
 -- Stripe Identity sessions for the ID check. Stripe keeps the documents; we keep the outcome.
 CREATE TABLE IF NOT EXISTS id_checks (

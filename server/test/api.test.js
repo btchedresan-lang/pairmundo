@@ -5,7 +5,7 @@ import { createApp } from '../server/app.js';
 import { scoreMatch, checkCompliance } from '../server/matching.js';
 import { PROGRAMS } from '../server/programs.js';
 
-let server; let base; let testDb;
+let server; let base; let testDb; let app;
 const outbox = [];
 const pushed = []; let pushReply = null;
 let photoVerdict = null;
@@ -14,7 +14,7 @@ before(async () => {
   process.env.AUTH_RATE_LIMIT = '1000';
   process.env.UPLOAD_DIR = (await import('node:fs')).mkdtempSync((await import('node:os')).tmpdir() + '/aupair-test-');
   testDb = openDb(':memory:');
-  const app = createApp(testDb, { mailer: async (m) => { outbox.push(m); }, pusher: async (msgs) => { pushed.push(...msgs); return pushReply ? msgs.map(pushReply) : msgs.map(() => ({ status: 'ok' })); },
+  app = createApp(testDb, { mailer: async (m) => { outbox.push(m); }, pusher: async (msgs) => { pushed.push(...msgs); return pushReply ? msgs.map(pushReply) : msgs.map(() => ({ status: 'ok' })); },
     moderator: async () => photoVerdict ?? { verdict: 'allow', category: 'none', note: '' } });
   await new Promise((r) => { server = app.listen(0, r); });
   base = `http://127.0.0.1:${server.address().port}/api`;
@@ -520,6 +520,55 @@ test('Family Pass: when switched on, families need it to message and to see who 
     const row = (await call(admin, 'GET', '/admin/waitlist')).body.signups_by_source.find((x) => x.source === 'meta-fam-sv-trial');
     assert.deepEqual([row.families, row.aupairs], [1, 0]);
   } finally { delete process.env.FAMILY_PASS; delete process.env.FAMILY_TRIAL_DAYS; }
+});
+
+test('Family Pass: reminders go out as it runs out, once each, and start over after renewing', async () => {
+  const fam = await register('remind@test.io', 'family', 'DE', 'Familie Erinnerung');
+  // Moves the pass's end date relative to now; reminders already sent move with it, as if time had passed.
+  const setEnd = (sql) => {
+    const end = testDb.prepare(`SELECT datetime('now', '${sql}') d`).get().d;
+    testDb.prepare('UPDATE pass_reminders SET ends_at = ? WHERE user_id = ?').run(end, fam.id);
+    testDb.prepare('UPDATE passes SET ends_at = ? WHERE user_id = ?').run(end, fam.id);
+  };
+  const mine = () => outbox.filter((m) => m.to === 'remind@test.io' && /Family Pass/.test(m.subject));
+  testDb.prepare("INSERT INTO passes (user_id, source, ref, starts_at, ends_at) VALUES (?, 'admin', NULL, datetime('now', '-80 days'), datetime('now', '+10 days'))").run(fam.id);
+
+  // Off unless the Family Pass is switched on.
+  setEnd('+2 days');
+  assert.equal(app.sendPassReminders(), 0);
+
+  process.env.FAMILY_PASS = 'on';
+  try {
+    setEnd('+10 days');
+    assert.equal(app.sendPassReminders(), 0, 'nothing while plenty of time is left');
+
+    setEnd('+2 days');
+    assert.equal(app.sendPassReminders(), 1);
+    assert.equal(app.sendPassReminders(), 0, 'each reminder is sent once');
+    assert.match(mine().at(-1).subject, /ends in 2 days/);
+    assert.match(mine().at(-1).text, /#\/family-pass/);
+    const note = (await call(fam.token, 'GET', '/notifications')).body.notifications[0];
+    assert.equal(note.link, '#/family-pass');
+    assert.match(note.text, /ends in 2 days/);
+
+    // Later stages for the same end date: the last day, then just after it ends.
+    setEnd('+3 hours');
+    assert.equal(app.sendPassReminders(), 1);
+    assert.match(mine().at(-1).subject, /within 24 hours/);
+    setEnd('-1 hours');
+    assert.equal(app.sendPassReminders(), 1);
+    assert.match(mine().at(-1).subject, /has ended/);
+    assert.equal(app.sendPassReminders(), 0);
+
+    // Long expired: no nudge.
+    setEnd('-5 days');
+    assert.equal(app.sendPassReminders(), 0);
+
+    // A renewed pass that ends later means no reminder about the earlier one.
+    setEnd('+2 days');
+    testDb.prepare("INSERT INTO passes (user_id, source, ref, starts_at, ends_at) VALUES (?, 'admin', NULL, datetime('now', '+2 days'), datetime('now', '+32 days'))").run(fam.id);
+    assert.equal(app.sendPassReminders(), 0);
+  } finally { delete process.env.FAMILY_PASS; }
 });
 
 test('Family Pass on the website: Stripe Checkout link, and the pass once paid (once only)', async () => {

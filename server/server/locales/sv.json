@@ -56,5 +56,9 @@
   "We couldn't confirm one of your certificates. Open your profile to see why and send a clearer copy.": "Vi kunde inte bekräfta ett av dina certifikat. Öppna din profil för att se varför och skicka en tydligare kopia.",
   "{name} changed the au pair agreement. Read it again and sign it.": "{name} har ändrat au pair-avtalet. Läs det igen och skriv under.",
   "{name} signed the au pair agreement. Read it and sign it too.": "{name} har skrivit under au pair-avtalet. Läs det och skriv under du också.",
-  "Your au pair agreement is signed by both of you.": "Ert au pair-avtal är underskrivet av er båda."
+  "Your au pair agreement is signed by both of you.": "Ert au pair-avtal är underskrivet av er båda.",
+  "Your Family Pass ends in {days} days. Renew it to keep messaging au pairs.": "Ert Family Pass tar slut om {days} dagar. Förnya det för att fortsätta skicka meddelanden till au pairer.",
+  "Your Family Pass ends within 24 hours. Renew it to keep messaging au pairs.": "Ert Family Pass tar slut inom 24 timmar. Förnya det för att fortsätta skicka meddelanden till au pairer.",
+  "Your Family Pass has ended. Get a new one to keep messaging au pairs and see who liked you.": "Ert Family Pass har tagit slut. Skaffa ett nytt för att fortsätta skicka meddelanden till au pairer och se vem som har gillat er.",
+  "Renew it in the app, or on the website: {link}": "Förnya det i appen eller på webbplatsen: {link}"
 }

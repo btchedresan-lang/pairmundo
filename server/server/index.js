@@ -19,4 +19,7 @@ if (ADMIN_EMAIL && ADMIN_PASSWORD && !db.prepare('SELECT 1 FROM users WHERE lowe
 const port = Number(process.env.PORT || 3000);
 const backups = createBackups(db);
 backups.start();
-createApp(db, { backups }).listen(port, () => console.log(`PairMundo running on http://localhost:${port}`));
+const app = createApp(db, { backups });
+// Family Pass expiry reminders: check every hour.
+setInterval(() => { try { app.sendPassReminders(); } catch (e) { console.error('Pass reminders failed:', e.message); } }, 60 * 60 * 1000).unref();
+app.listen(port, () => console.log(`PairMundo running on http://localhost:${port}`));
