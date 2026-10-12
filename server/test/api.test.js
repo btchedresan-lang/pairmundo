@@ -489,6 +489,14 @@ test('ID check: off without Stripe; with Stripe it gives a link and the badge on
       body: JSON.stringify({ email: 'id3@test.io', password: 'password123', role: 'aupair', name: 'Tri', country: 'PH' }) })).json();
     for (let i = 0; i < 3; i++) assert.equal((await call2(reg3.token, 'POST', '/me/id-check')).status, 200);
     assert.equal((await call2(reg3.token, 'POST', '/me/id-check')).status, 429);
+
+    // When Stripe refuses (for example, Identity not activated), people get a clear message instead of a generic error.
+    identity.start = async () => { throw new Error('Stripe 400: Identity is not enabled for this account'); };
+    const reg4 = await (await fetch(`${b2}/auth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'id4@test.io', password: 'password123', role: 'aupair', name: 'Quad', country: 'PH' }) })).json();
+    r = await call2(reg4.token, 'POST', '/me/id-check');
+    assert.equal(r.status, 503);
+    assert.equal(r.body.error, "The ID check isn't working right now. Please try again later.");
   } finally { srv.close(); delete process.env.STRIPE_WEBHOOK_SECRET; }
 });
 
