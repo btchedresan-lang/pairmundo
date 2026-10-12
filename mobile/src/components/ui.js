@@ -8,11 +8,11 @@ import { imageUrl } from '../api';
 import { initials } from '../data';
 import { tr } from '../i18n';
 
-export function Screen({ children, scroll = true, padded = true, style }) {
+export function Screen({ children, scroll = true, scrollEnabled = true, padded = true, style }) {
   const t = useTheme();
   const body = <View style={[padded && { padding: 16 }, { gap: 12 }, style]}>{children}</View>;
   return scroll
-    ? <ScrollView style={{ flex: 1, backgroundColor: t.bg }} contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled">{body}</ScrollView>
+    ? <ScrollView scrollEnabled={scrollEnabled} style={{ flex: 1, backgroundColor: t.bg }} contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled">{body}</ScrollView>
     : <View style={[{ flex: 1, backgroundColor: t.bg }, padded && { padding: 16 }, style]}>{children}</View>;
 }
 
