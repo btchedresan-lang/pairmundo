@@ -9,7 +9,13 @@ import { imageUrl } from '../api';
 import { Photo } from './ui';
 
 const W = Dimensions.get('window').width;
-const THRESHOLD = 110;
+const H = Dimensions.get('window').height;
+// How far a card must travel before letting go counts as a like or pass (about a third of the screen),
+// and how far up for a super like. Shorter drags spring back, so a nudge never decides anything.
+const THRESHOLD = Math.max(120, W * 0.35);
+const SUPER_THRESHOLD = Math.max(160, H * 0.22);
+// Movement before the card follows the finger at all, so taps and small wobbles stay taps.
+const CLAIM = 12;
 const nativeDriver = Platform.OS !== 'web';
 
 /** Photo carousel with Tinder-style progress bars. Tap the left or right half to move between photos. */
@@ -97,13 +103,13 @@ export function SwipeDeck({ cards, onSwipe, onOpen, ref }) {
   const [pan] = useState(() => PanResponder.create({
     // Only claim the gesture once it's clearly a drag, so taps still reach the photo and caption.
     // Capture phase, so the drag wins even though a Pressable child took the touch first.
-    onMoveShouldSetPanResponderCapture: (_, g) => Math.abs(g.dx) > 6 || Math.abs(g.dy) > 6,
+    onMoveShouldSetPanResponderCapture: (_, g) => Math.abs(g.dx) > CLAIM || Math.abs(g.dy) > CLAIM,
     onPanResponderTerminationRequest: () => false,
     onPanResponderMove: Animated.event([null, { dx: pos.x, dy: pos.y }], { useNativeDriver: false }),
     onPanResponderRelease: (_, g) => {
       if (g.dx > THRESHOLD) return flyOut('like');
       if (g.dx < -THRESHOLD) return flyOut('pass');
-      if (g.dy < -THRESHOLD * 1.2 && Math.abs(g.dx) < 80) return flyOut('super');
+      if (g.dy < -SUPER_THRESHOLD && Math.abs(g.dx) < Math.abs(g.dy) / 2) return flyOut('super');
       Animated.spring(pos, { toValue: { x: 0, y: 0 }, friction: 6, useNativeDriver: nativeDriver }).start();
     },
     onPanResponderTerminate: () => Animated.spring(pos, { toValue: { x: 0, y: 0 }, useNativeDriver: nativeDriver }).start(),
@@ -111,9 +117,9 @@ export function SwipeDeck({ cards, onSwipe, onOpen, ref }) {
 
   if (!top) return null;
   const rotate = pos.x.interpolate({ inputRange: [-W, 0, W], outputRange: ['-18deg', '0deg', '18deg'] });
-  const likeO = pos.x.interpolate({ inputRange: [0, 100], outputRange: [0, 1], extrapolate: 'clamp' });
-  const nopeO = pos.x.interpolate({ inputRange: [-100, 0], outputRange: [1, 0], extrapolate: 'clamp' });
-  const superO = pos.y.interpolate({ inputRange: [-120, 0], outputRange: [1, 0], extrapolate: 'clamp' });
+  const likeO = pos.x.interpolate({ inputRange: [20, THRESHOLD], outputRange: [0, 1], extrapolate: 'clamp' });
+  const nopeO = pos.x.interpolate({ inputRange: [-THRESHOLD, -20], outputRange: [1, 0], extrapolate: 'clamp' });
+  const superO = pos.y.interpolate({ inputRange: [-SUPER_THRESHOLD, -20], outputRange: [1, 0], extrapolate: 'clamp' });
   const nextScale = pos.x.interpolate({ inputRange: [-W, 0, W], outputRange: [1, 0.95, 1], extrapolate: 'clamp' });
 
   return (
