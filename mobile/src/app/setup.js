@@ -46,7 +46,7 @@ export default function Setup() {
     age_groups: p.age_groups || [], skills: p.skills || [], bio: p.bio || '',
   } : {
     children: (p.children || []).map((c) => c.age).join(', '), start_date: p.start_date || '', duration_months: String(p.duration_months ?? ''),
-    languages: p.languages || [], bio: p.bio || '',
+    languages: p.languages || [], bio: p.bio || '', wants_sitter: p.wants_sitter ?? null,
   }));
   const set = (k) => (v) => setF((x) => ({ ...x, [k]: v }));
   const photos = me.user.photos || [];
@@ -70,7 +70,7 @@ export default function Setup() {
     children: f.children.split(',').map((s) => s.trim()).filter((s) => s !== '' && !Number.isNaN(Number(s))).map((a) => ({ age: Number(a) })),
     start_date: f.start_date.trim() || null, duration_months: num(f.duration_months), languages: f.languages,
   });
-  const about = () => (isAp ? { bio: f.bio, age_groups: f.age_groups, skills: f.skills } : { bio: f.bio });
+  const about = () => (isAp ? { bio: f.bio, age_groups: f.age_groups, skills: f.skills } : { bio: f.bio, wants_sitter: f.wants_sitter });
 
   const titles = [tr('Add your photos'), tr('The basics'), isAp ? tr('About you') : tr('About your family')];
   return (
@@ -108,7 +108,11 @@ export default function Setup() {
         {isAp ? <>
           <ChoiceChips label={tr('Experience with')} options={trMap(AGE_GROUPS)} value={f.age_groups} onChange={set('age_groups')} multi />
           <ChoiceChips label={tr('Skills')} options={trMap(SKILLS)} value={f.skills} onChange={set('skills')} multi />
-        </> : null}
+        </> : <>
+          <ChoiceChips label={tr('Would you also use PairMundo to find a babysitter for evenings, or when your au pair is away?')}
+            options={{ yes: tr('Yes'), maybe: tr('Maybe'), no: tr('No') }} value={f.wants_sitter} onChange={set('wants_sitter')} />
+          <T small muted>{tr('Optional. It helps us decide what to build next. Au pairs never see your answer.')}</T>
+        </>}
         <Button title={tr('Finish')} onPress={() => saveAndNext(about())} loading={busy} disabled={!f.bio.trim()} />
       </> : null}
 

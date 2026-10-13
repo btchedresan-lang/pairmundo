@@ -1320,6 +1320,9 @@ views.admin = async ([tab = 'overview', id], qs) => {
       ['Matches', s.matches], ['Active placements', s.placements_active], ['Completed placements', s.placements_completed], ['Reviews', s.reviews], ['Open reports', s.open_reports], ['On the waitlist', s.waitlist]];
     render(`${head}<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(170px,1fr))">${tiles.map(([k, v]) =>
       `<div class="card"><div class="muted small">${k}</div><div style="font-size:1.8rem;font-weight:800">${v}</div></div>`).join('')}</div>
+      <div class="card"><h2>Would families also use us for a babysitter?</h2><p class="muted small">Asked during family onboarding in the app.</p>
+      <table><tr><th>Yes</th><th>Maybe</th><th>No</th><th>Not answered</th></tr>
+      <tr>${['yes', 'maybe', 'no', 'unanswered'].map((k) => `<td>${s.sitter_interest[k]}</td>`).join('')}</tr></table></div>
       <div class="card"><h2>Members by country</h2><table><tr><th>Country</th><th>Role</th><th>Members</th></tr>
       ${s.by_country.map((r) => `<tr><td>${cname(r.country) || '—'}</td><td>${r.role === 'aupair' ? 'Au pair' : 'Family'}</td><td>${r.n}</td></tr>`).join('')}</table></div>
       <div class="card" id="backupCard"><h2>Database backups</h2><div id="backupInfo" class="muted">Loading…</div></div>`);
