@@ -613,6 +613,35 @@ test('Family Pass: reminders go out as it runs out, once each, and start over af
   } finally { delete process.env.FAMILY_PASS; }
 });
 
+test('nudges: families hear to start looking for the next au pair about 3 months before the year ends', async () => {
+  const fam = await register('nextap@test.io', 'family', 'DE', 'Familie Weiter');
+  const ap = await register('nextap-ap@test.io', 'aupair', 'BR', 'Camila Souza');
+  const mine = () => outbox.filter((m) => m.to === 'nextap@test.io' && /next au pair/.test(m.subject));
+  const placement = testDb.prepare(`INSERT INTO placements (aupair_id, family_id, country, start_date, end_date, weekly_hours, pocket_money, status, created_by)
+    VALUES (?, ?, 'DE', date('now', '-9 months'), date('now', '+120 days'), 30, 280, 'active', ?)`).run(ap.id, fam.id, fam.id).lastInsertRowid;
+  const setEnd = (days) => testDb.prepare(`UPDATE placements SET end_date = date('now', '${days} days') WHERE id = ?`).run(placement);
+
+  assert.equal(app.sendSearchNudges(), 0, 'too early with 120 days left');
+  setEnd('+80');
+  assert.equal(app.sendSearchNudges(), 1);
+  assert.equal(app.sendSearchNudges(), 0, 'sent once');
+  assert.match(mine().at(-1).text, /Camila's stay with you ends on/);
+  assert.match(mine().at(-1).text, /#\/discover/);
+  assert.equal((await call(fam.token, 'GET', '/notifications')).body.notifications[0].link, '#/discover');
+
+  // Cancelled stays don't count. A family without a stay in the app hears 9 months after their last pass ended.
+  testDb.prepare("UPDATE placements SET status = 'cancelled' WHERE id = ?").run(placement);
+  testDb.prepare("INSERT INTO passes (user_id, source, ref, starts_at, ends_at) VALUES (?, 'admin', NULL, datetime('now', '-400 days'), datetime('now', '-200 days'))").run(fam.id);
+  assert.equal(app.sendSearchNudges(), 0, 'too soon after the pass');
+  testDb.prepare("UPDATE passes SET ends_at = datetime('now', '-280 days') WHERE user_id = ?").run(fam.id);
+  assert.equal(app.sendSearchNudges(), 1);
+  assert.match(mine().at(-1).text, /start looking for your next au pair/);
+  assert.equal(app.sendSearchNudges(), 0);
+
+  // Au pairs never get these.
+  assert.equal(outbox.filter((m) => m.to === 'nextap-ap@test.io' && /next au pair/.test(m.subject)).length, 0);
+});
+
 test('Family Pass on the website: Stripe Checkout link, and the pass once paid (once only)', async () => {
   const plain = await register('nopay@test.io', 'family', 'DE');
   assert.equal((await call(plain.token, 'GET', '/family-pass')).body.web_checkout, false);

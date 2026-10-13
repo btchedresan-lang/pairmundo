@@ -223,6 +223,13 @@ CREATE TABLE IF NOT EXISTS passes (
   UNIQUE (source, ref)
 );
 CREATE INDEX IF NOT EXISTS passes_user ON passes(user_id, ends_at);
+-- "Time to look for your next au pair" nudges already sent, one per date they were worked out from.
+CREATE TABLE IF NOT EXISTS search_nudges (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  anchor TEXT NOT NULL,                           -- placement:<id> or pass:<ends_at>
+  sent_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (user_id, anchor)
+);
 -- Reminders already sent about a pass running out, so each one goes out once per end date.
 CREATE TABLE IF NOT EXISTS pass_reminders (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

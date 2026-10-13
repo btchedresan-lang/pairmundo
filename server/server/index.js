@@ -20,6 +20,9 @@ const port = Number(process.env.PORT || 3000);
 const backups = createBackups(db);
 backups.start();
 const app = createApp(db, { backups });
-// Family Pass expiry reminders: check every hour.
-setInterval(() => { try { app.sendPassReminders(); } catch (e) { console.error('Pass reminders failed:', e.message); } }, 60 * 60 * 1000).unref();
+// Family Pass expiry reminders and "time to look for your next au pair" nudges: check every hour.
+setInterval(() => {
+  try { app.sendPassReminders(); } catch (e) { console.error('Pass reminders failed:', e.message); }
+  try { app.sendSearchNudges(); } catch (e) { console.error('Search nudges failed:', e.message); }
+}, 60 * 60 * 1000).unref();
 app.listen(port, () => console.log(`PairMundo running on http://localhost:${port}`));
