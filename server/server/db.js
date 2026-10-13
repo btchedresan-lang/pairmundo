@@ -216,7 +216,7 @@ CREATE TABLE IF NOT EXISTS waitlist (
 CREATE TABLE IF NOT EXISTS passes (
   id INTEGER PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  source TEXT NOT NULL,                           -- apple | google | stripe | admin
+  source TEXT NOT NULL,                           -- apple | google | stripe | admin | trial | early
   ref TEXT,                                       -- the store's transaction id, so a purchase is counted once
   starts_at TEXT NOT NULL,
   ends_at TEXT NOT NULL,
@@ -224,6 +224,14 @@ CREATE TABLE IF NOT EXISTS passes (
   UNIQUE (source, ref)
 );
 CREATE INDEX IF NOT EXISTS passes_user ON passes(user_id, ends_at);
+-- Early family bonus: the first families to sign up (or join the waitlist as a family) before launch get extra free
+-- days of the pass, to use whenever they choose. Keyed by email, so a waitlist spot carries over to the account.
+CREATE TABLE IF NOT EXISTS early_bonus (
+  email TEXT PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  redeemed_at TEXT
+);
 -- "Time to look for your next au pair" nudges already sent, one per date they were worked out from.
 CREATE TABLE IF NOT EXISTS search_nudges (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

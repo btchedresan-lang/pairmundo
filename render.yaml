@@ -60,3 +60,6 @@ services:
         sync: false
       - key: PUBLIC_URL
         value: https://pairmundo.com
+      # The day the apps go live. It closes the early family bonus to new families and gives them 12 months to use it.
+      - key: LAUNCH_DATE
+        value: "2026-11-24"

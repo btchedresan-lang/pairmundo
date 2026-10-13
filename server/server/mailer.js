@@ -25,10 +25,13 @@ export function createMailer() {
 }
 
 /** The "you're on the list" email, with a link to leave the list. */
-export const waitlistEmail = (lang, leaveUrl) => {
-  const v = { app: APP_NAME, link: leaveUrl };
-  return { subject: t(lang, "You're on the {app} list", v),
-    text: t(lang, "Thanks for your interest in {app}!\n\nWe'll email you when the iPhone and Android apps are ready. Until then you can already sign up and start matching at https://pairmundo.com.\n\nTo leave the list, open this link: {link}", v) };
+export const waitlistEmail = (lang, leaveUrl, earlyDays = 0) => {
+  const v = { app: APP_NAME, link: leaveUrl, days: earlyDays };
+  const body = t(lang, "Thanks for your interest in {app}!\n\nWe'll email you when the iPhone and Android apps are ready. Until then you can already sign up and start matching at https://pairmundo.com.\n\nTo leave the list, open this link: {link}", v);
+  // A family who got an early family bonus spot hears about it just before the leave link.
+  const at = body.lastIndexOf('\n\n');
+  const early = t(lang, 'Your family is one of the first to join, so you get {days} extra free days of the Family Pass on top of the free trial. Sign up with this email address and use them whenever it suits you.', v);
+  return { subject: t(lang, "You're on the {app} list", v), text: earlyDays ? `${body.slice(0, at)}\n\n${early}${body.slice(at)}` : body };
 };
 
 /** Asks someone an au pair named to confirm what they know about them. */

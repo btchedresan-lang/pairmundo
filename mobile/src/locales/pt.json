@@ -713,5 +713,17 @@
   "Would you also use PairMundo to find a babysitter for evenings, or when your au pair is away?": "Vocês também usariam o PairMundo para encontrar uma babá à noite ou quando a au pair estiver fora?",
   "Optional. It helps us decide what to build next. Au pairs never see your answer.": "Opcional. Isso nos ajuda a decidir o que criar a seguir. As au pairs nunca veem a sua resposta.",
   "Maybe": "Talvez",
-  "Answer yes, maybe or no.": "Responda sim, talvez ou não."
+  "Answer yes, maybe or no.": "Responda sim, talvez ou não.",
+  "Early family bonus: {days} free days": "Bônus para famílias pioneiras: {days} dias grátis",
+  "Everything is free right now, so your free days stay saved for later.": "No momento tudo é grátis, então seus dias grátis ficam guardados para depois.",
+  "The time to use the early family bonus has passed.": "O prazo para usar o bônus para famílias pioneiras já acabou.",
+  "They start when your current pass ends.": "Eles começam quando seu passe atual terminar.",
+  "This account has no early family bonus.": "Esta conta não tem bônus para famílias pioneiras.",
+  "Use my {days} free days now": "Usar meus {days} dias grátis agora",
+  "Use them by {date}.": "Use até {date}.",
+  "You have already used your early family bonus.": "Você já usou seu bônus para famílias pioneiras.",
+  "You signed up early, so you have {days} free days of the Family Pass saved. Use them whenever it suits you.": "Você se cadastrou cedo, então tem {days} dias grátis de Family Pass guardados. Use quando for melhor para você.",
+  "Your early family bonus runs until {date}.": "Seu bônus para famílias pioneiras vale até {date}.",
+  "Your free days have started. You can now message au pairs and see who liked you.": "Seus dias grátis começaram. Agora você pode mandar mensagens para au pairs e ver quem curtiu você.",
+  "{days} free days saved for you": "{days} dias grátis guardados para você"
 }

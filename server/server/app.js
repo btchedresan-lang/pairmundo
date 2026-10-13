@@ -367,14 +367,19 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const refCode = ambassadorByCode(referralCode(req.body?.ref_code))?.code ?? null;
     const token = randomBytes(18).toString('base64url');
     const added = db.prepare('INSERT OR IGNORE INTO waitlist (email, role, country, lang, source, ref_code, token) VALUES (?,?,?,?,?,?,?)').run(email, role, country, lang, source, refCode, token).changes;
+    // A family on the waitlist before launch keeps an early family bonus spot for when they sign up.
+    const early = added && role === 'family' && claimEarlyBonus(email);
     if (added) {
-      const { subject, text } = waitlistEmail(lang, `${publicBase()}/api/waitlist/leave?t=${token}`);
+      const { subject, text } = waitlistEmail(lang, `${publicBase()}/api/waitlist/leave?t=${token}`, early ? earlyDays() : 0);
       try { await mailer({ to: email, subject, text }); } catch (e) { console.error('Waitlist email failed:', e.message); }
     }
     return { ok: true };
   }));
   api.get('/waitlist/leave', wrap((req, res) => {
-    const gone = db.prepare('DELETE FROM waitlist WHERE token = ?').run(String(req.query.t || '')).changes;
+    const w = db.prepare('SELECT email FROM waitlist WHERE token = ?').get(String(req.query.t || ''));
+    const gone = w ? db.prepare('DELETE FROM waitlist WHERE email = ?').run(w.email).changes : 0;
+    // Leaving the list frees an early family bonus spot that no account has taken up yet.
+    if (w) db.prepare('DELETE FROM early_bonus WHERE email = ? AND user_id IS NULL AND redeemed_at IS NULL').run(w.email);
     const lang = pickLang(req.get('accept-language')) || 'en';
     res.type('html').send(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/legal.css"><main><h1>PairMundo</h1><p>${
       translate(lang, gone ? "You're off the list. We won't email you about the launch." : 'This link was already used, or the address is not on the list.')}</p><p><a href="/">pairmundo.com</a></p></main>`);
@@ -406,6 +411,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     });
     // New families can get a free trial of the Family Pass (FAMILY_TRIAL_DAYS, off unless set).
     if (role === 'family' && trialDays()) grantPass(user.id, 'trial', `signup-${user.id}`, trialDays(), { quiet: true });
+    // Families who sign up before launch (or kept a spot from the waitlist) get the early family bonus, while spots last.
+    if (role === 'family') claimEarlyBonus(email, user.id);
     issueCode(user, 'verify');
     const s = createSession(db, user.id);
     setCookie(res, s.token);
@@ -546,6 +553,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       db.prepare(`DELETE FROM reports WHERE reporter_id = ? OR target_user_id = ? OR review_id IN (${reviews})`).run(u.id, u.id, u.id, u.id, u.id, u.id);
       db.prepare(`DELETE FROM reviews WHERE id IN (${reviews})`).run(u.id, u.id, u.id, u.id);
       db.prepare('DELETE FROM placements WHERE aupair_id = ? OR family_id = ? OR created_by = ?').run(u.id, u.id, u.id);
+      // A used early family bonus stays recorded by email, so a new account can't get it again.
+      db.prepare('DELETE FROM early_bonus WHERE user_id = ? AND redeemed_at IS NULL').run(u.id);
       db.prepare('DELETE FROM users WHERE id = ?').run(u.id);
     });
     for (const p of photos) storage.remove(p);
@@ -859,7 +868,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   const needsPass = (u) => passRequired() && u.role === 'family' && !activePass(u.id);
   const passView = (u) => {
     const p = activePass(u.id);
-    return { required: passRequired() && u.role === 'family', active: !!p, trial: p?.source === 'trial', ends_at: p?.ends_at ?? null, days: FAMILY_PASS.days, price: FAMILY_PASS.price, web_checkout: !!checkout, product_id: FAMILY_PASS.product_id,
+    return { required: passRequired() && u.role === 'family', active: !!p, trial: p?.source === 'trial', early: p?.source === 'early', early_bonus: earlyView(u), ends_at: p?.ends_at ?? null, days: FAMILY_PASS.days, price: FAMILY_PASS.price, web_checkout: !!checkout, product_id: FAMILY_PASS.product_id,
       plans: PASS_PLANS.map(({ id, days, price, product_id }) => ({ id, days, price, product_id })) };
   };
   /** Adds a pass, starting when the current one ends. A purchase already counted (same source and ref) is ignored. */
@@ -867,18 +876,87 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (ref && db.prepare('SELECT 1 FROM passes WHERE source = ? AND ref = ?').get(source, ref)) return false;
     const start = activePass(userId)?.ends_at ?? db.prepare("SELECT datetime('now') d").get().d;
     db.prepare("INSERT INTO passes (user_id, source, ref, starts_at, ends_at) VALUES (?,?,?,?, datetime(?, ?))").run(userId, source, ref, start, start, `+${Number(days)} days`);
-    // A family's first paid pass earns their ambassador a reward. Trials and free days from an admin don't count.
-    const plan = !['trial', 'admin'].includes(source) && passPlan('days', Number(days));
+    // A family's first paid pass earns their ambassador a reward. Trials, the early family bonus and free days from an
+    // admin don't count.
+    const plan = !['trial', 'early', 'admin'].includes(source) && passPlan('days', Number(days));
     if (plan) addReward(userId, 'pass', AMBASSADOR_REWARDS.pass, `First Family Pass (${plan.price})`);
     if (!quiet) notify(userId, 'pass', 'Your Family Pass is active. You can now message au pairs and see who liked you.', {}, '#/likes');
     return true;
   };
+  // Early family bonus: on top of the free trial, the first EARLY_FAMILY_CAP families (500 unless set; 0 turns it off)
+  // who sign up, or join the waitlist as a family, before LAUNCH_DATE get EARLY_FAMILY_DAYS (30) free days of the pass.
+  // They choose when to use them, until 12 months after launch. Without LAUNCH_DATE it is still before launch.
+  const EARLY_REDEEM_MONTHS = 12;
+  const envInt = (name, fallback, max) => {
+    const v = process.env[name]; if (v == null || v === '') return fallback;
+    const n = Math.floor(Number(v)); return n >= 0 && n <= max ? n : fallback;
+  };
+  const earlyCap = () => envInt('EARLY_FAMILY_CAP', 500, 100000);
+  const earlyDays = () => envInt('EARLY_FAMILY_DAYS', 30, 365);
+  const launchDate = () => { const d = String(process.env.LAUNCH_DATE || '').trim(); return /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d)) ? d : null; };
+  const launched = () => !!launchDate() && Date.now() >= Date.parse(`${launchDate()}T00:00:00Z`);
+  /** The moment the bonus can no longer be used: 12 months after launch, or null while there is no launch date. */
+  const earlyEnds = () => { if (!launchDate()) return null; const d = new Date(`${launchDate()}T00:00:00Z`); d.setUTCMonth(d.getUTCMonth() + EARLY_REDEEM_MONTHS); return d; };
+  const earlyOffer = () => {
+    const cap = earlyCap(), days = earlyDays();
+    const taken = db.prepare('SELECT COUNT(*) n FROM early_bonus').get().n;
+    return { open: cap > 0 && days > 0 && !launched() && taken < cap, days, cap, taken, spots_left: Math.max(0, cap - taken), launch_date: launchDate() };
+  };
+  /** Saves an early family bonus spot for this email while the offer is open. A spot already saved stays. */
+  const claimEarlyBonus = (email, userId = null) => {
+    if (db.prepare('SELECT 1 FROM early_bonus WHERE email = ?').get(email)) {
+      if (userId) db.prepare('UPDATE early_bonus SET user_id = ? WHERE email = ? AND user_id IS NULL').run(userId, email);
+      return true;
+    }
+    if (!earlyOffer().open) return false;
+    db.prepare('INSERT INTO early_bonus (email, user_id) VALUES (?,?)').run(email, userId);
+    return true;
+  };
+  // Families who signed up or joined the waitlist before the bonus existed count as early too, oldest first.
+  {
+    const o = earlyOffer();
+    if (o.open) db.prepare(`INSERT OR IGNORE INTO early_bonus (email, user_id, created_at)
+      SELECT email, MAX(user_id), MIN(created_at) c FROM (
+        SELECT lower(trim(email)) email, id user_id, created_at FROM users WHERE role = 'family'
+        UNION ALL SELECT email, NULL, created_at FROM waitlist WHERE role = 'family')
+      WHERE email NOT IN (SELECT email FROM early_bonus) GROUP BY email ORDER BY c LIMIT ?`).run(o.spots_left);
+  }
+  const earlyBonusOf = (u) => (u.role !== 'family' ? null
+    : db.prepare('SELECT * FROM early_bonus WHERE user_id = ? OR (user_id IS NULL AND email = ?) ORDER BY user_id IS NULL LIMIT 1').get(u.id, normEmail(u.email)));
+  /** A family's early family bonus as the app shows it, or null if they don't have one. */
+  const earlyView = (u) => {
+    const b = earlyBonusOf(u);
+    if (!b || !earlyDays()) return null;
+    const ends = earlyEnds();
+    const expired = !!ends && Date.now() >= ends.getTime();
+    return { days: earlyDays(), redeemed: !!b.redeemed_at, redeemed_at: b.redeemed_at, use_by: ends ? new Date(ends.getTime() - 86400000).toISOString().slice(0, 10) : null,
+      expired, can_redeem: !b.redeemed_at && !expired && passRequired() };
+  };
+  // How many spots are left, for the website and the waitlist.
+  api.get('/early-family-offer', wrap(() => { const { open, days, cap, spots_left, launch_date } = earlyOffer(); return { open, days, cap, spots_left, launch_date }; }));
+  // The family picks when to use their bonus. The days start now, or when the pass they have ends.
+  api.post('/family-pass/early-bonus', requireAuth, wrap((req) => {
+    const u = req.user;
+    if (u.role !== 'family') throw forbidden('Only families need the Family Pass.');
+    const b = earlyBonusOf(u);
+    const v = earlyView(u);
+    if (!b || !v) throw notFound('This account has no early family bonus.');
+    if (b.redeemed_at) throw new HttpError(409, 'You have already used your early family bonus.');
+    if (v.expired) throw new HttpError(410, 'The time to use the early family bonus has passed.');
+    if (!passRequired()) throw new HttpError(409, 'Everything is free right now, so your free days stay saved for later.');
+    tx(db, () => {
+      db.prepare("UPDATE early_bonus SET redeemed_at = datetime('now'), user_id = ? WHERE email = ?").run(u.id, b.email);
+      grantPass(u.id, 'early', `early-${u.id}`, v.days, { quiet: true });
+    });
+    return passView(u);
+  }));
   // Reminders as a family's pass runs out: a few days before, on the last day, and once just after it ends.
   // Sent in the app, by push and by email. Renewing moves the end date, so the reminders start over for the new one.
   const PASS_REMINDERS = {
     soon: 'Your Family Pass ends in {days} days. Renew it to keep messaging au pairs.',
     last_day: 'Your Family Pass ends within 24 hours. Renew it to keep messaging au pairs.',
     ended: 'Your Family Pass has ended. Get a new one to keep messaging au pairs and see who liked you.',
+    ended_early: 'Your Family Pass has ended. You still have {free} free days saved for signing up early. Use them whenever you are ready.',
   };
   const sendPassReminders = () => {
     if (!passRequired()) return 0;
@@ -891,10 +969,13 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       const left = Date.parse(r.ends_at.replace(' ', 'T') + 'Z') - Date.now();
       const kind = left <= 0 ? 'ended' : left <= 86400000 ? 'last_day' : 'soon';
       if (!db.prepare('INSERT OR IGNORE INTO pass_reminders (user_id, ends_at, kind) VALUES (?,?,?)').run(r.user_id, r.ends_at, kind).changes) continue;
-      const vars = { days: Math.ceil(left / 86400000) };
-      notify(r.user_id, 'pass', PASS_REMINDERS[kind], vars, '#/family-pass');
       const u = getUser(r.user_id);
-      const subject = translate(u.lang, PASS_REMINDERS[kind], vars);
+      // A family who still has their early family bonus is reminded that it's there.
+      const early = earlyView(u);
+      const message = kind === 'ended' && early?.can_redeem ? PASS_REMINDERS.ended_early : PASS_REMINDERS[kind];
+      const vars = { days: Math.ceil(left / 86400000), free: early?.days };
+      notify(r.user_id, 'pass', message, vars, '#/family-pass');
+      const subject = translate(u.lang, message, vars);
       const text = `${subject}\n\n${translate(u.lang, 'Renew it in the app, or on the website: {link}', { link: `${publicBase()}/#/family-pass` })}`;
       Promise.resolve(mailer({ to: u.email, subject, text })).catch((e) => console.error('Pass reminder email failed:', e.message));
       sent++;
@@ -1548,6 +1629,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     by_source: db.prepare('SELECT source, COUNT(*) n FROM waitlist GROUP BY source ORDER BY n DESC').all(),
     people: db.prepare('SELECT email, role, country, lang, source, created_at FROM waitlist ORDER BY created_at DESC, rowid DESC LIMIT 500').all(),
     signups_by_source: db.prepare("SELECT source, SUM(role = 'family') families, SUM(role = 'aupair') aupairs FROM users WHERE role != 'admin' GROUP BY source ORDER BY COUNT(*) DESC").all(),
+    early_bonus: { ...earlyOffer(), accounts: db.prepare('SELECT COUNT(*) n FROM early_bonus WHERE user_id IS NOT NULL').get().n,
+      redeemed: db.prepare('SELECT COUNT(*) n FROM early_bonus WHERE redeemed_at IS NOT NULL').get().n, use_by: earlyEnds() ? new Date(earlyEnds().getTime() - 86400000).toISOString().slice(0, 10) : null },
   })));
   // The whole list as a spreadsheet file, for emailing everyone at launch.
   api.get('/admin/waitlist.csv', requireRole('admin'), (req, res) => {
