@@ -1,4 +1,5 @@
 // The app's name, store IDs and colours all come from brand.json, so renaming the app is a one-file change.
+const fs = require('fs');
 const brand = require('./brand.json');
 
 module.exports = {
@@ -23,6 +24,8 @@ module.exports = {
     },
     android: {
       package: brand.bundleId,
+      // Firebase config for Android push notifications. Download it from Firebase and drop it next to this file.
+      ...(fs.existsSync('./google-services.json') ? { googleServicesFile: './google-services.json' } : {}),
       permissions: ['android.permission.CAMERA', 'android.permission.RECORD_AUDIO', 'android.permission.MODIFY_AUDIO_SETTINGS'],
       adaptiveIcon: {
         backgroundColor: brand.primary,
