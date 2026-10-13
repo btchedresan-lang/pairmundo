@@ -88,7 +88,7 @@ Free trial: set `FAMILY_TRIAL_DAYS` (for example `14`, at most 90) and every fam
 
 Early family bonus: on top of the trial, the first 500 families who sign up, or join the waitlist as a family, before launch get 30 more free days of the pass. They choose when to start them, with **Use my 30 free days now** on the Family Pass page, until 12 months after launch. It is on by default. Families who signed up before this existed count too, oldest first.
 
-- `LAUNCH_DATE` = the day the apps go live, as `2027-03-01`. From that day no new family gets the bonus, and families have until 12 months later to use it. Leave it out until the date is set; until then the offer stays open (while spots last) and there is no deadline.
+- `LAUNCH_DATE` = the day the apps go live, as `2027-03-01`. From that day no new family gets the bonus, and families have until 12 months later to use it. Leave it out until the date is set; until then the offer stays open (while spots last) and there is no deadline. It is set to `2026-11-24` in `render.yaml`; if the service wasn't created from the Blueprint, add it in Render → Environment.
 - `EARLY_FAMILY_CAP` changes the 500 (`0` turns the offer off). `EARLY_FAMILY_DAYS` changes the 30.
 - While `FAMILY_PASS` is off everything is free, so the days stay saved and the button waits until the pass is switched on.
 - Admin → Waitlist shows how many spots are taken and used.
