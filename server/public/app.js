@@ -408,6 +408,16 @@ function refCode() {
 // Ambassadors are paid in US dollars. US$ rather than $, which reads as pesos in much of Latin America.
 const usd = (cents) => `US$${(cents / 100).toFixed(2).replace(/\.00$/, '')}`;
 
+// Early family bonus: the first families to sign up before launch get extra free days to use whenever they like.
+function earlyOfferNote(id) {
+  api('/early-family-offer').then((o) => {
+    const el = document.getElementById(id);
+    if (!el || !o.open) return;
+    el.innerHTML = `<div class="alert info">🎁 ${tr('Host families: sign up before launch and get {days} extra free days of the Family Pass on top of the free trial, to use whenever it suits you. For the first {cap} families.', { days: o.days, cap: o.cap })}${
+      o.spots_left < 100 ? ` <strong>${tr('Only {n} spots left.', { n: o.spots_left })}</strong>` : ''}</div>`;
+  }).catch(() => {});
+}
+
 function landing() {
   const waitForm = (id) => `<form class="waitlist" id="${id}">
       <input name="email" type="email" required autocomplete="email" placeholder="${tr('Your email')}" aria-label="${tr('Your email')}">
@@ -424,7 +434,7 @@ function landing() {
     </section>
     <section class="card wait-card"><div id="invited"></div><h2>${tr('Be the first to get the app')}</h2>
       <p class="muted">${tr("Leave your email and we'll tell you the day PairMundo arrives on the App Store and Google Play. No spam, and you can leave the list anytime.")}</p>
-      ${waitForm('wait1')}<div id="waitMsg1"></div></section>
+      <div id="earlyOffer"></div>${waitForm('wait1')}<div id="waitMsg1"></div></section>
     <h2 class="center" style="margin:36px 0 16px">${tr('How it works')}</h2>
     <div class="grid steps">${[['1', tr('Create your profile'), tr('Add photos, languages, dates and what you are looking for. It takes about ten minutes.')],
     ['2', tr('Swipe and match'), tr('Like the profiles that fit. When the feeling is mutual, chat opens and you can get to know each other.')],
@@ -443,6 +453,7 @@ function landing() {
     .map(([i, t, d]) => `<div class="card feature"><div class="icon">${i}</div><h3>${t}</h3><p class="muted">${d}</p></div>`).join('')}
     </div>
     <section class="card wait-card" style="margin-top:32px"><h2>${tr('Get the app at launch')}</h2>${waitForm('wait2')}<div id="waitMsg2"></div></section>`);
+  earlyOfferNote('earlyOffer');
   // Someone an ambassador invited sees who, so they know they're in the right place. Not when they scanned a flyer
   // or a salon card (?src=…): they've never met the ambassador, so a stranger's name would only confuse them.
   const ref = refCode();
@@ -492,6 +503,7 @@ views.register = (_, query) => {
       <div class="field"><label>${tr('I am')}</label><select name="role">
         <option value="family" ${role === 'family' ? 'selected' : ''}>${tr('A host family')}</option>
         <option value="aupair" ${role === 'aupair' ? 'selected' : ''}>${tr('An au pair')}</option></select></div>
+      <div id="earlyOffer"></div>
       <div class="field"><label>${tr('Name')}</label><input name="name" required placeholder="${tr('e.g. Maria Lopez or The Smith Family')}"></div>
       <div class="form-grid"><div class="field"><label>${tr('Country you live in')}</label><select name="country" required>${options(COUNTRIES, '', tr('Choose…'))}</select></div>
       <div class="field"><label>${tr('City')}</label><input name="city"></div></div>
@@ -500,6 +512,7 @@ views.register = (_, query) => {
       <div class="field"><label>${tr('Referral code (optional)')}</label><input name="ref_code" value="${esc(refCode() || '')}" autocapitalize="characters" autocomplete="off" placeholder="${tr('From the person who invited you')}"></div>
       <div id="err"></div><button class="btn" style="width:100%">${tr('Create account')}</button>
       <p class="muted small" style="text-align:center">${tr('By creating an account you agree to the {terms} and the {privacy}.', { terms: `<a href="/terms" target="_blank">${tr('Terms of Use')}</a>`, privacy: `<a href="/privacy" target="_blank">${tr('Privacy Policy')}</a>` })}</p></form></div>`);
+  earlyOfferNote('earlyOffer');
   document.getElementById('f').onsubmit = async (e) => {
     e.preventDefault();
     try { await api('/auth/register', { method: 'POST', body: { ...formData(e.target), source: adSource() } }); await refreshMe(); toast(tr('Welcome! Check your email for your code.')); go('#/verify'); }
@@ -1365,6 +1378,8 @@ views.admin = async ([tab = 'overview', id], qs) => {
     const w = await api('/admin/waitlist');
     const role = (r) => (r === 'aupair' ? 'Au pair' : r === 'family' ? 'Family' : '—');
     return render(`${head}<div class="spread"><p><strong>${w.total}</strong> people want to hear when the apps launch.</p><a class="btn sm" href="/api/admin/waitlist.csv">⬇ Download as a spreadsheet (CSV)</a></div>
+      ${w.early_bonus ? `<div class="card"><h2>Early family bonus</h2><p><strong>${w.early_bonus.taken}</strong> of ${w.early_bonus.cap} spots taken (${w.early_bonus.accounts} with an account), <strong>${w.early_bonus.redeemed}</strong> used.
+        ${w.early_bonus.open ? 'Open to new families.' : 'Closed to new families.'} ${w.early_bonus.launch_date ? `Launch date ${esc(w.early_bonus.launch_date)}; families can use their ${w.early_bonus.days} days until ${esc(w.early_bonus.use_by)}.` : 'Set LAUNCH_DATE to close it at launch and start the 12 months families have to use it.'}</p></div>` : ''}
       <div class="cols-2"><div class="card"><h2>By role</h2><table>${w.by_role.map((r) => `<tr><td>${role(r.role)}</td><td>${r.n}</td></tr>`).join('')}</table></div>
       <div class="card"><h2>By browser region</h2><table>${w.by_country.map((r) => `<tr><td>${cname(r.country) || '—'}</td><td>${r.n}</td></tr>`).join('')}</table></div>
       <div class="card"><h2>By flyer or ad</h2><table>${w.by_source.map((r) => `<tr><td>${esc(r.source || 'Website')}</td><td>${r.n}</td></tr>`).join('')}</table></div></div>
@@ -1500,16 +1515,28 @@ views['family-pass'] = async (_args, qs) => {
   // Older servers send one pass; newer ones a 1-month and a 3-month plan.
   const plans = pass.plans?.length ? pass.plans : [{ id: 'quarter', days: pass.days, price: pass.price }];
   const planName = (p) => (p.days === 30 ? tr('1 month') : p.days === 90 ? tr('3 months') : tr('{n} days', { n: p.days }));
-  const until = pass.active ? `<p><strong>${pass.trial ? tr('Your free trial runs until {date}.', { date: fmtDate(pass.ends_at) }) : tr('Your Family Pass is active until {date}.', { date: fmtDate(pass.ends_at) })}</strong> ${tr('Buying again adds the new days after that.')}</p>` : '';
+  const until = pass.active ? `<p><strong>${pass.trial ? tr('Your free trial runs until {date}.', { date: fmtDate(pass.ends_at) }) : pass.early ? tr('Your early family bonus runs until {date}.', { date: fmtDate(pass.ends_at) }) : tr('Your Family Pass is active until {date}.', { date: fmtDate(pass.ends_at) })}</strong> ${tr('Buying again adds the new days after that.')}</p>` : '';
+  // Families who signed up before launch have free days saved, and pick when to use them.
+  const eb = pass.early_bonus;
+  const early = eb && !eb.redeemed && !eb.expired ? `<div class="alert info"><strong>🎁 ${tr('Early family bonus: {days} free days', { days: eb.days })}</strong><br>
+    ${tr('You signed up early, so you have {days} free days of the Family Pass saved. Use them whenever it suits you.', { days: eb.days })}${eb.use_by ? ` ${tr('Use them by {date}.', { date: fmtDate(eb.use_by) })}` : ''}
+    ${eb.can_redeem ? `<p style="margin:10px 0 0"><button class="btn sm" id="useEarly">${tr('Use my {days} free days now', { days: eb.days })}</button></p>${pass.active ? `<p class="small" style="margin:6px 0 0">${tr('They start when your current pass ends.')}</p>` : ''}`
+      : `<p class="small" style="margin:6px 0 0">${tr('Everything is free right now, so your free days stay saved for later.')}</p>`}</div>` : '';
   render(`<h1>Family Pass</h1><div class="card" style="max-width:560px">
     <p class="muted">${tr("Paid once. It doesn't renew by itself.")}</p>
     <ul><li>${tr('Message every au pair you match with')}</li><li>${tr('See everyone who liked you, and match with one tap')}</li><li>${tr('Au pairs never pay. Swiping and matching are free for everyone.')}</li></ul>
-    ${until}
+    ${until}${early}
     ${pass.web_checkout ? `<div class="pass-plans">${plans.map((p) => `<button class="pass-plan ${p.days === 90 ? 'best' : ''}" data-plan="${esc(p.id)}">
         ${p.days === 90 && plans.length > 1 ? `<span class="pass-tag">${tr('Best value')}</span>` : ''}<strong>${planName(p)}</strong><span class="pass-price">${esc(p.price)}</span></button>`).join('')}</div>
       <p class="muted small">${tr('You pay securely with Stripe.')}</p>`
       : `<p class="muted">${pass.required ? tr('Payments are coming soon.') : tr('Payments are coming soon. Until then, families can use every feature for free.')}</p>`}
   </div>`);
+  const use = document.getElementById('useEarly');
+  if (use) use.onclick = async () => {
+    use.disabled = true;
+    try { await api('/family-pass/early-bonus', { method: 'POST' }); toast(tr('Your free days have started. You can now message au pairs and see who liked you.')); await refreshMe(); views['family-pass']([], new URLSearchParams()); }
+    catch (e) { use.disabled = false; if (!needsCode(e)) toast(e.message); }
+  };
   document.querySelectorAll('[data-plan]').forEach((b) => { b.onclick = async () => {
     b.disabled = true;
     try { location.href = (await api('/family-pass/checkout', { method: 'POST', body: { plan: b.dataset.plan } })).url; }

@@ -100,6 +100,14 @@ export const DICT = {
   'Your Family Pass has ended. Get a new one to keep messaging au pairs and see who liked you.': {
     es: 'Tu Family Pass ha terminado. Consigue uno nuevo para seguir escribiendo a au pairs y ver a quién le gustas.', fr: "Votre Family Pass est terminé. Prenez-en un nouveau pour continuer à écrire aux au pairs et voir qui vous a liké.",
     de: 'Dein Family Pass ist abgelaufen. Hol dir einen neuen, um Au-pairs weiter zu schreiben und zu sehen, wer dich mag.', pt: 'Seu Family Pass terminou. Adquira um novo para continuar mandando mensagens para au pairs e ver quem curtiu você.' },
+  'Your Family Pass has ended. You still have {free} free days saved for signing up early. Use them whenever you are ready.': {
+    es: 'Tu Family Pass ha terminado. Todavía tienes {free} días gratis guardados por registrarte pronto. Úsalos cuando quieras.', fr: "Votre Family Pass est terminé. Il vous reste {free} jours gratuits mis de côté pour votre inscription anticipée. Utilisez-les quand vous voulez.",
+    de: 'Dein Family Pass ist abgelaufen. Du hast noch {free} Gratistage, weil du dich früh angemeldet hast. Löse sie ein, wann du willst.', pt: 'Seu Family Pass terminou. Você ainda tem {free} dias grátis guardados por ter se cadastrado cedo. Use quando quiser.' },
+  'Your family is one of the first to join, so you get {days} extra free days of the Family Pass on top of the free trial. Sign up with this email address and use them whenever it suits you.': {
+    es: 'Tu familia es de las primeras en unirse, así que recibes {days} días gratis extra del Family Pass además de la prueba gratuita. Regístrate con este correo y úsalos cuando te venga bien.',
+    fr: "Votre famille fait partie des premières inscrites : vous recevez {days} jours gratuits de Family Pass en plus de l'essai gratuit. Inscrivez-vous avec cette adresse e-mail et utilisez-les quand cela vous convient.",
+    de: 'Deine Familie ist eine der ersten, deshalb bekommst du zusätzlich zur kostenlosen Testphase {days} Gratistage Family Pass. Melde dich mit dieser E-Mail-Adresse an und löse sie ein, wann es dir passt.',
+    pt: 'Sua família está entre as primeiras a entrar, então você ganha {days} dias grátis extras de Family Pass além do teste grátis. Cadastre-se com este e-mail e use quando for melhor para você.' },
   'Renew it in the app, or on the website: {link}': {
     es: 'Renuévalo en la app o en la web: {link}', fr: "Renouvelez-le dans l'app ou sur le site : {link}",
     de: 'Verlängere ihn in der App oder auf der Website: {link}', pt: 'Renove no app ou no site: {link}' },

@@ -86,6 +86,13 @@ Turn on payments first, then `FAMILY_PASS`, so families are never locked out wit
 
 Free trial: set `FAMILY_TRIAL_DAYS` (for example `14`, at most 90) and every family that signs up from then on starts with that many days of the pass for free. Families who signed up earlier don't get it automatically; an admin can give any family free days with **+ Free days** in Admin → Users & verification.
 
+Early family bonus: on top of the trial, the first 500 families who sign up, or join the waitlist as a family, before launch get 30 more free days of the pass. They choose when to start them, with **Use my 30 free days now** on the Family Pass page, until 12 months after launch. It is on by default. Families who signed up before this existed count too, oldest first.
+
+- `LAUNCH_DATE` = the day the apps go live, as `2027-03-01`. From that day no new family gets the bonus, and families have until 12 months later to use it. Leave it out until the date is set; until then the offer stays open (while spots last) and there is no deadline.
+- `EARLY_FAMILY_CAP` changes the 500 (`0` turns the offer off). `EARLY_FAMILY_DAYS` changes the 30.
+- While `FAMILY_PASS` is off everything is free, so the days stay saved and the button waits until the pass is switched on.
+- Admin → Waitlist shows how many spots are taken and used.
+
 ## Video calls
 
 Matched families and au pairs can start a video call from their chat. It works with no setup: each call gets a hard-to-guess room on the free Jitsi Meet service (meet.jit.si). Jitsi may ask the first person in the room to sign in with Google, GitHub or Facebook.

@@ -1051,3 +1051,69 @@ test('references: an au pair asks, the reference answers by email link, families
   await call(ap.token, 'DELETE', `/me/references/${r.body.references[0].id}`);
   assert.equal((await call(fam.token, 'GET', `/users/${ap.id}`)).body.user.verification.references, false);
 });
+
+test('early family bonus: first families before launch get free days to use when they choose, while spots last', async () => {
+  const { hashPassword } = await import('../server/auth.js');
+  testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin3@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin3@test.io', password: 'password123' })).body.token;
+  const join = (body) => fetch(`${base}/waitlist`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  try {
+    // Leave room for exactly two more families.
+    const taken = testDb.prepare('SELECT COUNT(*) n FROM early_bonus').get().n;
+    process.env.EARLY_FAMILY_CAP = String(taken + 2);
+    let offer = (await call(null, 'GET', '/early-family-offer')).body;
+    assert.deepEqual([offer.open, offer.days, offer.spots_left], [true, 30, 2]);
+
+    // A family on the waitlist keeps a spot, hears about it by email, and gets it when they sign up later.
+    await join({ email: 'earlywait@test.io', role: 'family' });
+    assert.match(outbox.at(-1).text, /30 extra free days/);
+    await join({ email: 'earlyap@test.io', role: 'aupair' });
+    assert.doesNotMatch(outbox.at(-1).text, /extra free days/);
+    const fam = await register('earlyfam@test.io', 'family', 'SE');
+    assert.equal((await call(null, 'GET', '/early-family-offer')).body.open, false, 'the spots are gone');
+    const late = await register('latefam@test.io', 'family', 'SE');
+    assert.equal((await call(late.token, 'GET', '/family-pass')).body.early_bonus, null);
+    const waited = await register('earlywait@test.io', 'family', 'SE');
+    let pass = (await call(waited.token, 'GET', '/family-pass')).body;
+    assert.equal(pass.early_bonus.days, 30);
+    assert.equal(pass.early_bonus.redeemed, false);
+    assert.equal(pass.early_bonus.use_by, null, 'no deadline before a launch date is set');
+
+    // While everything is free, the days stay saved.
+    pass = (await call(fam.token, 'GET', '/family-pass')).body;
+    assert.equal(pass.early_bonus.can_redeem, false);
+    assert.equal((await call(fam.token, 'POST', '/family-pass/early-bonus')).status, 409);
+
+    // After launch nobody new gets a spot, and the bonus can be used for 12 months.
+    process.env.FAMILY_PASS = 'on';
+    process.env.EARLY_FAMILY_CAP = '100000';
+    process.env.LAUNCH_DATE = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    assert.equal((await call(null, 'GET', '/early-family-offer')).body.open, false);
+    const after = await register('afterlaunch@test.io', 'family', 'SE');
+    assert.equal((await call(after.token, 'GET', '/family-pass')).body.early_bonus, null);
+    pass = (await call(fam.token, 'GET', '/family-pass')).body;
+    assert.equal(pass.early_bonus.can_redeem, true);
+    assert.equal(pass.active, false);
+    assert.ok(pass.early_bonus.use_by > process.env.LAUNCH_DATE);
+    // Using it starts 30 days of the pass now, once.
+    let r = await call(fam.token, 'POST', '/family-pass/early-bonus');
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.active, true);
+    assert.equal(r.body.early, true);
+    assert.equal(r.body.early_bonus.redeemed, true);
+    assert.ok(Math.abs(new Date(r.body.ends_at.replace(' ', 'T') + 'Z') - Date.now() - 30 * 86400000) < 120000);
+    assert.equal((await call(fam.token, 'POST', '/family-pass/early-bonus')).status, 409);
+    assert.equal((await call(late.token, 'POST', '/family-pass/early-bonus')).status, 404);
+    // Free days earn no ambassador reward and show in Admin.
+    assert.equal(testDb.prepare("SELECT COUNT(*) n FROM referral_rewards WHERE user_id = ? AND kind = 'pass'").get(fam.id).n, 0);
+    const w = (await call(admin, 'GET', '/admin/waitlist')).body.early_bonus;
+    assert.equal(w.redeemed, 1);
+    assert.equal(w.open, false);
+
+    // Twelve months after launch, an unused bonus can't be used any more.
+    process.env.LAUNCH_DATE = '2020-01-01';
+    pass = (await call(waited.token, 'GET', '/family-pass')).body;
+    assert.equal(pass.early_bonus.expired, true);
+    assert.equal((await call(waited.token, 'POST', '/family-pass/early-bonus')).status, 410);
+  } finally { for (const k of ['EARLY_FAMILY_CAP', 'LAUNCH_DATE', 'FAMILY_PASS']) delete process.env[k]; }
+});

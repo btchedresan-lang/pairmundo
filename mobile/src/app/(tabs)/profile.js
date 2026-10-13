@@ -150,13 +150,13 @@ export default function MyProfile() {
 
       {isAp ? <MyReferences /> : null}
 
-      {me.pass?.required || me.pass?.active ? (
+      {me.pass?.required || me.pass?.active || (me.pass?.early_bonus && !me.pass.early_bonus.redeemed && !me.pass.early_bonus.expired) ? (
         <Pressable onPress={() => router.push('/family-pass')}>
           <Card style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
             <Text style={{ fontSize: 28 }}>🏡</Text>
             <View style={{ flex: 1 }}>
               <T bold>Family Pass</T>
-              <T small muted>{me.pass.active ? tr('Active until {date}', { date: fmtDate(me.pass.ends_at) }) : tr('Message au pairs and see who liked you')}</T>
+              <T small muted>{me.pass.active ? tr('Active until {date}', { date: fmtDate(me.pass.ends_at) }) : me.pass.early_bonus && !me.pass.early_bonus.redeemed && !me.pass.early_bonus.expired ? tr('{days} free days saved for you', { days: me.pass.early_bonus.days }) : tr('Message au pairs and see who liked you')}</T>
             </View>
             <T style={{ color: C.primary }}>→</T>
           </Card>
