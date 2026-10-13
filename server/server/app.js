@@ -32,6 +32,8 @@ const FAM_JSON = ['children', 'languages', 'required_languages', 'preferred_nati
 const AP_FIELDS = ['birth_date', 'nationality', 'gender', 'childcare_years', 'drivers_license', 'non_smoker', 'ok_with_pets', 'available_from', 'duration_months', 'education', 'bio', 'video_url', 'visible', 'goal', 'ideal_family', ...AP_JSON];
 const FAM_FIELDS = ['start_date', 'duration_months', 'weekly_hours', 'pocket_money', 'needs_driver', 'has_pets', 'smoking_household', 'private_room', 'bio', 'visible', ...FAM_JSON];
 const USER_FIELDS = ['name', 'country', 'city'];
+// Asked during family onboarding: "Would you also use PairMundo to find a babysitter?" Private: only the family and admins see it.
+const SITTER_ANSWERS = ['yes', 'maybe', 'no'];
 // Reviews become visible once both sides have reviewed, or 14 days after the placement ends.
 const REVIEW_REVEAL_DAYS = 14;
 const CODE_MINUTES = 30;
@@ -156,9 +158,16 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       const p = db.prepare('SELECT * FROM family_profiles WHERE user_id = ?').get(user.id);
       if (!p) return null;
       for (const k of FAM_JSON) p[k] = json.parse(p[k]);
+      delete p.wants_sitter;
       return p;
     }
     return null;
+  };
+  /** The member's own profile, with the private answers others must not see. */
+  const ownProfile = (user) => {
+    const p = getProfile(user);
+    if (p && user.role === 'family') p.wants_sitter = db.prepare('SELECT wants_sitter FROM family_profiles WHERE user_id = ?').get(user.id)?.wants_sitter ?? null;
+    return p;
   };
 
   const visibleReviewsSql = `r.hidden = 0 AND (
@@ -470,7 +479,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const u = req.user;
     return {
       user: { ...publicUser(u), email: u.email, email_verified: !!u.email_verified },
-      profile: getProfile(u),
+      profile: ownProfile(u),
       profile_missing: profileGaps(u),
       pass: passView(u),
       rating: ratingSummary(u.id),
@@ -498,6 +507,10 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       const [table, fields, jsonFields] = u.role === 'aupair' ? ['aupair_profiles', AP_FIELDS, AP_JSON]
         : u.role === 'family' ? ['family_profiles', FAM_FIELDS, FAM_JSON] : [null, [], []];
       if (!table) return;
+      if (u.role === 'family' && 'wants_sitter' in p) {
+        if (p.wants_sitter !== null && !SITTER_ANSWERS.includes(p.wants_sitter)) throw bad('Answer yes, maybe or no.');
+        db.prepare('UPDATE family_profiles SET wants_sitter = ? WHERE user_id = ?').run(p.wants_sitter, u.id);
+      }
       const sets = fields.filter((k) => k in p);
       for (const k of ['birth_date', 'available_from', 'start_date']) {
         if (k in p && p[k] && !isDate(p[k])) throw bad(`${k} must be YYYY-MM-DD.`);
@@ -525,7 +538,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     });
     checkProfileReward(u.id);
     const fresh = getUser(u.id);
-    return { user: publicUser(fresh), profile: getProfile(fresh) };
+    return { user: publicUser(fresh), profile: ownProfile(fresh) };
   }));
 
   // Deletes the account and everything tied to it. Placements and reviews with the other person go too.
@@ -970,6 +983,43 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     return sent;
   };
   app.sendPassReminders = sendPassReminders;
+
+  // Families usually replace their au pair every 12 months, and finding the next one takes about 3 months.
+  // So about 3 months before an au pair's stay ends, nudge the family to start looking again. A family with no
+  // placement in the app gets the nudge about 9 months after their last pass ended, when they most likely found someone.
+  const SEARCH_NUDGES = {
+    placement: "{name}'s stay with you ends on {date}. Finding your next au pair usually takes about 3 months, so now is a good time to start looking.",
+    pass: 'If your au pair year ends in the next few months, now is a good time to start looking for your next au pair. It usually takes about 3 months.',
+  };
+  const sendSearchNudges = () => {
+    const due = [
+      // Confirmed or running stays ending in 60 to 90 days, the family's latest one only.
+      ...db.prepare(`SELECT p.family_id user_id, 'placement:' || p.id anchor, 'placement' kind, p.end_date, a.name FROM placements p
+        JOIN users a ON a.id = p.aupair_id
+        WHERE p.status IN ('confirmed', 'active') AND date(p.end_date) BETWEEN date('now', '+60 days') AND date('now', '+90 days')
+          AND p.end_date = (SELECT MAX(end_date) FROM placements WHERE family_id = p.family_id AND status != 'cancelled')`).all(),
+      // Families whose last pass ended 9 to 10 months ago, with no pass now and no stay in the app after it.
+      ...db.prepare(`SELECT user_id, 'pass:' || ends_at anchor, 'pass' kind FROM (SELECT user_id, MAX(ends_at) ends_at FROM passes GROUP BY user_id) last
+        WHERE ends_at BETWEEN datetime('now', '-300 days') AND datetime('now', '-270 days')
+          AND NOT EXISTS (SELECT 1 FROM placements pl WHERE pl.family_id = last.user_id AND pl.status != 'cancelled' AND pl.end_date >= date(last.ends_at))`).all(),
+    ];
+    let sent = 0;
+    for (const r of due) {
+      const u = getUser(r.user_id);
+      if (!u || u.role !== 'family' || u.suspended) continue;
+      if (!db.prepare('INSERT OR IGNORE INTO search_nudges (user_id, anchor) VALUES (?,?)').run(r.user_id, r.anchor).changes) continue;
+      let date = r.end_date;
+      try { date = new Intl.DateTimeFormat(u.lang || 'en', { dateStyle: 'long', timeZone: 'UTC' }).format(new Date(`${r.end_date}T00:00:00Z`)); } catch { /* keep YYYY-MM-DD */ }
+      const vars = { name: String(r.name || '').split(/\s+/)[0], date };
+      notify(r.user_id, 'search', SEARCH_NUDGES[r.kind], vars, '#/discover');
+      const subject = translate(u.lang, 'Time to find your next au pair');
+      const text = `${translate(u.lang, SEARCH_NUDGES[r.kind], vars)}\n\n${translate(u.lang, 'Start looking in the app, or on the website: {link}', { link: `${publicBase()}/#/discover` })}`;
+      Promise.resolve(mailer({ to: u.email, subject, text })).catch((e) => console.error('Search nudge email failed:', e.message));
+      sent++;
+    }
+    return sent;
+  };
+  app.sendSearchNudges = sendSearchNudges;
   const mustHavePass = (u) => {
     if (needsPass(u)) throw new HttpError(402, 'Get the Family Pass to message au pairs.', 'pass_required');
   };
@@ -1667,6 +1717,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       reviews: n('SELECT COUNT(*) n FROM reviews'),
       open_reports: n("SELECT COUNT(*) n FROM reports WHERE status = 'open'"),
       waitlist: n('SELECT COUNT(*) n FROM waitlist'),
+      sitter_interest: Object.fromEntries([...SITTER_ANSWERS, null].map((a) => [a ?? 'unanswered',
+        n(`SELECT COUNT(*) n FROM users u JOIN family_profiles f ON f.user_id = u.id WHERE u.role = 'family' AND f.wants_sitter ${a ? '= ?' : 'IS NULL'}`, ...(a ? [a] : []))])),
       by_country: db.prepare("SELECT country, role, COUNT(*) n FROM users WHERE role != 'admin' GROUP BY country, role ORDER BY n DESC").all(),
     };
   }));

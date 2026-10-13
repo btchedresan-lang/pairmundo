@@ -49,5 +49,5 @@ export function screenForLink(link) {
   const [, page, id] = m;
   if (page === 'messages' && id) return `/chat/${id}`;
   if (page === 'placements' && id) return `/placement/${id}`;
-  return { likes: '/likes', requests: '/likes', matches: '/matches', messages: '/matches', placements: '/placements', profile: '/profile', 'family-pass': '/family-pass' }[page] ?? null;
+  return { likes: '/likes', requests: '/likes', matches: '/matches', messages: '/matches', placements: '/placements', profile: '/profile', 'family-pass': '/family-pass', discover: '/discover' }[page] ?? null;
 }
