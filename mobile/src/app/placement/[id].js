@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { Linking, Pressable, View } from 'react-native';
 import { Text } from '../../components/Text';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { api } from '../../api';
+import { api, getBase } from '../../api';
 import { useAuth } from '../../auth';
 import { cname, country, CRIT_LABEL, fmtDate, statusLabel, statusTone } from '../../data';
 import { tr } from '../../i18n';
@@ -67,6 +67,13 @@ export default function Placement() {
               <T style={task.done ? { textDecorationLine: 'line-through', color: t.muted } : null}>{tr(task.title)}</T>
               <T small muted>{task.owner === 'both' ? tr('Both') : task.owner === 'aupair' ? tr('Au pair') : tr('Family')} · {fmtDate(task.due_date)}</T>
               {task.link ? <Pressable onPress={() => Linking.openURL(task.link)} hitSlop={6}><T small style={{ color: C.primary }}>{tr('Official site')} ↗</T></Pressable> : null}
+              {(task.offers || []).map((o) => (
+                <Pressable key={o.id} onPress={() => Linking.openURL(`${getBase()}/api/partner-offers/${o.id}/go`)} hitSlop={6}>
+                  <T small style={{ color: C.primary }}>{tr('Partner offer')}: {o.name} ↗</T>
+                  {o.blurb ? <T small muted>{o.blurb}</T> : null}
+                </Pressable>
+              ))}
+              {task.offers?.length ? <T small muted>{tr('We may earn a fee if you buy through a partner link.')}</T> : null}
             </View>
           </Pressable>
         ))}

@@ -1265,3 +1265,55 @@ test('launch email: only when pressed on launch day, once per person, in their l
     for (const k of ['LAUNCH_EMAIL_GAP_MS', 'LAUNCH_DATE', 'APP_STORE_URL']) delete process.env[k];
   }
 });
+
+test('partner offers: admin adds affiliate links, they show on the right checklist step, clicks are counted', async () => {
+  const fam = await register('partnerfam@test.io', 'family', 'SE', 'Familjen Partner');
+  const ap = await register('partnerap@test.io', 'aupair', 'ES', 'Ana Partner');
+  const req = await call(fam.token, 'POST', '/requests', { to_user: ap.id });
+  await call(ap.token, 'POST', `/requests/${req.body.id}/respond`, { action: 'accept' });
+  const pl = await call(fam.token, 'POST', '/placements', { other_user_id: ap.id, start_date: '2027-03-01', end_date: '2027-12-31', weekly_hours: 25, pocket_money: 5960 });
+  assert.equal(pl.status, 201, JSON.stringify(pl.body));
+  const { hashPassword } = await import('../server/auth.js');
+  testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
+
+  // Only admins add offers, and the link must be https.
+  const wise = { name: 'Wise', slot: 'arrival', url: 'https://wise.com/invite/test', blurb: 'Send pocket money home', audience: 'aupair' };
+  assert.equal((await call(fam.token, 'POST', '/admin/partner-offers', wise)).status, 403);
+  assert.equal((await call(admin, 'POST', '/admin/partner-offers', { ...wise, url: 'http://wise.com' })).status, 400);
+  assert.equal((await call(admin, 'POST', '/admin/partner-offers', { ...wise, slot: 'nope' })).status, 400);
+  const w = (await call(admin, 'POST', '/admin/partner-offers', wise)).body;
+  await call(admin, 'POST', '/admin/partner-offers', { name: 'Insure DE', slot: 'insurance', url: 'https://example.com/de', countries: 'de' });
+  await call(admin, 'POST', '/admin/partner-offers', { name: 'Insure SE', slot: 'insurance', url: 'https://example.com/se', countries: 'SE, xx1', audience: 'family' });
+
+  const offersOn = (p, re) => p.tasks.find((t) => re.test(t.title)).offers.map((o) => o.name);
+  let p = (await call(ap.token, 'GET', `/placements/${pl.body.id}`)).body;
+  assert.deepEqual(offersOn(p, /^Arrival/), ['Wise']);
+  assert.deepEqual(offersOn(p, /insurance/), []); // the Swedish insurance offer is for families, the German one for Germany
+  assert.ok(!JSON.stringify(p.tasks).includes('wise.com')); // people go through our link, so the click is counted
+  p = (await call(fam.token, 'GET', `/placements/${pl.body.id}`)).body;
+  assert.deepEqual(offersOn(p, /insurance/), ['Insure SE']);
+  assert.deepEqual(offersOn(p, /^Arrival/), []);
+
+  // The tracked link redirects to the partner and counts the click, signed in or not.
+  const res = await fetch(`${base}/partner-offers/${w.id}/go`, { redirect: 'manual' });
+  assert.equal(res.status, 302);
+  assert.equal(res.headers.get('location'), 'https://wise.com/invite/test');
+  let list = (await call(admin, 'GET', '/admin/partner-offers')).body.offers;
+  assert.equal(list.find((o) => o.id === w.id).clicks, 1);
+  assert.equal(list.find((o) => o.name === 'Insure SE').countries.join(), 'SE');
+
+  // The public partners page lists names, never the links.
+  const pub = (await call(null, 'GET', '/partners')).body.partners;
+  assert.ok(pub.some((x) => x.name === 'Wise'));
+  assert.ok(!JSON.stringify(pub).includes('https://'));
+
+  // Switching an offer off hides it and stops its link.
+  await call(admin, 'PUT', `/admin/partner-offers/${w.id}`, { active: false });
+  p = (await call(ap.token, 'GET', `/placements/${pl.body.id}`)).body;
+  assert.deepEqual(offersOn(p, /^Arrival/), []);
+  assert.equal((await fetch(`${base}/partner-offers/${w.id}/go`, { redirect: 'manual' })).status, 404);
+  assert.equal((await call(admin, 'DELETE', `/admin/partner-offers/${w.id}`)).status, 200);
+  list = (await call(admin, 'GET', '/admin/partner-offers')).body.offers;
+  assert.ok(!list.some((o) => o.id === w.id));
+});

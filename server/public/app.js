@@ -66,7 +66,7 @@ async function setLanguage(code) {
 }
 function renderFooter() {
   const $foot = document.getElementById('foot'); if (!$foot) return;
-  $foot.innerHTML = `<a href="/privacy" target="_blank">${tr('Privacy Policy')}</a> · <a href="/terms" target="_blank">${tr('Terms of Use')}</a>
+  $foot.innerHTML = `<a href="/privacy" target="_blank">${tr('Privacy Policy')}</a> · <a href="/terms" target="_blank">${tr('Terms of Use')}</a> · <a href="#/partners">${tr('Our partners')}</a>
     <label style="margin-left:12px">🌐 <select id="langPick" aria-label="${tr('Language')}">${Object.entries(LANGUAGES).map(([k, v]) => `<option value="${k}" ${k === LANG ? 'selected' : ''}>${v}</option>`).join('')}</select></label>`;
   document.getElementById('langPick').onchange = (e) => setLanguage(e.target.value);
 }
@@ -1176,7 +1176,9 @@ async function placementDetail(id) {
   </div><div>
     <div class="card"><h2>${tr('Checklist')}</h2><div class="muted small">${tr('{done} of {total} done', { done: p.tasks.filter((t) => t.done).length, total: p.tasks.length })}</div>
       ${p.tasks.map((t) => `<label class="task ${t.done ? 'done' : ''}"><input type="checkbox" data-task="${t.id}" ${t.done ? 'checked' : ''} ${isAdmin ? 'disabled' : ''}>
-        <span class="t" style="flex:1">${esc(tr(t.title))}${t.link ? ` <a class="small" href="${esc(t.link)}" target="_blank" rel="noopener">${tr('Official site')} ↗</a>` : ''}</span><span class="chip">${t.owner === 'both' ? tr('Both') : t.owner === 'aupair' ? tr('Au pair') : tr('Family')}</span>
+        <span class="t" style="flex:1">${esc(tr(t.title))}${t.link ? ` <a class="small" href="${esc(t.link)}" target="_blank" rel="noopener">${tr('Official site')} ↗</a>` : ''}
+          ${(t.offers || []).map((o) => `<span class="small partner-offer">${tr('Partner offer')}: <a href="/api/partner-offers/${o.id}/go" target="_blank" rel="noopener sponsored">${esc(o.name)} ↗</a>${o.blurb ? ` · ${esc(o.blurb)}` : ''}</span>`).join('')}
+          ${(t.offers || []).length ? `<span class="muted small partner-offer"><a href="#/partners">${tr('We may earn a fee if you buy through a partner link.')}</a></span>` : ''}</span><span class="chip">${t.owner === 'both' ? tr('Both') : t.owner === 'aupair' ? tr('Au pair') : tr('Family')}</span>
         <span class="muted small" style="min-width:90px;text-align:right">${fmtDate(t.due_date)}</span></label>`).join('')}</div>
     ${p.can_review ? `<form class="card" id="review"><h2>${tr('Review {name}', { name: esc(other.name) })}</h2>
       <p class="muted small">${tr('Your review stays hidden until {name} reviews you too, or 14 days after the placement ends.', { name: esc(other.name) })}</p>
@@ -1295,6 +1297,17 @@ views.programs = async ([code]) => {
       <td>${p.min_pocket_money ? `${p.min_pocket_money} ${p.currency}` : `<span class="muted">${tr('see guide')}</span>`}</td><td>${tr('{min}–{max} mo', { min: p.min_months, max: p.max_months })}</td><td>${p.agency_required ? tr('Required') : '—'}</td></tr>`).join('')}</table></div>`);
 };
 
+// ---------- partners ----------
+const partnerSlotLabel = () => ({ insurance: tr('Insurance'), travel: tr('Travel'), language: tr('Language courses'), arrival: tr('Arrival: phone, bank and money transfers') });
+views.partners = async () => {
+  const { partners } = await api('/partners');
+  const slotLabel = partnerSlotLabel();
+  render(`<h1>${tr('Our partners')}</h1>
+    <p class="muted">${tr('Some checklist steps show an offer from a partner, such as insurance or a language course. If you buy through a partner link, PairMundo may earn a fee. It costs you nothing extra, and we never share your details with a partner unless you ask us to.')}</p>
+    <div class="card">${partners.length ? `<table>${partners.map((x) => `<tr><td><strong>${esc(x.name)}</strong></td><td>${slotLabel[x.slot] || esc(x.slot)}</td><td class="muted small">${esc(x.blurb || '')}</td></tr>`).join('')}</table>`
+    : `<div class="empty">${tr('No partners yet.')}</div>`}</div>`);
+};
+
 // ---------- notifications ----------
 views.notifications = async () => {
   const { notifications } = await api('/notifications');
@@ -1366,7 +1379,7 @@ async function adminLaunchEmail() {
 }
 views.admin = async ([tab = 'overview', id], qs) => {
   if (me.user.role !== 'admin') return go('#/');
-  const tabs = { overview: 'Overview', users: 'Users & verification', reports: 'Reports', programs: 'Program rules', placements: 'Placements', waitlist: 'Waitlist', ambassadors: 'Ambassadors', certificates: 'Certificates' };
+  const tabs = { overview: 'Overview', users: 'Users & verification', reports: 'Reports', programs: 'Program rules', placements: 'Placements', waitlist: 'Waitlist', ambassadors: 'Ambassadors', certificates: 'Certificates', partners: 'Partners' };
   const head = `<h1>Program administration</h1><div class="row" style="margin-bottom:16px">${Object.entries(tabs).map(([k, v]) =>
     `<a class="btn ${k === tab ? '' : 'ghost'} sm" href="#/admin/${k}">${v}</a>`).join('')}</div>`;
   if (tab === 'overview') {
@@ -1436,6 +1449,35 @@ views.admin = async ([tab = 'overview', id], qs) => {
     return adminLaunchEmail();
   }
   if (tab === 'ambassadors') return adminAmbassadors(head, id, qs);
+  if (tab === 'partners') {
+    const { offers, slots } = await api('/admin/partner-offers');
+    const stepName = { insurance: 'Insurance step', travel: 'Book travel', language: 'Language course', arrival: 'Arrival and local registration' };
+    const form = (o = {}) => `<form class="card" data-offer="${o.id || ''}"><div class="form-grid">
+        <div class="field"><label>Partner</label><input name="name" required value="${esc(o.name || '')}" placeholder="Wise"></div>
+        <div class="field"><label>Checklist step</label><select name="slot">${options(Object.fromEntries(slots.map((k) => [k, stepName[k] || k])), o.slot || 'arrival', null)}</select></div>
+        <div class="field"><label>Shown to</label><select name="audience">${options({ both: 'Both', aupair: 'Au pairs', family: 'Families' }, o.audience || 'both', null)}</select></div>
+        <div class="field"><label>Countries (codes, empty = all)</label><input name="countries" value="${esc((o.countries || []).join(', '))}" placeholder="SE, DE"></div></div>
+      <div class="field"><label>Affiliate link (https://…)</label><input name="url" required value="${esc(o.url || '')}"></div>
+      <div class="field"><label>One line under the step</label><input name="blurb" maxlength="200" value="${esc(o.blurb || '')}" placeholder="Send pocket money home with low fees"></div>
+      <div class="row"><label class="check"><input type="checkbox" name="active" ${o.id && !o.active ? '' : 'checked'}> Active</label>
+        <button class="btn sm">${o.id ? 'Save' : 'Add partner offer'}</button>${o.id ? `<button type="button" class="btn ghost sm" data-del="${o.id}">Delete</button>
+        <span class="muted small">${o.clicks_this_month} clicks this month · ${o.clicks} in total</span>` : ''}</div></form>`;
+    render(`${head}<p class="muted">Affiliate links shown on placement checklist steps. People leave through PairMundo's own link, so every click is counted here; sales and commission are in each partner's dashboard.</p>
+      ${form()}${offers.map(form).join('')}`);
+    document.querySelectorAll('[data-offer]').forEach((f) => { f.onsubmit = async (e) => {
+      e.preventDefault();
+      const body = { ...formData(f), active: f.active.checked };
+      try {
+        await api(f.dataset.offer ? `/admin/partner-offers/${f.dataset.offer}` : '/admin/partner-offers', { method: f.dataset.offer ? 'PUT' : 'POST', body });
+        toast('Saved'); views.admin(['partners']);
+      } catch (err) { toast(err.message); }
+    }; });
+    document.querySelectorAll('[data-del]').forEach((b) => { b.onclick = async () => {
+      if (!confirm('Delete this partner offer and its click counts?')) return;
+      await api(`/admin/partner-offers/${b.dataset.del}`, { method: 'DELETE' }); toast('Deleted'); views.admin(['partners']);
+    }; });
+    return;
+  }
   if (tab === 'certificates') {
     const { proofs } = await api('/admin/certificates');
     render(`${head}<p class="muted">Compare each file with what the au pair wrote. Approving adds a ✔ to the certificate on their profile. The file is deleted either way.</p>
@@ -1678,7 +1720,7 @@ views.reference = async ([token]) => {
 };
 
 // ---------- router ----------
-const PUBLIC = new Set(['home', 'login', 'register', 'programs', 'forgot', 'reference']);
+const PUBLIC = new Set(['home', 'login', 'register', 'programs', 'forgot', 'reference', 'partners']);
 views.messages = ((orig) => (args) => (args[0] ? orig(args) : go('#/matches')))(views.messages);
 async function route() {
   clearInterval(pollTimer);

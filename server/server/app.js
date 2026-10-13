@@ -34,6 +34,9 @@ const FAM_FIELDS = ['start_date', 'duration_months', 'weekly_hours', 'pocket_mon
 const USER_FIELDS = ['name', 'country', 'city'];
 // Asked during family onboarding: "Would you also use PairMundo to find a babysitter?" Private: only the family and admins see it.
 const SITTER_ANSWERS = ['yes', 'maybe', 'no'];
+// Checklist steps a partner offer can sit on, found from the step's title.
+const PARTNER_SLOTS = { insurance: /insurance/i, travel: /^Book travel$/, language: /language course|Swedish course|French classes/i, arrival: /^Arrival and local registration$/ };
+const taskSlot = (title) => Object.keys(PARTNER_SLOTS).find((k) => PARTNER_SLOTS[k].test(title)) || null;
 // Reviews become visible once both sides have reviewed, or 14 days after the placement ends.
 const REVIEW_REVEAL_DAYS = 14;
 const CODE_MINUTES = 30;
@@ -1422,13 +1425,69 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       aupair: publicUser(ap), family: publicUser(fam),
       program: program ? { code: program.code, name: program.name, currency: program.currency, visa: program.visa } : null,
       compliance: checkCompliance(program, { ...p, birth_date: getProfile(ap)?.birth_date, nationality: getProfile(ap)?.nationality }, me.lang),
-      tasks: db.prepare('SELECT * FROM placement_tasks WHERE placement_id = ? ORDER BY sort').all(p.id),
+      tasks: withOffers(db.prepare('SELECT * FROM placement_tasks WHERE placement_id = ? ORDER BY sort').all(p.id), p.country, me.role),
       agreement: agreementStatus(p),
       my_review: myReview ? { ...myReview, criteria: json.parse(myReview.criteria, {}) } : null,
       can_review: me.role !== 'admin' && ['active', 'completed'].includes(p.status) && !myReview,
       review_criteria: REVIEW_CRITERIA[me.id === p.aupair_id ? 'family' : 'aupair'],
     };
   };
+
+  // ---------- partner offers ----------
+  const offerRow = (o) => ({ ...o, countries: json.parse(o.countries, []), active: !!o.active });
+  /** Adds the active partner offers for each checklist step, matched by step, host country and who is looking. */
+  const withOffers = (tasks, country, role) => {
+    const offers = db.prepare('SELECT * FROM partner_offers WHERE active = 1 ORDER BY id').all().map(offerRow)
+      .filter((o) => (!o.countries.length || o.countries.includes(country)) && (role === 'admin' || o.audience === 'both' || o.audience === role));
+    return tasks.map((t) => {
+      const slot = taskSlot(t.title);
+      return { ...t, offers: slot ? offers.filter((o) => o.slot === slot).map(({ id, name, blurb }) => ({ id, name, blurb })) : [] };
+    });
+  };
+  const cleanOffer = (b, old = {}) => {
+    const o = { ...old, ...b };
+    const name = str(o.name, 80); const url = str(o.url, 1000); const slot = o.slot;
+    if (!name) throw bad('Name is required.');
+    if (!url || !/^https:\/\/[^\s]+$/.test(url)) throw bad('The link must start with https://');
+    if (!(slot in PARTNER_SLOTS)) throw bad('Choose a checklist step.');
+    const audience = ['aupair', 'family', 'both'].includes(o.audience) ? o.audience : 'both';
+    const countries = (Array.isArray(o.countries) ? o.countries : String(o.countries || '').split(','))
+      .map((c) => String(c).trim().toUpperCase()).filter((c) => /^[A-Z]{2}$/.test(c));
+    return [name, slot, url, str(o.blurb, 200) || null, json.str([...new Set(countries)]), audience, o.active === false || o.active === 0 ? 0 : 1];
+  };
+  // People leave through this link, so every click is counted. Works without signing in (the phone app opens it in the browser).
+  api.get('/partner-offers/:id/go', wrap((req, res) => {
+    const o = db.prepare('SELECT * FROM partner_offers WHERE id = ? AND active = 1').get(Number(req.params.id));
+    if (!o) throw notFound();
+    db.prepare('INSERT INTO partner_clicks (offer_id, user_id) VALUES (?, ?)').run(o.id, req.user?.id ?? null);
+    res.redirect(302, o.url);
+  }));
+  // Public list for the "Our partners" page: who we work with, never the links' tracking codes.
+  api.get('/partners', wrap(() => ({
+    partners: db.prepare('SELECT name, slot, blurb FROM partner_offers WHERE active = 1 GROUP BY name, slot ORDER BY slot, name').all(),
+  })));
+  api.get('/admin/partner-offers', requireRole('admin'), wrap(() => ({
+    slots: Object.keys(PARTNER_SLOTS),
+    offers: db.prepare(`SELECT o.*,
+        (SELECT COUNT(*) FROM partner_clicks c WHERE c.offer_id = o.id) clicks,
+        (SELECT COUNT(*) FROM partner_clicks c WHERE c.offer_id = o.id AND c.created_at >= datetime('now', 'start of month')) clicks_this_month
+      FROM partner_offers o ORDER BY o.active DESC, o.slot, o.name`).all().map(offerRow),
+  })));
+  api.post('/admin/partner-offers', requireRole('admin'), wrap((req) => {
+    const r = db.prepare('INSERT INTO partner_offers (name, slot, url, blurb, countries, audience, active) VALUES (?,?,?,?,?,?,?)').run(...cleanOffer(req.body || {}));
+    return offerRow(db.prepare('SELECT * FROM partner_offers WHERE id = ?').get(r.lastInsertRowid));
+  }));
+  api.put('/admin/partner-offers/:id', requireRole('admin'), wrap((req) => {
+    const old = db.prepare('SELECT * FROM partner_offers WHERE id = ?').get(Number(req.params.id));
+    if (!old) throw notFound();
+    db.prepare('UPDATE partner_offers SET name = ?, slot = ?, url = ?, blurb = ?, countries = ?, audience = ?, active = ? WHERE id = ?')
+      .run(...cleanOffer(req.body || {}, offerRow(old)), old.id);
+    return offerRow(db.prepare('SELECT * FROM partner_offers WHERE id = ?').get(old.id));
+  }));
+  api.delete('/admin/partner-offers/:id', requireRole('admin'), wrap((req) => {
+    db.prepare('DELETE FROM partner_offers WHERE id = ?').run(Number(req.params.id));
+    return { ok: true };
+  }));
 
   // ---------- au pair agreement ----------
   const AGREEMENT_OPEN = ['confirmed', 'active', 'completed'];

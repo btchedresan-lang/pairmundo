@@ -332,6 +332,27 @@ CREATE TABLE IF NOT EXISTS country_programs (
   admin_edited INTEGER NOT NULL DEFAULT 0          -- set once an admin edits; seed updates then leave the row alone
 );
 
+-- Partner offers (affiliate links) shown on checklist steps, e.g. insurance on "Arrange health, accident and liability insurance".
+CREATE TABLE IF NOT EXISTS partner_offers (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,                             -- the partner, e.g. Wise
+  slot TEXT NOT NULL,                             -- which checklist step: insurance | travel | language | arrival
+  url TEXT NOT NULL,                              -- the tracked affiliate link; people reach it through /api/partner-offers/:id/go
+  blurb TEXT,                                     -- one line shown under the step
+  countries TEXT NOT NULL DEFAULT '[]',           -- JSON host-country codes; empty = every country
+  audience TEXT NOT NULL DEFAULT 'both',          -- aupair | family | both
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- One row per click on a partner offer, so the admin can see which partners people use.
+CREATE TABLE IF NOT EXISTS partner_clicks (
+  id INTEGER PRIMARY KEY,
+  offer_id INTEGER NOT NULL REFERENCES partner_offers(id) ON DELETE CASCADE,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Ambassadors share a referral code (on a link or typed at sign-up). People who join with it earn them rewards.
 CREATE TABLE IF NOT EXISTS ambassadors (
   id INTEGER PRIMARY KEY,
