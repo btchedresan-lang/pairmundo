@@ -27,6 +27,8 @@ module.exports = {
       // Firebase config for Android push notifications. Download it from Firebase and drop it next to this file.
       ...(fs.existsSync('./google-services.json') ? { googleServicesFile: './google-services.json' } : {}),
       permissions: ['android.permission.CAMERA', 'android.permission.RECORD_AUDIO', 'android.permission.MODIFY_AUDIO_SETTINGS'],
+      // No ads, so no advertising ID; some Google libraries add this permission on their own, which would contradict the Play declaration.
+      blockedPermissions: ['com.google.android.gms.permission.AD_ID'],
       adaptiveIcon: {
         backgroundColor: brand.primary,
         foregroundImage: './assets/android-icon-foreground.png',
