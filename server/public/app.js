@@ -1322,6 +1322,48 @@ async function adminBackup() {
   };
   try { show(await api('/admin/backup')); } catch (e) { box.textContent = e.message; }
 }
+// Launch day: email everyone that the apps are out. Nothing goes out until the admin presses Send.
+async function adminLaunchEmail() {
+  const box = document.getElementById('launchEmail'); if (!box) return;
+  let poll = null;
+  const show = (l) => {
+    const b = l.breakdown;
+    const job = l.job.running ? `<div class="alert info small">Sending… ${l.job.sent} sent so far in this batch.</div>`
+      : l.job.error ? `<div class="alert error small">${esc(l.job.error)}. Press Send again to carry on; nobody gets it twice.</div>`
+      : l.job.finished_at ? `<div class="alert ok small">Batch done: ${l.job.sent} sent.</div>` : '';
+    box.innerHTML = `<p><strong>${l.sent}</strong> of ${l.total} sent, <strong>${l.remaining}</strong> still to go.</p>
+      <p class="muted small">${b.families_with_account} families and ${b.aupairs_with_account} au pairs with an account, plus ${b.waitlist_families} families, ${b.waitlist_aupairs} au pairs and ${b.waitlist_other} others on the waitlist.
+        Each person gets it once, in their language. Families are reminded of early free days they haven't used.</p>
+      ${l.app_store_missing ? '<div class="alert warning small">There is no App Store link yet (APP_STORE_URL), so the email only links Google Play.</div>' : ''}
+      ${l.too_early ? `<div class="alert warning small">Sending opens on launch day, ${esc(l.launch_date)}.</div>` : ''}
+      ${job}
+      <div class="row"><label class="small">Send up to <input id="launchLimit" type="number" min="1" max="5000" value="100" style="width:80px"></label>
+        <button class="btn sm" id="launchSend" ${l.remaining && !l.job.running && !l.too_early ? '' : 'disabled'}>Send launch email</button>
+        <button class="btn ghost sm" id="launchTest">Email me the samples</button></div>
+      <p class="muted small">Resend's free plan sends 100 emails a day, so send 100 a day until it's done, or upgrade the plan first.</p>
+      <details><summary class="small">Read what people get</summary>${l.samples.map((m) => `<h3 class="small">${esc(m.label)}</h3><p class="small"><strong>${esc(m.subject)}</strong></p><pre class="small" style="white-space:pre-wrap">${esc(m.text)}</pre>`).join('')}</details>`;
+    const samples = l.samples;
+    document.getElementById('launchSend').onclick = async (e) => {
+      e.target.disabled = true;
+      try { const r = await api('/admin/launch-email/send', { method: 'POST', body: { limit: Number(document.getElementById('launchLimit').value) } }); show({ ...r, samples }); watch(samples); }
+      catch (err) { toast(err.message); e.target.disabled = false; }
+    };
+    document.getElementById('launchTest').onclick = async () => {
+      try { const r = await api('/admin/launch-email/test', { method: 'POST' }); toast(`Sent ${r.count} samples to ${r.to}`); } catch (err) { toast(err.message); }
+    };
+  };
+  const watch = (samples) => {
+    clearInterval(poll);
+    poll = setInterval(async () => {
+      if (!document.body.contains(box)) return clearInterval(poll);
+      const l = await api('/admin/launch-email').catch(() => null);
+      if (!l) return;
+      show({ ...l, samples });
+      if (!l.job.running) clearInterval(poll);
+    }, 3000);
+  };
+  try { const l = await api('/admin/launch-email'); show(l); if (l.job.running) watch(l.samples); } catch (e) { box.textContent = e.message; }
+}
 views.admin = async ([tab = 'overview', id], qs) => {
   if (me.user.role !== 'admin') return go('#/');
   const tabs = { overview: 'Overview', users: 'Users & verification', reports: 'Reports', programs: 'Program rules', placements: 'Placements', waitlist: 'Waitlist', ambassadors: 'Ambassadors', certificates: 'Certificates' };
@@ -1380,7 +1422,8 @@ views.admin = async ([tab = 'overview', id], qs) => {
   if (tab === 'waitlist') {
     const w = await api('/admin/waitlist');
     const role = (r) => (r === 'aupair' ? 'Au pair' : r === 'family' ? 'Family' : '—');
-    return render(`${head}<div class="spread"><p><strong>${w.total}</strong> people want to hear when the apps launch.</p><a class="btn sm" href="/api/admin/waitlist.csv">⬇ Download as a spreadsheet (CSV)</a></div>
+    render(`${head}<div class="spread"><p><strong>${w.total}</strong> people want to hear when the apps launch.</p><a class="btn sm" href="/api/admin/waitlist.csv">⬇ Download as a spreadsheet (CSV)</a></div>
+      <div class="card"><h2>Launch email</h2><div id="launchEmail" class="muted small">Loading…</div></div>
       ${w.early_bonus ? `<div class="card"><h2>Early family bonus</h2><p><strong>${w.early_bonus.taken}</strong> of ${w.early_bonus.cap} spots taken (${w.early_bonus.accounts} with an account), <strong>${w.early_bonus.redeemed}</strong> used.
         ${w.early_bonus.open ? 'Open to new families.' : 'Closed to new families.'} ${w.early_bonus.launch_date ? `Launch date ${esc(w.early_bonus.launch_date)}; families can use their ${w.early_bonus.days} days until ${esc(w.early_bonus.use_by)}.` : 'Set LAUNCH_DATE to close it at launch and start the 12 months families have to use it.'}</p></div>` : ''}
       <div class="cols-2"><div class="card"><h2>By role</h2><table>${w.by_role.map((r) => `<tr><td>${role(r.role)}</td><td>${r.n}</td></tr>`).join('')}</table></div>
@@ -1390,6 +1433,7 @@ views.admin = async ([tab = 'overview', id], qs) => {
         <table><tr><th>Source</th><th>Families</th><th>Au pairs</th></tr>${(w.signups_by_source || []).map((r) => `<tr><td>${esc(r.source || 'Website')}</td><td>${r.families}</td><td>${r.aupairs}</td></tr>`).join('')}</table></div>
       <div class="card table-wrap"><h2>Latest</h2><table><tr><th>Email</th><th>Role</th><th>Region</th><th>Language</th><th>Source</th><th>Joined</th></tr>
       ${w.people.map((p) => `<tr><td>${esc(p.email)}</td><td>${role(p.role)}</td><td>${cname(p.country) || '—'}</td><td>${esc(LANGUAGES[p.lang] || p.lang)}</td><td>${esc(p.source || '—')}</td><td>${fmtTime(p.created_at)}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">Nobody yet.</td></tr>'}</table></div>`);
+    return adminLaunchEmail();
   }
   if (tab === 'ambassadors') return adminAmbassadors(head, id, qs);
   if (tab === 'certificates') {

@@ -1168,3 +1168,100 @@ test('babysitter question: a family answers in onboarding, only they and admins 
   // Clearing the answer is allowed.
   assert.equal((await call(fam.token, 'PUT', '/me', { profile: { wants_sitter: null } })).body.profile.wants_sitter, null);
 });
+
+test('launch email: only when pressed on launch day, once per person, in their language, picks up after a failure', async () => {
+  const db2 = openDb(':memory:');
+  const box = []; let failAt = null;
+  const mailer = async (m) => { if (m.to === failAt) throw new Error('Email send failed (429): rate limited'); box.push(m); };
+  process.env.LAUNCH_EMAIL_GAP_MS = '0';
+  process.env.LAUNCH_DATE = new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10);
+  const app2 = createApp(db2, { mailer, pusher: async (m) => m.map(() => ({ status: 'ok' })) });
+  const srv = await new Promise((r) => { const s = app2.listen(0, () => r(s)); });
+  const b2 = `http://127.0.0.1:${srv.address().port}/api`;
+  const call2 = async (token, method, path, body, headers = {}) => {
+    const res = await fetch(b2 + path, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...headers }, body: body ? JSON.stringify(body) : undefined });
+    return { status: res.status, body: await res.json() };
+  };
+  const reg = async (email, role, lang = 'en') => (await call2(null, 'POST', '/auth/register', { email, password: 'password123', role, name: email, country: 'DE' }, { 'Accept-Language': lang })).body;
+  try {
+    // Before launch: a family on the waitlist and a family with an account both save early free days.
+    await call2(null, 'POST', '/waitlist', { email: 'wl-fam@test.io', role: 'family' }, { 'Accept-Language': 'es' });
+    await call2(null, 'POST', '/waitlist', { email: 'wl-ap@test.io', role: 'aupair' });
+    await call2(null, 'POST', '/waitlist', { email: 'both@test.io', role: 'family' });
+    await call2(null, 'POST', '/waitlist', { email: 'someone@test.io' });
+    const fam = await reg('acc-fam@test.io', 'family', 'de');
+    await reg('acc-ap@test.io', 'aupair');
+    await reg('both@test.io', 'family');
+    await reg('unverified@test.io', 'aupair');
+    await reg('banned@test.io', 'aupair');
+    db2.prepare("UPDATE users SET email_verified = 1 WHERE email != 'unverified@test.io'").run();
+    db2.prepare("UPDATE users SET suspended = 1 WHERE email = 'banned@test.io'").run();
+    const { hashPassword } = await import('../server/auth.js');
+    db2.prepare("INSERT INTO users (email, password_hash, role, name, email_verified) VALUES ('boss@test.io', ?, 'admin', 'Boss', 1)").run(hashPassword('password123'));
+    const admin = (await call2(null, 'POST', '/auth/login', { email: 'boss@test.io', password: 'password123' })).body.token;
+    const before = box.length;
+
+    assert.equal((await call2(fam.token, 'GET', '/admin/launch-email')).status, 403);
+    let l = (await call2(admin, 'GET', '/admin/launch-email')).body;
+    // acc-fam, acc-ap, both (account) + wl-fam, wl-ap, someone; not the unverified, suspended or admin accounts.
+    assert.equal(l.total, 6);
+    assert.equal(l.remaining, 6);
+    assert.deepEqual(l.breakdown, { families_with_account: 2, aupairs_with_account: 1, waitlist_families: 1, waitlist_aupairs: 1, waitlist_other: 1 });
+    assert.equal(l.too_early, true);
+    assert.equal(l.samples.length, 5);
+    assert.match(l.samples[0].text, /30 free days/);
+
+    // Samples go to the admin only; nothing goes out before launch day.
+    assert.equal((await call2(admin, 'POST', '/admin/launch-email/test')).body.count, 5);
+    assert.ok(box.slice(before).every((m) => m.to === 'boss@test.io'));
+    assert.equal((await call2(admin, 'POST', '/admin/launch-email/send', {})).status, 409);
+
+    // Launch day. The third email fails, so the batch stops there.
+    process.env.LAUNCH_DATE = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    process.env.APP_STORE_URL = 'https://apps.apple.com/app/id123';
+    const start = box.length;
+    failAt = 'both@test.io';
+    let r = await call2(admin, 'POST', '/admin/launch-email/send', { limit: 100 });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    await app2.launchEmailRun;
+    l = (await call2(admin, 'GET', '/admin/launch-email')).body;
+    assert.equal(l.sent, 2);
+    assert.match(l.job.error, /both@test\.io.*429/);
+    const sent = box.slice(start);
+    assert.deepEqual(sent.map((m) => m.to), ['acc-fam@test.io', 'acc-ap@test.io']);
+    // German for the family with an account, with their free days and both store links.
+    assert.match(sent[0].subject, /App ist da/);
+    assert.match(sent[0].text, /Melde dich/);
+    assert.match(sent[0].text, /30 Gratistage/);
+    assert.match(sent[0].text, /apps\.apple\.com/);
+    assert.match(sent[0].text, /play\.google\.com\/store\/apps\/details\?id=com\.pairmundo\.app/);
+    assert.match(sent[1].text, /free for au pairs/);
+    assert.doesNotMatch(sent[1].text, /free days/);
+
+    // Pressing again carries on with whoever is left, one batch at a time, and never repeats anyone.
+    failAt = null;
+    await call2(admin, 'POST', '/admin/launch-email/send', { limit: 2 });
+    await app2.launchEmailRun;
+    await call2(admin, 'POST', '/admin/launch-email/send', { limit: 100 });
+    await app2.launchEmailRun;
+    const all = box.slice(start);
+    assert.deepEqual(all.map((m) => m.to), ['acc-fam@test.io', 'acc-ap@test.io', 'both@test.io', 'wl-fam@test.io', 'wl-ap@test.io', 'someone@test.io']);
+    const wlFam = all.find((m) => m.to === 'wl-fam@test.io');
+    assert.match(wlFam.text, /Regístrate en la app con esta dirección de email \(wl-fam@test\.io\)/);
+    assert.match(wlFam.text, /30 días gratis/);
+    assert.match(wlFam.text, /\/api\/waitlist\/leave\?t=/);
+    const someone = all.find((m) => m.to === 'someone@test.io');
+    assert.doesNotMatch(someone.text, /free days|free for au pairs/);
+    assert.match(someone.text, /To leave the list/);
+    l = (await call2(admin, 'GET', '/admin/launch-email')).body;
+    assert.deepEqual([l.sent, l.remaining], [6, 0]);
+    // A family who already used their free days isn't told about them.
+    db2.prepare("UPDATE early_bonus SET redeemed_at = datetime('now')").run();
+    assert.equal((await call2(admin, 'POST', '/admin/launch-email/send', {})).status, 200);
+    await app2.launchEmailRun;
+    assert.equal(box.length, start + 6, 'nobody gets it twice');
+  } finally {
+    srv.close();
+    for (const k of ['LAUNCH_EMAIL_GAP_MS', 'LAUNCH_DATE', 'APP_STORE_URL']) delete process.env[k];
+  }
+});

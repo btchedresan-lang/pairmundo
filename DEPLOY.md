@@ -93,6 +93,15 @@ Early family bonus: on top of the trial, the first 500 families who sign up, or 
 - While `FAMILY_PASS` is off everything is free, so the days stay saved and the button waits until the pass is switched on.
 - Admin → Waitlist shows how many spots are taken and used.
 
+## Launch email
+
+On launch day, Admin → Waitlist → **Launch email** tells everyone the apps are out: everyone on the waitlist, plus every account with a confirmed email (not admins, not suspended), once per email address. Each person gets it in their language. Accounts are told to sign in as usual; waitlist people to sign up with that email (with the link to leave the list). Families are reminded of early free days they haven't used yet, and au pairs that it's free for them. Nothing is sent until you press **Send launch email**, and only from `LAUNCH_DATE` on.
+
+- `PLAY_STORE_URL` = the Google Play link (defaults to `https://play.google.com/store/apps/details?id=com.pairmundo.app`).
+- `APP_STORE_URL` = the App Store link, such as `https://apps.apple.com/app/id1234567890`. Without it the email only links Google Play.
+- **Email me the samples** sends you each version first, so you can read them in your inbox.
+- Each press sends up to the number in the box (100 by default) and stops at the first failure. Pressing again carries on with whoever hasn't had it; nobody gets it twice. Resend's free plan sends 100 emails a day and 3,000 a month, so either send 100 a day or upgrade the Resend plan for launch week.
+
 ## Video calls
 
 Matched families and au pairs can start a video call from their chat. It works with no setup: each call gets a hard-to-guess room on the free Jitsi Meet service (meet.jit.si). Jitsi may ask the first person in the room to sign in with Google, GitHub or Facebook.

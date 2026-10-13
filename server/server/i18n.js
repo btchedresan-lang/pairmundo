@@ -207,6 +207,40 @@ export const DICT = {
   "We couldn't confirm one of your certificates. Open your profile to see why and send a clearer copy.": {
     es: 'No pudimos confirmar uno de tus certificados. Abre tu perfil para ver por qué y envía una copia más clara.', fr: "Nous n'avons pas pu confirmer un de vos certificats. Ouvrez votre profil pour voir pourquoi et envoyez une copie plus nette.",
     de: 'Wir konnten eines deiner Zertifikate nicht bestätigen. Öffne dein Profil, um den Grund zu sehen, und schick eine deutlichere Kopie.', pt: 'Não conseguimos confirmar um dos seus certificados. Abra seu perfil para ver o motivo e envie uma cópia mais nítida.' },
+  // The launch-day email (mailer.js launchEmail).
+  "The {app} app is here": {
+    es: "Ya está aquí la app de {app}", fr: "L'application {app} est là",
+    de: "Die {app}-App ist da", pt: "O app do {app} chegou" },
+  "Hi!\n\nThe {app} app is now in the app stores. Download it here:": {
+    es: "¡Hola!\n\nLa app de {app} ya está en las tiendas de apps. Descárgala aquí:", fr: "Bonjour !\n\nL'application {app} est maintenant disponible dans les stores. Téléchargez-la ici :",
+    de: "Hallo!\n\nDie {app}-App ist jetzt in den App-Stores. Hier kannst du sie herunterladen:", pt: "Oi!\n\nO app do {app} já está nas lojas de apps. Baixe aqui:" },
+  "Sign in with the same email and password you use on {app}. Your profile, matches and messages are all there.": {
+    es: "Inicia sesión con el mismo email y la misma contraseña que usas en {app}. Tu perfil, tus matches y tus mensajes están ahí.", fr: "Connectez-vous avec l'e-mail et le mot de passe que vous utilisez sur {app}. Votre profil, vos matchs et vos messages y sont déjà.",
+    de: "Melde dich mit derselben E-Mail-Adresse und demselben Passwort an, die du auf {app} benutzt. Dein Profil, deine Matches und Nachrichten sind alle da.", pt: "Entre com o mesmo e-mail e a mesma senha que você usa no {app}. Seu perfil, seus matches e suas mensagens estão todos lá." },
+  "Sign up in the app with this email address ({email}).": {
+    es: "Regístrate en la app con esta dirección de email ({email}).", fr: "Inscrivez-vous dans l'application avec cette adresse e-mail ({email}).",
+    de: "Registriere dich in der App mit dieser E-Mail-Adresse ({email}).", pt: "Cadastre-se no app com este endereço de e-mail ({email})." },
+  "{app} is free for au pairs.": {
+    es: "{app} es gratis para au pairs.", fr: "{app} est gratuit pour les au pairs.",
+    de: "{app} ist für Au-pairs kostenlos.", pt: "O {app} é grátis para au pairs." },
+  "Your family joined early, so you have {days} free days of the Family Pass saved.": {
+    es: "Tu familia se unió pronto, así que tienes {days} días gratis de Family Pass guardados.", fr: "Votre famille s'est inscrite tôt : vous avez {days} jours gratuits de Family Pass en réserve.",
+    de: "Deine Familie war früh dabei, deshalb hast du {days} Gratistage des Family Pass gespart.", pt: "Sua família entrou cedo, então você tem {days} dias grátis de Family Pass guardados." },
+  "Open Family Pass in the app and tap \"Use my {days} free days now\" whenever it suits you.": {
+    es: "Abre Family Pass en la app y toca \"Usar mis {days} días gratis ahora\" cuando te venga bien.", fr: "Ouvrez Family Pass dans l'application et touchez « Utiliser mes {days} jours gratuits maintenant » quand cela vous convient.",
+    de: "Öffne Family Pass in der App und tippe auf „Meine {days} Gratistage jetzt einlösen“, wann immer es dir passt.", pt: "Abra Family Pass no app e toque em \"Usar meus {days} dias grátis agora\" quando for melhor para você." },
+  "You can use them until {date}.": {
+    es: "Puedes usarlos hasta el {date}.", fr: "Vous pouvez les utiliser jusqu'au {date}.",
+    de: "Du kannst sie bis zum {date} einlösen.", pt: "Você pode usá-los até {date}." },
+  "See you in the app,\nThe {app} team": {
+    es: "Nos vemos en la app,\nEl equipo de {app}", fr: "À bientôt dans l'application,\nL'équipe {app}",
+    de: "Bis gleich in der App,\nDein {app}-Team", pt: "Até já no app,\nEquipe {app}" },
+  "You got this email because you have a {app} account.": {
+    es: "Recibes este email porque tienes una cuenta de {app}.", fr: "Vous recevez cet e-mail parce que vous avez un compte {app}.",
+    de: "Du bekommst diese E-Mail, weil du ein {app}-Konto hast.", pt: "Você recebeu este e-mail porque tem uma conta no {app}." },
+  "You got this email because you joined the {app} list. To leave the list, open this link: {link}": {
+    es: "Recibes este email porque te uniste a la lista de {app}. Para salir de la lista, abre este enlace: {link}", fr: "Vous recevez cet e-mail parce que vous vous êtes inscrit à la liste {app}. Pour quitter la liste, ouvrez ce lien : {link}",
+    de: "Du bekommst diese E-Mail, weil du dich auf die {app}-Liste gesetzt hast. Um die Liste zu verlassen, öffne diesen Link: {link}", pt: "Você recebeu este e-mail porque entrou na lista do {app}. Para sair da lista, abra este link: {link}" },
 };
 
 // Swedish lives in its own file, keyed by the same English text.

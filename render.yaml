@@ -63,3 +63,8 @@ services:
       # The day the apps go live. It closes the early family bonus to new families and gives them 12 months to use it.
       - key: LAUNCH_DATE
         value: "2026-11-24"
+      # Store links for the launch email (Admin → Waitlist). Without APP_STORE_URL it only links Google Play.
+      - key: PLAY_STORE_URL
+        value: https://play.google.com/store/apps/details?id=com.pairmundo.app
+      - key: APP_STORE_URL
+        sync: false
