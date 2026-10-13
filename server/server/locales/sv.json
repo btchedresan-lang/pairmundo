@@ -66,5 +66,16 @@
   "Time to find your next au pair": "Dags att hitta er nästa au pair",
   "Start looking in the app, or on the website: {link}": "Börja leta i appen eller på webbplatsen: {link}",
   "Your Family Pass has ended. You still have {free} free days saved for signing up early. Use them whenever you are ready.": "Ert Family Pass har tagit slut. Ni har fortfarande {free} gratisdagar sparade för att ni registrerade er tidigt. Använd dem när ni vill.",
-  "Your family is one of the first to join, so you get {days} extra free days of the Family Pass on top of the free trial. Sign up with this email address and use them whenever it suits you.": "Er familj är en av de första, så ni får {days} extra gratisdagar med Family Pass utöver provperioden. Registrera er med den här e-postadressen och använd dagarna när det passar er."
+  "Your family is one of the first to join, so you get {days} extra free days of the Family Pass on top of the free trial. Sign up with this email address and use them whenever it suits you.": "Er familj är en av de första, så ni får {days} extra gratisdagar med Family Pass utöver provperioden. Registrera er med den här e-postadressen och använd dagarna när det passar er.",
+  "The {app} app is here": "Appen {app} är här",
+  "Hi!\n\nThe {app} app is now in the app stores. Download it here:": "Hej!\n\nAppen {app} finns nu i appbutikerna. Ladda ner den här:",
+  "Sign in with the same email and password you use on {app}. Your profile, matches and messages are all there.": "Logga in med samma e-postadress och lösenord som du använder på {app}. Din profil, dina matchningar och meddelanden finns kvar där.",
+  "Sign up in the app with this email address ({email}).": "Registrera dig i appen med den här e-postadressen ({email}).",
+  "{app} is free for au pairs.": "{app} är gratis för au pairer.",
+  "Your family joined early, so you have {days} free days of the Family Pass saved.": "Din familj var tidigt ute, så ni har {days} gratisdagar av Family Pass sparade.",
+  "Open Family Pass in the app and tap \"Use my {days} free days now\" whenever it suits you.": "Öppna Family Pass i appen och tryck på ”Använd mina {days} gratisdagar nu” när det passar er.",
+  "You can use them until {date}.": "Ni kan använda dem till och med {date}.",
+  "See you in the app,\nThe {app} team": "Vi ses i appen,\n{app}-teamet",
+  "You got this email because you have a {app} account.": "Du får det här mejlet eftersom du har ett konto på {app}.",
+  "You got this email because you joined the {app} list. To leave the list, open this link: {link}": "Du får det här mejlet eftersom du skrev upp dig på listan för {app}. Om du vill lämna listan öppnar du den här länken: {link}"
 }

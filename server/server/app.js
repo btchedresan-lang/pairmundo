@@ -7,7 +7,7 @@ import { hashPassword, verifyPassword, createSession, sessionMiddleware, require
 import { scoreMatch, checkCompliance, ageOn } from './matching.js';
 import { PROGRAMS, REVIEW_CRITERIA, placementTaskList } from './programs.js';
 import { buildAgreement, cleanTerms, defaultTerms, REQUIRED_TERMS } from './agreement.js';
-import { createMailer, codeEmail, referenceEmail, waitlistEmail } from './mailer.js';
+import { createMailer, codeEmail, launchEmail, referenceEmail, waitlistEmail } from './mailer.js';
 import { countryName, pickLang, t as translate } from './i18n.js';
 import { createCheckout, createIdentity, verifyWebhook } from './identity.js';
 import { createRevenueCat, storeName, webhookAuthorized } from './revenuecat.js';
@@ -1630,7 +1630,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     people: db.prepare('SELECT email, role, country, lang, source, created_at FROM waitlist ORDER BY created_at DESC, rowid DESC LIMIT 500').all(),
     signups_by_source: db.prepare("SELECT source, SUM(role = 'family') families, SUM(role = 'aupair') aupairs FROM users WHERE role != 'admin' GROUP BY source ORDER BY COUNT(*) DESC").all(),
     early_bonus: { ...earlyOffer(), accounts: db.prepare('SELECT COUNT(*) n FROM early_bonus WHERE user_id IS NOT NULL').get().n,
-      redeemed: db.prepare('SELECT COUNT(*) n FROM early_bonus WHERE redeemed_at IS NOT NULL').get().n, use_by: earlyEnds() ? new Date(earlyEnds().getTime() - 86400000).toISOString().slice(0, 10) : null },
+      redeemed: db.prepare('SELECT COUNT(*) n FROM early_bonus WHERE redeemed_at IS NOT NULL').get().n, use_by: earlyUseBy() },
   })));
   // The whole list as a spreadsheet file, for emailing everyone at launch.
   api.get('/admin/waitlist.csv', requireRole('admin'), (req, res) => {
@@ -1638,6 +1638,104 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     res.set('Content-Disposition', 'attachment; filename="pairmundo-waitlist.csv"').type('text/csv')
       .send(['email,role,country,language,source,referral code,joined', ...rows.map((r) => [r.email, r.role, r.country, r.lang, r.source, r.ref_code, r.created_at].map(csvCell).join(','))].join('\n') + '\n');
   });
+
+  // Launch day: an admin presses "Send launch email" and everyone hears the apps are out, in their language.
+  // That is everyone on the waitlist plus every confirmed account (not admins, not suspended), once per email.
+  // Each press sends up to `limit` emails one after another (Resend's free plan allows 100 a day), stops at the first
+  // failure, and the next press carries on with whoever hasn't had it yet.
+  const storeLinks = () => [['iPhone (App Store)', process.env.APP_STORE_URL], ['Android (Google Play)', process.env.PLAY_STORE_URL || 'https://play.google.com/store/apps/details?id=com.pairmundo.app']]
+    .filter(([, url]) => url);
+  const launchRecipients = () => {
+    const sent = new Set(db.prepare('SELECT email FROM launch_emails').all().map((r) => r.email));
+    const seen = new Set();
+    const out = [];
+    for (const u of db.prepare("SELECT * FROM users WHERE role != 'admin' AND suspended = 0 AND email_verified = 1 ORDER BY created_at, id").all()) {
+      const email = normEmail(u.email);
+      if (seen.has(email)) continue;
+      seen.add(email);
+      out.push({ email, kind: 'account', user: u, role: u.role, lang: u.lang, done: sent.has(email) });
+    }
+    for (const w of db.prepare('SELECT * FROM waitlist ORDER BY created_at, rowid').all()) {
+      if (seen.has(w.email)) continue;
+      seen.add(w.email);
+      out.push({ email: w.email, kind: 'waitlist', role: w.role, lang: w.lang, token: w.token, done: sent.has(w.email) });
+    }
+    return out;
+  };
+  const earlyUseBy = () => (earlyEnds() ? new Date(earlyEnds().getTime() - 86400000).toISOString().slice(0, 10) : null);
+  /** The free days a family can still use, for the reminder in their email, or null. */
+  const launchEarly = (r) => {
+    if (r.kind === 'account') { const v = earlyView(r.user); return v && !v.redeemed && !v.expired ? v : null; }
+    if (r.role !== 'family' || !earlyDays()) return null;
+    const b = db.prepare('SELECT redeemed_at FROM early_bonus WHERE email = ?').get(r.email);
+    const ends = earlyEnds();
+    return b && !b.redeemed_at && !(ends && Date.now() >= ends.getTime()) ? { days: earlyDays(), use_by: earlyUseBy() } : null;
+  };
+  const launchEmailFor = (r, early = launchEarly(r)) => {
+    const lang = r.lang || 'en';
+    let useBy = early?.use_by || null;
+    if (useBy) try { useBy = new Date(`${useBy}T00:00:00Z`).toLocaleDateString(lang, { dateStyle: 'long', timeZone: 'UTC' }); } catch { /* keep the ISO date */ }
+    return launchEmail(lang, { kind: r.kind, role: r.role, email: r.email, links: storeLinks(), earlyDays: early?.days || 0, useBy,
+      leaveUrl: r.token ? `${publicBase()}/api/waitlist/leave?t=${r.token}` : null });
+  };
+  const launchJob = { running: false, sent: 0, error: null, finished_at: null };
+  const launchStatus = () => {
+    const all = launchRecipients();
+    const left = all.filter((r) => !r.done);
+    const count = (f) => all.filter(f).length;
+    return { total: all.length, sent: all.length - left.length, remaining: left.length, launch_date: launchDate(), too_early: !!launchDate() && !launched(),
+      store_links: storeLinks(), app_store_missing: !process.env.APP_STORE_URL,
+      breakdown: { families_with_account: count((r) => r.kind === 'account' && r.role === 'family'), aupairs_with_account: count((r) => r.kind === 'account' && r.role === 'aupair'),
+        waitlist_families: count((r) => r.kind === 'waitlist' && r.role === 'family'), waitlist_aupairs: count((r) => r.kind === 'waitlist' && r.role === 'aupair'),
+        waitlist_other: count((r) => r.kind === 'waitlist' && !['family', 'aupair'].includes(r.role)) },
+      job: { ...launchJob } };
+  };
+  // What each kind of person will get, in English, so the admin can read it before sending.
+  const launchSamples = () => {
+    const early = earlyDays() ? { days: earlyDays(), use_by: earlyUseBy() } : null;
+    return [
+      ['Family with an account and unused early free days', { kind: 'account', role: 'family' }, early],
+      ['Family on the waitlist with early free days', { kind: 'waitlist', role: 'family', token: '…' }, early],
+      ['Au pair with an account', { kind: 'account', role: 'aupair' }, null],
+      ['Au pair on the waitlist', { kind: 'waitlist', role: 'aupair', token: '…' }, null],
+      ['On the waitlist without saying family or au pair', { kind: 'waitlist', role: null, token: '…' }, null],
+    ].map(([label, r, e]) => ({ label, ...launchEmailFor({ email: 'name@example.com', lang: 'en', ...r }, e) }));
+  };
+  const runLaunchEmails = async (limit) => {
+    const gap = envInt('LAUNCH_EMAIL_GAP_MS', 600, 60000);
+    launchJob.running = true; launchJob.sent = 0; launchJob.error = null; launchJob.finished_at = null;
+    try {
+      for (const r of launchRecipients().filter((x) => !x.done).slice(0, limit)) {
+        // Someone could leave the list or be suspended while this runs.
+        if (r.kind === 'waitlist' && !db.prepare('SELECT 1 FROM waitlist WHERE email = ?').get(r.email)) continue;
+        if (r.kind === 'account' && !db.prepare('SELECT 1 FROM users WHERE id = ? AND suspended = 0').get(r.user.id)) continue;
+        try {
+          await mailer({ to: r.email, ...launchEmailFor(r) });
+        } catch (e) {
+          launchJob.error = `Stopped at ${r.email}: ${e.message}`;
+          console.error('Launch email failed:', e.message);
+          break;
+        }
+        db.prepare('INSERT OR IGNORE INTO launch_emails (email) VALUES (?)').run(r.email);
+        launchJob.sent++;
+        if (gap) await new Promise((res) => setTimeout(res, gap));
+      }
+    } finally {
+      launchJob.running = false; launchJob.finished_at = new Date().toISOString();
+    }
+  };
+  api.get('/admin/launch-email', requireRole('admin'), wrap(() => ({ ...launchStatus(), samples: launchSamples() })));
+  api.post('/admin/launch-email/test', requireRole('admin'), wrap(async (req) => {
+    for (const s of launchSamples()) await mailer({ to: req.user.email, subject: `[Test: ${s.label}] ${s.subject}`, text: s.text });
+    return { ok: true, to: req.user.email, count: launchSamples().length };
+  }));
+  api.post('/admin/launch-email/send', requireRole('admin'), wrap((req) => {
+    if (launchDate() && !launched()) throw new HttpError(409, `It isn't launch day yet (LAUNCH_DATE is ${launchDate()}). The email says the apps are out, so it can only go out from then.`);
+    if (launchJob.running) throw new HttpError(409, 'The launch email is already sending.');
+    const limit = Math.min(Math.max(Math.floor(Number(req.body?.limit)) || 100, 1), 5000);
+    app.launchEmailRun = runLaunchEmails(limit).catch((e) => { launchJob.error = e.message; console.error('Launch email failed:', e); });
+    return launchStatus();
+  }));
 
   // Ambassadors: create them, see what each code brought in, and record payouts.
   const ambassadorFields = (body, a = {}) => {

@@ -212,6 +212,12 @@ CREATE TABLE IF NOT EXISTS waitlist (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Who already got the "the apps are out" email, so sending again picks up where it stopped and never repeats.
+CREATE TABLE IF NOT EXISTS launch_emails (
+  email TEXT PRIMARY KEY,
+  sent_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Family Pass: paid access for host families (messaging au pairs, seeing who liked them).
 CREATE TABLE IF NOT EXISTS passes (
   id INTEGER PRIMARY KEY,

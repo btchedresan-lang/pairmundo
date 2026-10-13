@@ -48,3 +48,26 @@ export const codeEmail = (purpose, code, lang) => {
     ? { subject: t(lang, 'Your {app} code: {code}', v), text: t(lang, "Welcome to {app}!\n\nYour confirmation code is {code}. Enter it in the app to confirm your email. It expires in 30 minutes.\n\nIf you didn't sign up, you can ignore this email.", v) }
     : { subject: t(lang, 'Reset your {app} password', v), text: t(lang, "Your password reset code is {code}. Enter it in the app with your new password. It expires in 30 minutes.\n\nIf you didn't ask to reset your password, you can ignore this email; your password stays the same.", v) };
 };
+
+/**
+ * The "the apps are out" email for launch day. kind is 'account' (has a PairMundo account) or 'waitlist'.
+ * earlyDays and useBy remind a family of the free days they saved by joining early.
+ */
+export const launchEmail = (lang, { kind, role, email, links, earlyDays = 0, useBy = null, leaveUrl = null }) => {
+  const v = { app: APP_NAME, email, days: earlyDays, date: useBy, link: leaveUrl };
+  const parts = [t(lang, 'Hi!\n\nThe {app} app is now in the app stores. Download it here:', v),
+    links.map(([store, url]) => `${store}: ${url}`).join('\n')];
+  parts.push(kind === 'account'
+    ? t(lang, 'Sign in with the same email and password you use on {app}. Your profile, matches and messages are all there.', v)
+    : t(lang, 'Sign up in the app with this email address ({email}).', v));
+  if (role === 'aupair') parts.push(t(lang, '{app} is free for au pairs.', v));
+  if (earlyDays) {
+    parts.push([t(lang, 'Your family joined early, so you have {days} free days of the Family Pass saved.', v),
+      t(lang, 'Open Family Pass in the app and tap "Use my {days} free days now" whenever it suits you.', v),
+      useBy ? t(lang, 'You can use them until {date}.', v) : ''].filter(Boolean).join(' '));
+  }
+  parts.push(t(lang, 'See you in the app,\nThe {app} team', v));
+  parts.push(kind === 'account' ? t(lang, 'You got this email because you have a {app} account.', v)
+    : t(lang, 'You got this email because you joined the {app} list. To leave the list, open this link: {link}', v));
+  return { subject: t(lang, 'The {app} app is here', v), text: parts.join('\n\n') };
+};
