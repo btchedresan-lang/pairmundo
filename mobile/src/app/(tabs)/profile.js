@@ -13,7 +13,7 @@ import { CertProof, useProofs } from '../../components/CertProof';
 import { MyReferences } from '../../components/References';
 import { brand, C } from '../../theme';
 
-const DESTINATIONS = ['US', 'DE', 'FR', 'NL', 'DK', 'SE', 'ES', 'CH', 'BE', 'IE', 'AU'];
+const DESTINATIONS = ['US', 'DE', 'FR', 'NL', 'DK', 'SE', 'ES', 'CH', 'BE', 'IE', 'AU', 'CA'];
 const labels = (codes, name) => Object.fromEntries(codes.map((k) => [k, name(k)]));
 
 export default function MyProfile() {
