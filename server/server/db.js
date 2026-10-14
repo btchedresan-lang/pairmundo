@@ -230,6 +230,20 @@ CREATE TABLE IF NOT EXISTS passes (
   UNIQUE (source, ref)
 );
 CREATE INDEX IF NOT EXISTS passes_user ON passes(user_id, ends_at);
+
+-- Rematch Guarantee: bought once, it covers one placement. If that placement is cancelled before the stay starts, or
+-- within 6 months of the start date, the family gets a free 3-month Family Pass to find the next au pair.
+CREATE TABLE IF NOT EXISTS rematch_guarantees (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  source TEXT NOT NULL,                           -- app_store | play_store | stripe | admin
+  ref TEXT,                                       -- the store's transaction id, so a purchase is counted once
+  placement_id INTEGER REFERENCES placements(id) ON DELETE SET NULL, -- null until the family has a placement to cover
+  claimed_at TEXT,
+  refunded_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (source, ref)
+);
 -- Early family bonus: the first families to sign up (or join the waitlist as a family) before launch get extra free
 -- days of the pass, to use whenever they choose. Keyed by email, so a waitlist spot carries over to the account.
 CREATE TABLE IF NOT EXISTS early_bonus (

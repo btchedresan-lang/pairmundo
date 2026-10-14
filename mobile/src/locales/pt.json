@@ -742,5 +742,17 @@
   "This account has no gift of free days.": "Esta conta não tem dias grátis de presente.",
   "You have already used your gift of free days.": "Você já usou seus dias grátis de presente.",
   "The time to use this gift of free days has passed.": "O prazo para usar seus dias grátis de presente já acabou.",
-  "Gift days are a whole number from 0 to 365.": "Os dias de presente são um número inteiro de 0 a 365."
+  "Gift days are a whole number from 0 to 365.": "Os dias de presente são um número inteiro de 0 a 365.",
+  "6 months": "6 meses",
+  "Add it for {price}": "Adicione por {price}",
+  "Add the Rematch Guarantee": "Adicione a Garantia de Rematch",
+  "If your au pair leaves in the first {months} months, or the stay is cancelled before it starts, you get {days} days of the Family Pass free to find your next au pair.": "Se seu au pair sair nos primeiros {months} meses, ou a estadia for cancelada antes de começar, você ganha {days} dias grátis do Family Pass para encontrar seu próximo au pair.",
+  "Rematch Guarantee": "Garantia de Rematch",
+  "Thank you! Your Rematch Guarantee is active.": "Obrigado! Sua Garantia de Rematch está ativa.",
+  "You already have a Rematch Guarantee.": "Você já tem uma Garantia de Rematch.",
+  "Your Rematch Guarantee covers this placement.": "Sua Garantia de Rematch cobre esta colocação.",
+  "Your Rematch Guarantee covers your current placement.": "Sua Garantia de Rematch cobre sua colocação atual.",
+  "Your Rematch Guarantee gave you free days of the Family Pass to find your next au pair.": "Sua Garantia de Rematch deu a você dias grátis do Family Pass para encontrar seu próximo au pair.",
+  "Your Rematch Guarantee will cover your next confirmed placement.": "Sua Garantia de Rematch cobrirá sua próxima colocação confirmada.",
+  "in case your au pair leaves early.": "caso seu au pair saia antes do previsto."
 }

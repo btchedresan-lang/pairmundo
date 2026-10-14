@@ -1167,7 +1167,10 @@ async function placementDetail(id) {
         ${!isAdmin && p.status === 'proposed' && !myConfirmed ? `<button class="btn" id="confirm">${tr('Confirm placement')}</button>` : ''}
         ${!isAdmin ? next.map((s) => `<button class="btn secondary" data-status="${s}">${markAs[s] || s}</button>`).join('') : ''}
         ${['proposed', 'confirmed', 'active'].includes(p.status) ? `<button class="btn ghost" data-status="cancelled">${tr('Cancel')}</button>` : ''}
-        ${!isAdmin ? `<a class="btn ghost" href="#/u/${other.id}">${tr('View {name}', { name: esc(other.name) })}</a>` : ''}</div></div>
+        ${!isAdmin ? `<a class="btn ghost" href="#/u/${other.id}">${tr('View {name}', { name: esc(other.name) })}</a>` : ''}</div>
+      ${p.rematch && ['proposed', 'confirmed', 'active'].includes(p.status) ? `<p class="small muted" style="margin:12px 0 0">🔁 ${p.rematch.covered ? tr('Your Rematch Guarantee covers this placement.')
+        : `<a href="#/family-pass">${tr('Add the Rematch Guarantee')}</a> ${tr('in case your au pair leaves early.')}`}</p>` : ''}
+      ${p.rematch?.claimed ? `<p class="small muted" style="margin:12px 0 0">🔁 ${tr('Your Rematch Guarantee gave you free days of the Family Pass to find your next au pair.')}</p>` : ''}</div>
     ${p.agreement ? `<div class="card"><h2>${tr('Au pair agreement')}</h2>
       <p class="muted small">${tr('PairMundo wrote it from your placement and the country rules. Read it, change what you need and sign it together.')}</p>
       <div>${p.agreement.aupair_signed_at ? '✓' : '○'} ${tr('au pair')} · ${p.agreement.family_signed_at ? '✓' : '○'} ${tr('family')}</div>
@@ -1600,13 +1603,24 @@ views['family-pass'] = async (_args, qs) => {
   let pass = await api('/family-pass');
   if (paid) {
     // Back from Stripe: confirm the payment here too, in case its webhook is slow.
-    try { const r = await api(`/family-pass/checkout/${encodeURIComponent(paid)}`, { method: 'POST' }); pass = r.pass; if (r.paid) { toast(tr('Thank you! Your Family Pass is active.')); await refreshMe(); } }
+    try {
+      const r = await api(`/family-pass/checkout/${encodeURIComponent(paid)}`, { method: 'POST' }); pass = r.pass;
+      if (r.paid) { toast(r.plan === 'rematch' ? tr('Thank you! Your Rematch Guarantee is active.') : tr('Thank you! Your Family Pass is active.')); await refreshMe(); }
+    }
     catch (e) { toast(e.message); }
     history.replaceState(null, '', '#/family-pass');
   }
-  // Older servers send one pass; newer ones a 1-month and a 3-month plan.
+  // Older servers send one pass; newer ones a 1-month, a 3-month and a 6-month plan.
   const plans = pass.plans?.length ? pass.plans : [{ id: 'quarter', days: pass.days, price: pass.price }];
-  const planName = (p) => (p.days === 30 ? tr('1 month') : p.days === 90 ? tr('3 months') : tr('{n} days', { n: p.days }));
+  const planName = (p) => (p.days === 30 ? tr('1 month') : p.days === 90 ? tr('3 months') : p.days === 180 ? tr('6 months') : tr('{n} days', { n: p.days }));
+  // The longest plan costs the least per month.
+  const best = Math.max(...plans.map((p) => p.days));
+  // The Rematch Guarantee: a free pass if the au pair leaves early.
+  const rm = pass.rematch;
+  const rematch = rm ? `<div class="rematch"><h2>🔁 ${tr('Rematch Guarantee')}</h2>
+    <p>${tr('If your au pair leaves in the first {months} months, or the stay is cancelled before it starts, you get {days} days of the Family Pass free to find your next au pair.', { months: rm.cover_months, days: rm.pass_days })}</p>
+    ${rm.active ? `<p><strong>${rm.placement_id ? tr('Your Rematch Guarantee covers your current placement.') : tr('Your Rematch Guarantee will cover your next confirmed placement.')}</strong></p>`
+      : pass.web_checkout ? `<button class="btn secondary" data-plan="rematch">${tr('Add it for {price}', { price: esc(rm.price) })}</button>` : ''}</div>` : '';
   const until = pass.active ? `<p><strong>${pass.trial ? tr('Your free trial runs until {date}.', { date: fmtDate(pass.ends_at) }) : pass.early ? tr('Your early family bonus runs until {date}.', { date: fmtDate(pass.ends_at) })
     : pass.gift_active ? tr('Your gift from {from} runs until {date}.', { from: esc(pass.gift?.from), date: fmtDate(pass.ends_at) }) : tr('Your Family Pass is active until {date}.', { date: fmtDate(pass.ends_at) })}</strong> ${tr('Buying again adds the new days after that.')}</p>` : '';
   // Families who signed up before launch have free days saved, and pick when to use them.
@@ -1625,10 +1639,11 @@ views['family-pass'] = async (_args, qs) => {
     <p class="muted">${tr("Paid once. It doesn't renew by itself.")}</p>
     <ul><li>${tr('Message every au pair you match with')}</li><li>${tr('See everyone who liked you, and match with one tap')}</li><li>${tr('Au pairs never pay. Swiping and matching are free for everyone.')}</li></ul>
     ${until}${early}${gift}
-    ${pass.web_checkout ? `<div class="pass-plans">${plans.map((p) => `<button class="pass-plan ${p.days === 90 ? 'best' : ''}" data-plan="${esc(p.id)}">
-        ${p.days === 90 && plans.length > 1 ? `<span class="pass-tag">${tr('Best value')}</span>` : ''}<strong>${planName(p)}</strong><span class="pass-price">${esc(p.price)}</span></button>`).join('')}</div>
+    ${pass.web_checkout ? `<div class="pass-plans">${plans.map((p) => `<button class="pass-plan ${p.days === best ? 'best' : ''}" data-plan="${esc(p.id)}">
+        ${p.days === best && plans.length > 1 ? `<span class="pass-tag">${tr('Best value')}</span>` : ''}<strong>${planName(p)}</strong><span class="pass-price">${esc(p.price)}</span></button>`).join('')}</div>
       <p class="muted small">${tr('You pay securely with Stripe.')}</p>`
       : `<p class="muted">${pass.required ? tr('Payments are coming soon.') : tr('Payments are coming soon. Until then, families can use every feature for free.')}</p>`}
+    ${rematch}
   </div>`);
   [['useEarly', '/family-pass/early-bonus'], ['useGift', '/family-pass/gift']].forEach(([id, path]) => {
     const use = document.getElementById(id);
