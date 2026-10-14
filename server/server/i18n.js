@@ -103,6 +103,9 @@ export const DICT = {
   'Your Family Pass has ended. You still have {free} free days saved for signing up early. Use them whenever you are ready.': {
     es: 'Tu Family Pass ha terminado. Todavía tienes {free} días gratis guardados por registrarte pronto. Úsalos cuando quieras.', fr: "Votre Family Pass est terminé. Il vous reste {free} jours gratuits mis de côté pour votre inscription anticipée. Utilisez-les quand vous voulez.",
     de: 'Dein Family Pass ist abgelaufen. Du hast noch {free} Gratistage, weil du dich früh angemeldet hast. Löse sie ein, wann du willst.', pt: 'Seu Family Pass terminou. Você ainda tem {free} dias grátis guardados por ter se cadastrado cedo. Use quando quiser.' },
+  'Your Family Pass has ended. You still have {free} free days saved, a gift from {from}. Use them whenever you are ready.': {
+    es: 'Tu Family Pass ha terminado. Todavía tienes {free} días gratis guardados, un regalo de {from}. Úsalos cuando quieras.', fr: 'Votre Family Pass est terminé. Il vous reste {free} jours gratuits mis de côté, un cadeau de {from}. Utilisez-les quand vous voulez.',
+    de: 'Dein Family Pass ist abgelaufen. Du hast noch {free} Gratistage, ein Geschenk von {from}. Löse sie ein, wann du willst.', pt: 'Seu Family Pass terminou. Você ainda tem {free} dias grátis guardados, um presente de {from}. Use quando quiser.' },
   'Your family is one of the first to join, so you get {days} extra free days of the Family Pass on top of the free trial. Sign up with this email address and use them whenever it suits you.': {
     es: 'Tu familia es de las primeras en unirse, así que recibes {days} días gratis extra del Family Pass además de la prueba gratuita. Regístrate con este correo y úsalos cuando te venga bien.',
     fr: "Votre famille fait partie des premières inscrites : vous recevez {days} jours gratuits de Family Pass en plus de l'essai gratuit. Inscrivez-vous avec cette adresse e-mail et utilisez-les quand cela vous convient.",

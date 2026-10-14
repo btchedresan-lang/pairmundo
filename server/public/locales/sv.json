@@ -841,5 +841,12 @@
   "Our partners": "Våra partner",
   "No partners yet.": "Inga partner än.",
   "Some checklist steps show an offer from a partner, such as insurance or a language course. If you buy through a partner link, PairMundo may earn a fee. It costs you nothing extra, and we never share your details with a partner unless you ask us to.": "Vissa steg i checklistan visar ett erbjudande från en partner, till exempel försäkring eller en språkkurs. Om du köper via en partnerlänk kan PairMundo få en ersättning. Det kostar dig inget extra, och vi delar aldrig dina uppgifter med en partner om du inte ber oss om det.",
-  "Answer yes, maybe or no.": "Svara ja, kanske eller nej."
+  "Answer yes, maybe or no.": "Svara ja, kanske eller nej.",
+  "A gift from {from}: {days} free days": "En gåva från {from}: {days} gratisdagar",
+  "Saved for you. Start them whenever you're ready.": "Sparade åt er. Börja använda dem när ni vill.",
+  "Your gift from {from} runs until {date}.": "Er gåva från {from} gäller till {date}.",
+  "This account has no gift of free days.": "Det här kontot har inga gratisdagar i gåva.",
+  "You have already used your gift of free days.": "Ni har redan använt era gratisdagar i gåva.",
+  "The time to use this gift of free days has passed.": "Tiden för att använda gratisdagarna i gåva har gått ut.",
+  "Gift days are a whole number from 0 to 365.": "Gåvodagar är ett heltal från 0 till 365."
 }

@@ -1439,6 +1439,7 @@ views.admin = async ([tab = 'overview', id], qs) => {
       <div class="card"><h2>Launch email</h2><div id="launchEmail" class="muted small">Loading…</div></div>
       ${w.early_bonus ? `<div class="card"><h2>Early family bonus</h2><p><strong>${w.early_bonus.taken}</strong> of ${w.early_bonus.cap} spots taken (${w.early_bonus.accounts} with an account), <strong>${w.early_bonus.redeemed}</strong> used.
         ${w.early_bonus.open ? 'Open to new families.' : 'Closed to new families.'} ${w.early_bonus.launch_date ? `Launch date ${esc(w.early_bonus.launch_date)}; families can use their ${w.early_bonus.days} days until ${esc(w.early_bonus.use_by)}.` : 'Set LAUNCH_DATE to close it at launch and start the 12 months families have to use it.'}</p></div>` : ''}
+      ${w.gifts?.saved ? `<div class="card"><h2>Gift days</h2><p>From ambassador codes: <strong>${w.gifts.saved}</strong> families have them saved, <strong>${w.gifts.redeemed}</strong> used.</p></div>` : ''}
       <div class="cols-2"><div class="card"><h2>By role</h2><table>${w.by_role.map((r) => `<tr><td>${role(r.role)}</td><td>${r.n}</td></tr>`).join('')}</table></div>
       <div class="card"><h2>By browser region</h2><table>${w.by_country.map((r) => `<tr><td>${cname(r.country) || '—'}</td><td>${r.n}</td></tr>`).join('')}</table></div>
       <div class="card"><h2>By flyer or ad</h2><table>${w.by_source.map((r) => `<tr><td>${esc(r.source || 'Website')}</td><td>${r.n}</td></tr>`).join('')}</table></div></div>
@@ -1540,12 +1541,14 @@ async function adminAmbassadors(head, id, qs) {
       <div class="field"><label>Country</label><select name="country">${options(COUNTRIES, a.country || '', '—')}</select></div></div>
     <div class="form-grid"><div class="field"><label>Phone or email (only you see this)</label><input name="contact" value="${esc(a.contact)}"></div>
       <div class="field"><label>Their PairMundo account email (lets them see their numbers)</label><input name="account_email" type="email" value="${esc(a.account_email)}"></div></div>
-    <div class="field"><label>Notes</label><input name="notes" value="${esc(a.notes)}"></div>`;
+    <div class="form-grid"><div class="field"><label>Notes</label><input name="notes" value="${esc(a.notes)}"></div>
+      <div class="field"><label>Gift days for families (free Family Pass days for families who sign up with this code; 0 = none)</label><input name="gift_days" type="number" min="0" max="365" step="1" value="${Number(a.gift_days) || 0}"></div></div>`;
   if (id) {
     const a = await api(`/admin/ambassadors/${id}?month=${month}`);
     render(`${head}<p><a href="#/admin/ambassadors">← All ambassadors</a></p>
       <div class="spread"><h2>${esc(a.name)} · <code>${esc(a.code)}</code> ${a.active ? '' : '<span class="chip warn">Paused</span>'}</h2></div>
       <div class="card"><p>Link: <a href="${esc(a.link)}" target="_blank">${esc(a.link)}</a></p>
+        ${a.gift_days ? `<p>🎁 Families who sign up with this code get ${a.gift_days} free days, unless they have the early family bonus: <strong>${a.gifts.saved}</strong> saved, <strong>${a.gifts.redeemed}</strong> used.</p>` : ''}
         <div class="table-wrap"><table><tr><th>${esc(month)}</th>${statHead}</tr><tr><td></td>${statCells(a.stats)}</tr></table></div>
         <form id="paid" class="row" style="margin-top:12px"><span>Paid them? Mark everything earned up to the end of</span><input type="month" name="month" value="${esc(month)}" style="width:auto"><button class="btn sm">Mark as paid</button></form></div>
       <form class="card" id="ambEdit"><h3>Details</h3>${fields(a)}
@@ -1578,7 +1581,7 @@ async function adminAmbassadors(head, id, qs) {
     <p class="muted small">Rewards: ${usd(rewards.profile)} per completed, ID-verified au pair profile (up to ${usd(rewards.profile_monthly_cap)} a month), ${usd(rewards.pass)} for a family's first Family Pass, ${usd(rewards.placement)} per referred side when a stay starts.</p>
     <div class="card table-wrap"><table><tr><th>Ambassador</th>${statHead}</tr>
       ${ambassadors.map((a) => `<tr><td><a href="#/admin/ambassadors/${a.id}"><strong>${esc(a.name)}</strong></a> ${a.active ? '' : '<span class="chip warn">Paused</span>'}
-        <div class="muted small"><code>${esc(a.code)}</code>${a.country ? ` · ${cname(a.country)}` : ''}</div></td>${statCells(a.stats)}</tr>`).join('')
+        <div class="muted small"><code>${esc(a.code)}</code>${a.country ? ` · ${cname(a.country)}` : ''}${a.gift_days ? ` · 🎁 ${a.gift_days} gift days` : ''}</div></td>${statCells(a.stats)}</tr>`).join('')
       || '<tr><td colspan="9" class="muted">No ambassadors yet. Add the first one below.</td></tr>'}</table></div>
     <form class="card" id="ambNew"><h3>Add an ambassador</h3>
       <div class="field"><label>Referral code (letters, numbers and dashes; it can't change later)</label><input name="code" required placeholder="ANA-CO" autocapitalize="characters"></div>
@@ -1604,28 +1607,37 @@ views['family-pass'] = async (_args, qs) => {
   // Older servers send one pass; newer ones a 1-month and a 3-month plan.
   const plans = pass.plans?.length ? pass.plans : [{ id: 'quarter', days: pass.days, price: pass.price }];
   const planName = (p) => (p.days === 30 ? tr('1 month') : p.days === 90 ? tr('3 months') : tr('{n} days', { n: p.days }));
-  const until = pass.active ? `<p><strong>${pass.trial ? tr('Your free trial runs until {date}.', { date: fmtDate(pass.ends_at) }) : pass.early ? tr('Your early family bonus runs until {date}.', { date: fmtDate(pass.ends_at) }) : tr('Your Family Pass is active until {date}.', { date: fmtDate(pass.ends_at) })}</strong> ${tr('Buying again adds the new days after that.')}</p>` : '';
+  const until = pass.active ? `<p><strong>${pass.trial ? tr('Your free trial runs until {date}.', { date: fmtDate(pass.ends_at) }) : pass.early ? tr('Your early family bonus runs until {date}.', { date: fmtDate(pass.ends_at) })
+    : pass.gift_active ? tr('Your gift from {from} runs until {date}.', { from: esc(pass.gift?.from), date: fmtDate(pass.ends_at) }) : tr('Your Family Pass is active until {date}.', { date: fmtDate(pass.ends_at) })}</strong> ${tr('Buying again adds the new days after that.')}</p>` : '';
   // Families who signed up before launch have free days saved, and pick when to use them.
   const eb = pass.early_bonus;
   const early = eb && !eb.redeemed && !eb.expired ? `<div class="alert info"><strong>🎁 ${tr('Early family bonus: {days} free days', { days: eb.days })}</strong><br>
     ${tr('You signed up early, so you have {days} free days of the Family Pass saved. Use them whenever it suits you.', { days: eb.days })}${eb.use_by ? ` ${tr('Use them by {date}.', { date: fmtDate(eb.use_by) })}` : ''}
     ${eb.can_redeem ? `<p style="margin:10px 0 0"><button class="btn sm" id="useEarly">${tr('Use my {days} free days now', { days: eb.days })}</button></p>${pass.active ? `<p class="small" style="margin:6px 0 0">${tr('They start when your current pass ends.')}</p>` : ''}`
       : `<p class="small" style="margin:6px 0 0">${tr('Everything is free right now, so your free days stay saved for later.')}</p>`}</div>` : '';
+  // Families who signed up with a code that comes with gift days, say from their real estate office, have them saved too.
+  const g = pass.gift;
+  const gift = g && !g.redeemed && !g.expired ? `<div class="alert info"><strong>🎁 ${tr('A gift from {from}: {days} free days', { from: esc(g.from), days: g.days })}</strong><br>
+    ${tr("Saved for you. Start them whenever you're ready.")} ${tr('Use them by {date}.', { date: fmtDate(g.use_by) })}
+    ${g.can_redeem ? `<p style="margin:10px 0 0"><button class="btn sm" id="useGift">${tr('Use my {days} free days now', { days: g.days })}</button></p>${pass.active ? `<p class="small" style="margin:6px 0 0">${tr('They start when your current pass ends.')}</p>` : ''}`
+      : `<p class="small" style="margin:6px 0 0">${tr('Everything is free right now, so your free days stay saved for later.')}</p>`}</div>` : '';
   render(`<h1>Family Pass</h1><div class="card" style="max-width:560px">
     <p class="muted">${tr("Paid once. It doesn't renew by itself.")}</p>
     <ul><li>${tr('Message every au pair you match with')}</li><li>${tr('See everyone who liked you, and match with one tap')}</li><li>${tr('Au pairs never pay. Swiping and matching are free for everyone.')}</li></ul>
-    ${until}${early}
+    ${until}${early}${gift}
     ${pass.web_checkout ? `<div class="pass-plans">${plans.map((p) => `<button class="pass-plan ${p.days === 90 ? 'best' : ''}" data-plan="${esc(p.id)}">
         ${p.days === 90 && plans.length > 1 ? `<span class="pass-tag">${tr('Best value')}</span>` : ''}<strong>${planName(p)}</strong><span class="pass-price">${esc(p.price)}</span></button>`).join('')}</div>
       <p class="muted small">${tr('You pay securely with Stripe.')}</p>`
       : `<p class="muted">${pass.required ? tr('Payments are coming soon.') : tr('Payments are coming soon. Until then, families can use every feature for free.')}</p>`}
   </div>`);
-  const use = document.getElementById('useEarly');
-  if (use) use.onclick = async () => {
-    use.disabled = true;
-    try { await api('/family-pass/early-bonus', { method: 'POST' }); toast(tr('Your free days have started. You can now message au pairs and see who liked you.')); await refreshMe(); views['family-pass']([], new URLSearchParams()); }
-    catch (e) { use.disabled = false; if (!needsCode(e)) toast(e.message); }
-  };
+  [['useEarly', '/family-pass/early-bonus'], ['useGift', '/family-pass/gift']].forEach(([id, path]) => {
+    const use = document.getElementById(id);
+    if (use) use.onclick = async () => {
+      use.disabled = true;
+      try { await api(path, { method: 'POST' }); toast(tr('Your free days have started. You can now message au pairs and see who liked you.')); await refreshMe(); views['family-pass']([], new URLSearchParams()); }
+      catch (e) { use.disabled = false; if (!needsCode(e)) toast(e.message); }
+    };
+  });
   document.querySelectorAll('[data-plan]').forEach((b) => { b.onclick = async () => {
     b.disabled = true;
     try { location.href = (await api('/family-pass/checkout', { method: 'POST', body: { plan: b.dataset.plan } })).url; }

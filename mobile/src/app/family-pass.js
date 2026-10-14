@@ -47,10 +47,11 @@ export default function FamilyPass() {
     } catch (e) { setMsg({ level: 'error', text: e.message }); } finally { setBusy(false); }
   };
   // Families who signed up before launch have free days saved, and pick when to use them.
-  const useEarly = async () => {
+  // And families who signed up with a code that comes with gift days, say from their real estate office.
+  const useSaved = (path) => async () => {
     setMsg(null); setBusy(true);
     try {
-      setPass(await api('/family-pass/early-bonus', { method: 'POST' })); await refresh().catch(() => {});
+      setPass(await api(path, { method: 'POST' })); await refresh().catch(() => {});
       setMsg({ level: 'ok', text: tr('Your free days have started. You can now message au pairs and see who liked you.') });
     } catch (e) { setMsg({ level: 'error', text: e.message }); } finally { setBusy(false); }
   };
@@ -64,6 +65,7 @@ export default function FamilyPass() {
   };
 
   const early = pass?.early_bonus && !pass.early_bonus.redeemed && !pass.early_bonus.expired ? pass.early_bonus : null;
+  const gift = pass?.gift && !pass.gift.redeemed && !pass.gift.expired ? pass.gift : null;
   if (!pass) return msg ? <Screen><Alert level={msg.level} text={msg.text} /></Screen> : <Loading />;
   return (
     <Screen padded={false}>
@@ -73,14 +75,26 @@ export default function FamilyPass() {
         <Text style={{ color: '#fff', fontSize: 16, textAlign: 'center', opacity: 0.95 }}>{tr('Find your au pair faster')}</Text>
       </LinearGradient>
       <View style={{ padding: 16, gap: 12 }}>
-        {pass.active ? <Alert level="ok" text={pass.trial ? tr('Your free trial runs until {date}.', { date: fmtDate(pass.ends_at) }) : pass.early ? tr('Your early family bonus runs until {date}.', { date: fmtDate(pass.ends_at) }) : tr('Your Family Pass is active until {date}.', { date: fmtDate(pass.ends_at) })} /> : null}
+        {pass.active ? <Alert level="ok" text={pass.trial ? tr('Your free trial runs until {date}.', { date: fmtDate(pass.ends_at) }) : pass.early ? tr('Your early family bonus runs until {date}.', { date: fmtDate(pass.ends_at) }) : pass.gift_active ? tr('Your gift from {from} runs until {date}.', { from: pass.gift?.from, date: fmtDate(pass.ends_at) }) : tr('Your Family Pass is active until {date}.', { date: fmtDate(pass.ends_at) })} /> : null}
         {early ? (
           <Card style={{ gap: 8 }}>
             <T bold>🎁 {tr('Early family bonus: {days} free days', { days: early.days })}</T>
             <T>{tr('You signed up early, so you have {days} free days of the Family Pass saved. Use them whenever it suits you.', { days: early.days })}{early.use_by ? ` ${tr('Use them by {date}.', { date: fmtDate(early.use_by) })}` : ''}</T>
             {early.can_redeem ? (
               <>
-                <Button title={tr('Use my {days} free days now', { days: early.days })} onPress={useEarly} loading={busy} />
+                <Button title={tr('Use my {days} free days now', { days: early.days })} onPress={useSaved('/family-pass/early-bonus')} loading={busy} />
+                {pass.active ? <T small muted>{tr('They start when your current pass ends.')}</T> : null}
+              </>
+            ) : <T small muted>{tr('Everything is free right now, so your free days stay saved for later.')}</T>}
+          </Card>
+        ) : null}
+        {gift ? (
+          <Card style={{ gap: 8 }}>
+            <T bold>🎁 {tr('A gift from {from}: {days} free days', { from: gift.from, days: gift.days })}</T>
+            <T>{tr("Saved for you. Start them whenever you're ready.")} {tr('Use them by {date}.', { date: fmtDate(gift.use_by) })}</T>
+            {gift.can_redeem ? (
+              <>
+                <Button title={tr('Use my {days} free days now', { days: gift.days })} onPress={useSaved('/family-pass/gift')} loading={busy} />
                 {pass.active ? <T small muted>{tr('They start when your current pass ends.')}</T> : null}
               </>
             ) : <T small muted>{tr('Everything is free right now, so your free days stay saved for later.')}</T>}
