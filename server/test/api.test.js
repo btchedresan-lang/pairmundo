@@ -1147,6 +1147,92 @@ test('early family bonus: first families before launch get free days to use when
   } finally { for (const k of ['EARLY_FAMILY_CAP', 'LAUNCH_DATE', 'FAMILY_PASS']) delete process.env[k]; }
 });
 
+test('gift days: an ambassador code gives families free days to use within 12 months, never on top of the early bonus', async () => {
+  const { hashPassword } = await import('../server/auth.js');
+  testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin4@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin4@test.io', password: 'password123' })).body.token;
+  const regRef = async (email, role, code) => {
+    const res = await call(null, 'POST', '/auth/register', { email, password: 'password123', role, name: email, country: 'SE', ref_code: code });
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    await call(res.body.token, 'POST', '/auth/verify-email', { code: lastCode(email) });
+    return { token: res.body.token, id: res.body.user.id };
+  };
+  const gifts = () => testDb.prepare('SELECT COUNT(*) n FROM ref_gifts').get().n;
+  try {
+    // The admin sets the gift days on a code, from 0 to 365.
+    let r = await call(admin, 'POST', '/admin/ambassadors', { code: 'HOME-SE', name: 'Södermalm Homes', gift_days: '30' });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    const amb = r.body.id;
+    assert.equal(r.body.gift_days, 30);
+    assert.equal((await call(admin, 'POST', '/admin/ambassadors', { code: 'HOME-X', name: 'Too many', gift_days: 400 })).status, 400);
+    assert.equal((await call(admin, 'POST', `/admin/ambassadors/${amb}`, { gift_days: 'lots' })).status, 400);
+    assert.equal((await call(admin, 'POST', `/admin/ambassadors/${amb}`, { gift_days: 0 })).body.gift_days, 0);
+    assert.equal((await call(admin, 'POST', `/admin/ambassadors/${amb}`, { gift_days: 30 })).body.gift_days, 30);
+    assert.equal((await call(admin, 'GET', '/admin/ambassadors')).body.ambassadors.find((a) => a.id === amb).gift_days, 30);
+    assert.equal((await call(admin, 'POST', '/admin/ambassadors', { code: 'NOGIFT-SE', name: 'No Gift' })).body.gift_days, 0);
+
+    // No double bonus: a family who gets the early family bonus keeps just that.
+    const early = await regRef('giftearly@test.io', 'family', 'HOME-SE');
+    let pass = (await call(early.token, 'GET', '/family-pass')).body;
+    assert.ok(pass.early_bonus);
+    assert.equal(pass.gift, null);
+    assert.equal(gifts(), 0);
+
+    // Once the early bonus is closed, a family signing up with the code gets its days saved, fixed at sign-up.
+    process.env.EARLY_FAMILY_CAP = '0';
+    const fam = await regRef('giftfam@test.io', 'family', 'home-se');
+    assert.equal((await call(admin, 'POST', `/admin/ambassadors/${amb}`, { gift_days: 45 })).status, 200);
+    pass = (await call(fam.token, 'GET', '/family-pass')).body;
+    assert.equal(pass.early_bonus, null);
+    assert.deepEqual([pass.gift.days, pass.gift.from, pass.gift.redeemed, pass.gift.expired], [30, 'Södermalm Homes', false, false]);
+    assert.ok(pass.gift.use_by > new Date(Date.now() + 360 * 86400000).toISOString().slice(0, 10));
+    await call(admin, 'POST', `/admin/ambassadors/${amb}`, { gift_days: 30 });
+    // Au pairs and codes without gift days get nothing.
+    const ap = await regRef('giftap@test.io', 'aupair', 'HOME-SE');
+    const plain = await regRef('giftplain@test.io', 'family', 'NOGIFT-SE');
+    assert.equal((await call(plain.token, 'GET', '/family-pass')).body.gift, null);
+    assert.equal(gifts(), 1);
+
+    // While everything is free, the days stay saved.
+    assert.equal(pass.gift.can_redeem, false);
+    assert.equal((await call(fam.token, 'POST', '/family-pass/gift')).status, 409);
+
+    // The pass-ended reminder says the gift is still there.
+    process.env.FAMILY_PASS = 'on';
+    testDb.prepare("INSERT INTO passes (user_id, source, ref, starts_at, ends_at) VALUES (?, 'admin', NULL, datetime('now', '-30 days'), datetime('now', '-1 hours'))").run(fam.id);
+    assert.equal(app.sendPassReminders(), 1);
+    assert.match(outbox.filter((m) => m.to === 'giftfam@test.io').at(-1).subject, /30 free days saved, a gift from Södermalm Homes/);
+
+    // Using it starts the days now, once, and earns the ambassador nothing (it's not a paid pass).
+    r = await call(fam.token, 'POST', '/family-pass/gift');
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.deepEqual([r.body.active, r.body.gift_active, r.body.early, r.body.gift.redeemed], [true, true, false, true]);
+    assert.ok(Math.abs(new Date(r.body.ends_at.replace(' ', 'T') + 'Z') - Date.now() - 30 * 86400000) < 120000);
+    assert.equal(testDb.prepare("SELECT source FROM passes WHERE user_id = ? ORDER BY id DESC").get(fam.id).source, 'gift');
+    assert.equal((await call(fam.token, 'POST', '/family-pass/gift')).status, 409);
+    assert.equal((await call(plain.token, 'POST', '/family-pass/gift')).status, 404);
+    assert.equal((await call(ap.token, 'POST', '/family-pass/gift')).status, 403);
+    assert.equal(testDb.prepare("SELECT COUNT(*) n FROM referral_rewards WHERE user_id = ? AND kind = 'pass'").get(fam.id).n, 0);
+    assert.deepEqual({ ...(await call(admin, 'GET', `/admin/ambassadors/${amb}`)).body.gifts }, { saved: 1, redeemed: 1 });
+    assert.deepEqual({ ...(await call(admin, 'GET', '/admin/waitlist')).body.gifts }, { saved: 1, redeemed: 1 });
+
+    // A used gift stays with the email: deleting the account and signing up again with the code gives no new one.
+    assert.equal((await call(fam.token, 'DELETE', '/me', { password: 'password123' })).status, 200);
+    const again = await regRef('giftfam@test.io', 'family', 'HOME-SE');
+    pass = (await call(again.token, 'GET', '/family-pass')).body;
+    assert.equal(pass.gift.redeemed, true);
+    assert.equal((await call(again.token, 'POST', '/family-pass/gift')).status, 409);
+    assert.equal(gifts(), 1);
+
+    // Twelve months after signing up, an unused gift can't be used any more.
+    const late = await regRef('giftlate@test.io', 'family', 'HOME-SE');
+    testDb.prepare("UPDATE ref_gifts SET created_at = datetime('now', '-12 months', '-1 days') WHERE user_id = ?").run(late.id);
+    pass = (await call(late.token, 'GET', '/family-pass')).body;
+    assert.deepEqual([pass.gift.expired, pass.gift.can_redeem], [true, false]);
+    assert.equal((await call(late.token, 'POST', '/family-pass/gift')).status, 410);
+  } finally { for (const k of ['EARLY_FAMILY_CAP', 'FAMILY_PASS']) delete process.env[k]; }
+});
+
 test('babysitter question: a family answers in onboarding, only they and admins see it', async () => {
   const fam = await register('sitter-fam@test.io', 'family', 'SE', 'Familjen Sitter');
   const ap = await register('sitter-ap@test.io', 'aupair', 'ES', 'Lucia Sitter');

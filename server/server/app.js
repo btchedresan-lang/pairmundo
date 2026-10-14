@@ -340,6 +340,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (!a) throw notFound();
     return {
       ...a, active: !!a.active, link: referralLink(a), stats: ambassadorStats(a, month),
+      gifts: db.prepare('SELECT COUNT(*) saved, COUNT(redeemed_at) redeemed FROM ref_gifts WHERE ambassador_id = ?').get(a.id),
       ...(detail ? {
         referrals: db.prepare('SELECT id, name, role, country, created_at, suspended FROM users WHERE ref_code = ? ORDER BY created_at DESC, id DESC LIMIT 500').all(a.code),
         rewards: db.prepare('SELECT r.*, u.name user_name FROM referral_rewards r LEFT JOIN users u ON u.id = r.user_id WHERE r.ambassador_id = ? ORDER BY r.created_at DESC, r.id DESC LIMIT 500').all(a.id),
@@ -416,6 +417,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (role === 'family' && trialDays()) grantPass(user.id, 'trial', `signup-${user.id}`, trialDays(), { quiet: true });
     // Families who sign up before launch (or kept a spot from the waitlist) get the early family bonus, while spots last.
     if (role === 'family') claimEarlyBonus(email, user.id);
+    // A family who came with an ambassador's code that gives gift days gets them saved, unless they have the early bonus.
+    if (role === 'family') claimGift(email, user.id, ambassador);
     issueCode(user, 'verify');
     const s = createSession(db, user.id);
     setCookie(res, s.token);
@@ -558,6 +561,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       db.prepare('DELETE FROM placements WHERE aupair_id = ? OR family_id = ? OR created_by = ?').run(u.id, u.id, u.id);
       // A used early family bonus stays recorded by email, so a new account can't get it again.
       db.prepare('DELETE FROM early_bonus WHERE user_id = ? AND redeemed_at IS NULL').run(u.id);
+      db.prepare('DELETE FROM ref_gifts WHERE user_id = ? AND redeemed_at IS NULL').run(u.id);
       db.prepare('DELETE FROM users WHERE id = ?').run(u.id);
     });
     for (const p of photos) storage.remove(p);
@@ -871,7 +875,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   const needsPass = (u) => passRequired() && u.role === 'family' && !activePass(u.id);
   const passView = (u) => {
     const p = activePass(u.id);
-    return { required: passRequired() && u.role === 'family', active: !!p, trial: p?.source === 'trial', early: p?.source === 'early', early_bonus: earlyView(u), ends_at: p?.ends_at ?? null, days: FAMILY_PASS.days, price: FAMILY_PASS.price, web_checkout: !!checkout, product_id: FAMILY_PASS.product_id,
+    return { required: passRequired() && u.role === 'family', active: !!p, trial: p?.source === 'trial', early: p?.source === 'early', early_bonus: earlyView(u), gift_active: p?.source === 'gift', gift: giftView(u), ends_at: p?.ends_at ?? null, days: FAMILY_PASS.days, price: FAMILY_PASS.price, web_checkout: !!checkout, product_id: FAMILY_PASS.product_id,
       plans: PASS_PLANS.map(({ id, days, price, product_id }) => ({ id, days, price, product_id })) };
   };
   /** Adds a pass, starting when the current one ends. A purchase already counted (same source and ref) is ignored. */
@@ -879,9 +883,9 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (ref && db.prepare('SELECT 1 FROM passes WHERE source = ? AND ref = ?').get(source, ref)) return false;
     const start = activePass(userId)?.ends_at ?? db.prepare("SELECT datetime('now') d").get().d;
     db.prepare("INSERT INTO passes (user_id, source, ref, starts_at, ends_at) VALUES (?,?,?,?, datetime(?, ?))").run(userId, source, ref, start, start, `+${Number(days)} days`);
-    // A family's first paid pass earns their ambassador a reward. Trials, the early family bonus and free days from an
-    // admin don't count.
-    const plan = !['trial', 'early', 'admin'].includes(source) && passPlan('days', Number(days));
+    // A family's first paid pass earns their ambassador a reward. Trials, the early family bonus, gift days and free days
+    // from an admin don't count.
+    const plan = !['trial', 'early', 'gift', 'admin'].includes(source) && passPlan('days', Number(days));
     if (plan) addReward(userId, 'pass', AMBASSADOR_REWARDS.pass, `First Family Pass (${plan.price})`);
     if (!quiet) notify(userId, 'pass', 'Your Family Pass is active. You can now message au pairs and see who liked you.', {}, '#/likes');
     return true;
@@ -953,6 +957,43 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     });
     return passView(u);
   }));
+  // Gift days: an ambassador's code can come with free days of the pass (ambassadors.gift_days), say from a real estate
+  // office to the families it sends. They are saved when the family signs up, and the family starts them whenever they
+  // choose, within 12 months. A family with the early family bonus keeps just that, so nobody gets both.
+  const GIFT_REDEEM_MONTHS = 12;
+  /** Saves the gift from the code a family signed up with. One per email, and none on top of an early family bonus. */
+  const claimGift = (email, userId, a) => {
+    if (!a?.gift_days || db.prepare('SELECT 1 FROM early_bonus WHERE email = ?').get(email)) return false;
+    return !!db.prepare('INSERT OR IGNORE INTO ref_gifts (email, user_id, ambassador_id, days) VALUES (?,?,?,?)').run(email, userId, a.id, a.gift_days).changes;
+  };
+  const giftOf = (u) => (u.role !== 'family' ? null
+    : db.prepare(`SELECT g.*, a.name from_name FROM ref_gifts g LEFT JOIN ambassadors a ON a.id = g.ambassador_id
+      WHERE g.user_id = ? OR (g.user_id IS NULL AND g.email = ?) ORDER BY g.user_id IS NULL LIMIT 1`).get(u.id, normEmail(u.email)));
+  /** A family's gift as the app shows it, or null if they don't have one. */
+  const giftView = (u) => {
+    const g = giftOf(u);
+    if (!g) return null;
+    const ends = new Date(`${g.created_at.replace(' ', 'T')}Z`); ends.setUTCMonth(ends.getUTCMonth() + GIFT_REDEEM_MONTHS);
+    const expired = Date.now() >= ends.getTime();
+    return { days: g.days, from: g.from_name ?? 'PairMundo', redeemed: !!g.redeemed_at, redeemed_at: g.redeemed_at, use_by: new Date(ends.getTime() - 86400000).toISOString().slice(0, 10),
+      expired, can_redeem: !g.redeemed_at && !expired && passRequired() };
+  };
+  // The family picks when to use their gift. The days start now, or when the pass they have ends.
+  api.post('/family-pass/gift', requireAuth, wrap((req) => {
+    const u = req.user;
+    if (u.role !== 'family') throw forbidden('Only families need the Family Pass.');
+    const g = giftOf(u);
+    const v = giftView(u);
+    if (!g || !v) throw notFound('This account has no gift of free days.');
+    if (g.redeemed_at) throw new HttpError(409, 'You have already used your gift of free days.');
+    if (v.expired) throw new HttpError(410, 'The time to use this gift of free days has passed.');
+    if (!passRequired()) throw new HttpError(409, 'Everything is free right now, so your free days stay saved for later.');
+    tx(db, () => {
+      db.prepare("UPDATE ref_gifts SET redeemed_at = datetime('now'), user_id = ? WHERE email = ?").run(u.id, g.email);
+      grantPass(u.id, 'gift', `gift-${u.id}`, g.days, { quiet: true });
+    });
+    return passView(u);
+  }));
   // Reminders as a family's pass runs out: a few days before, on the last day, and once just after it ends.
   // Sent in the app, by push and by email. Renewing moves the end date, so the reminders start over for the new one.
   const PASS_REMINDERS = {
@@ -960,6 +1001,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     last_day: 'Your Family Pass ends within 24 hours. Renew it to keep messaging au pairs.',
     ended: 'Your Family Pass has ended. Get a new one to keep messaging au pairs and see who liked you.',
     ended_early: 'Your Family Pass has ended. You still have {free} free days saved for signing up early. Use them whenever you are ready.',
+    ended_gift: 'Your Family Pass has ended. You still have {free} free days saved, a gift from {from}. Use them whenever you are ready.',
   };
   const sendPassReminders = () => {
     if (!passRequired()) return 0;
@@ -973,10 +1015,10 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       const kind = left <= 0 ? 'ended' : left <= 86400000 ? 'last_day' : 'soon';
       if (!db.prepare('INSERT OR IGNORE INTO pass_reminders (user_id, ends_at, kind) VALUES (?,?,?)').run(r.user_id, r.ends_at, kind).changes) continue;
       const u = getUser(r.user_id);
-      // A family who still has their early family bonus is reminded that it's there.
-      const early = earlyView(u);
-      const message = kind === 'ended' && early?.can_redeem ? PASS_REMINDERS.ended_early : PASS_REMINDERS[kind];
-      const vars = { days: Math.ceil(left / 86400000), free: early?.days };
+      // A family who still has their early family bonus, or gift days, is reminded that they're there.
+      const early = earlyView(u), gift = giftView(u);
+      const message = kind !== 'ended' ? PASS_REMINDERS[kind] : early?.can_redeem ? PASS_REMINDERS.ended_early : gift?.can_redeem ? PASS_REMINDERS.ended_gift : PASS_REMINDERS.ended;
+      const vars = { days: Math.ceil(left / 86400000), free: early?.can_redeem ? early.days : gift?.days, from: gift?.from };
       notify(r.user_id, 'pass', message, vars, '#/family-pass');
       const subject = translate(u.lang, message, vars);
       const text = `${subject}\n\n${translate(u.lang, 'Renew it in the app, or on the website: {link}', { link: `${publicBase()}/#/family-pass` })}`;
@@ -1690,6 +1732,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     signups_by_source: db.prepare("SELECT source, SUM(role = 'family') families, SUM(role = 'aupair') aupairs FROM users WHERE role != 'admin' GROUP BY source ORDER BY COUNT(*) DESC").all(),
     early_bonus: { ...earlyOffer(), accounts: db.prepare('SELECT COUNT(*) n FROM early_bonus WHERE user_id IS NOT NULL').get().n,
       redeemed: db.prepare('SELECT COUNT(*) n FROM early_bonus WHERE redeemed_at IS NOT NULL').get().n, use_by: earlyUseBy() },
+    gifts: db.prepare('SELECT COUNT(*) saved, COUNT(redeemed_at) redeemed FROM ref_gifts').get(),
   })));
   // The whole list as a spreadsheet file, for emailing everyone at launch.
   api.get('/admin/waitlist.csv', requireRole('admin'), (req, res) => {
@@ -1807,8 +1850,11 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       if (email && !userId) throw bad('No PairMundo account uses that email.');
     }
     const text = (k, max) => (k in body ? str(body[k], max) || null : a[k] ?? null);
+    // Free days of the pass for families who sign up with the code. Families already signed up keep what they got.
+    const giftDays = 'gift_days' in body ? Number(body.gift_days || 0) : Number(a.gift_days ?? 0);
+    if (!Number.isInteger(giftDays) || giftDays < 0 || giftDays > 365) throw bad('Gift days are a whole number from 0 to 365.');
     return { name, country: text('country', 2)?.toUpperCase() ?? null, contact: text('contact', 200), notes: text('notes', 2000), user_id: userId,
-      active: 'active' in body ? (body.active ? 1 : 0) : Number(a.active ?? 1) };
+      active: 'active' in body ? (body.active ? 1 : 0) : Number(a.active ?? 1), gift_days: giftDays };
   };
   api.get('/admin/ambassadors', requireRole('admin'), wrap((req) => {
     const month = monthParam(req.query.month);
@@ -1820,8 +1866,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (!code) throw bad('A code is 3 to 24 letters, numbers or dashes, like ANACO.');
     if (db.prepare('SELECT 1 FROM ambassadors WHERE code = ?').get(code)) throw new HttpError(409, 'That code is already taken.');
     const f = ambassadorFields(req.body);
-    const r = db.prepare('INSERT INTO ambassadors (code, name, country, contact, notes, user_id, active) VALUES (?,?,?,?,?,?,?)')
-      .run(code, f.name, f.country, f.contact, f.notes, f.user_id, f.active);
+    const r = db.prepare('INSERT INTO ambassadors (code, name, country, contact, notes, user_id, active, gift_days) VALUES (?,?,?,?,?,?,?,?)')
+      .run(code, f.name, f.country, f.contact, f.notes, f.user_id, f.active, f.gift_days);
     res.status(201);
     return adminAmbassador(r.lastInsertRowid);
   }));
@@ -1830,8 +1876,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   api.post('/admin/ambassadors/:id', requireRole('admin'), wrap((req) => {
     const a = adminAmbassador(req.params.id, null, false);
     const f = ambassadorFields(req.body || {}, a);
-    db.prepare('UPDATE ambassadors SET name = ?, country = ?, contact = ?, notes = ?, user_id = ?, active = ? WHERE id = ?')
-      .run(f.name, f.country, f.contact, f.notes, f.user_id, f.active, a.id);
+    db.prepare('UPDATE ambassadors SET name = ?, country = ?, contact = ?, notes = ?, user_id = ?, active = ?, gift_days = ? WHERE id = ?')
+      .run(f.name, f.country, f.contact, f.notes, f.user_id, f.active, f.gift_days, a.id);
     return adminAmbassador(a.id);
   }));
   // After paying an ambassador, mark what they earned up to the end of that month (or everything) as paid.

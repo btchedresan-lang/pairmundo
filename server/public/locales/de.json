@@ -841,5 +841,12 @@
   "Our partners": "Unsere Partner",
   "No partners yet.": "Noch keine Partner.",
   "Some checklist steps show an offer from a partner, such as insurance or a language course. If you buy through a partner link, PairMundo may earn a fee. It costs you nothing extra, and we never share your details with a partner unless you ask us to.": "Manche Schritte der Checkliste zeigen ein Angebot eines Partners, zum Beispiel eine Versicherung oder einen Sprachkurs. Wenn du über einen Partnerlink kaufst, erhält PairMundo eventuell eine Provision. Für dich kostet es nichts extra, und wir geben deine Daten nie an einen Partner weiter, außer du bittest uns darum.",
-  "Answer yes, maybe or no.": "Antworte mit Ja, Vielleicht oder Nein."
+  "Answer yes, maybe or no.": "Antworte mit Ja, Vielleicht oder Nein.",
+  "A gift from {from}: {days} free days": "Ein Geschenk von {from}: {days} Gratistage",
+  "Saved for you. Start them whenever you're ready.": "Für dich gespeichert. Löse sie ein, wann du willst.",
+  "Your gift from {from} runs until {date}.": "Dein Geschenk von {from} gilt bis {date}.",
+  "This account has no gift of free days.": "Dieses Konto hat keine geschenkten Gratistage.",
+  "You have already used your gift of free days.": "Du hast deine geschenkten Gratistage schon eingelöst.",
+  "The time to use this gift of free days has passed.": "Die Frist für deine geschenkten Gratistage ist abgelaufen.",
+  "Gift days are a whole number from 0 to 365.": "Geschenkte Tage sind eine ganze Zahl von 0 bis 365."
 }

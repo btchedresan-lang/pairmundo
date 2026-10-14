@@ -729,5 +729,12 @@
   "Partner offer": "Offre partenaire",
   "We may earn a fee if you buy through a partner link.": "Nous pouvons toucher une commission si vous achetez via un lien partenaire.",
   "Choose a checklist step.": "Choisissez une étape de la liste.",
-  "The link must start with https://": "Le lien doit commencer par https://"
+  "The link must start with https://": "Le lien doit commencer par https://",
+  "A gift from {from}: {days} free days": "Un cadeau de {from} : {days} jours gratuits",
+  "Saved for you. Start them whenever you're ready.": "Mis de côté pour vous. Activez-les quand vous voulez.",
+  "Your gift from {from} runs until {date}.": "Votre cadeau de {from} est valable jusqu'au {date}.",
+  "This account has no gift of free days.": "Ce compte n'a pas de jours gratuits offerts.",
+  "You have already used your gift of free days.": "Vous avez déjà utilisé vos jours gratuits offerts.",
+  "The time to use this gift of free days has passed.": "Le délai pour utiliser vos jours gratuits offerts est dépassé.",
+  "Gift days are a whole number from 0 to 365.": "Les jours offerts sont un nombre entier de 0 à 365."
 }

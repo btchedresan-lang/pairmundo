@@ -93,6 +93,8 @@ Early family bonus: on top of the trial, the first 500 families who sign up, or 
 - While `FAMILY_PASS` is off everything is free, so the days stay saved and the button waits until the pass is switched on.
 - Admin → Waitlist shows how many spots are taken and used.
 
+Gift days: an ambassador code can come with free days of the pass, say for a real estate office to give the families it sends. Set **Gift days for families** (0 to 365, 0 = none) on the ambassador in Admin → Ambassadors. A family who signs up with the code gets that many days saved, fixed at sign-up, and starts them with **Use my 30 free days now** (or however many) on the Family Pass page, within 12 months of signing up. One gift per email, so deleting the account and signing up again doesn't give a second one. No double bonus: a family with the early family bonus keeps just that and gets no gift (while the early offer is open, that's every new family). The ambassador is credited as usual either way, and using gift days doesn't count as a paid pass for their reward. As with the early bonus, the days stay saved while `FAMILY_PASS` is off. Admin → Ambassadors and Admin → Waitlist show how many gifts are saved and used.
+
 ## Launch email
 
 On launch day, Admin → Waitlist → **Launch email** tells everyone the apps are out: everyone on the waitlist, plus every account with a confirmed email (not admins, not suspended), once per email address. Each person gets it in their language. Accounts are told to sign in as usual; waitlist people to sign up with that email (with the link to leave the list). Families are reminded of early free days they haven't used yet, and au pairs that it's free for them. Nothing is sent until you press **Send launch email**, and only from `LAUNCH_DATE` on.

@@ -222,7 +222,7 @@ CREATE TABLE IF NOT EXISTS launch_emails (
 CREATE TABLE IF NOT EXISTS passes (
   id INTEGER PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  source TEXT NOT NULL,                           -- apple | google | stripe | admin | trial | early
+  source TEXT NOT NULL,                           -- apple | google | stripe | admin | trial | early | gift
   ref TEXT,                                       -- the store's transaction id, so a purchase is counted once
   starts_at TEXT NOT NULL,
   ends_at TEXT NOT NULL,
@@ -235,6 +235,16 @@ CREATE INDEX IF NOT EXISTS passes_user ON passes(user_id, ends_at);
 CREATE TABLE IF NOT EXISTS early_bonus (
   email TEXT PRIMARY KEY,
   user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  redeemed_at TEXT
+);
+-- Gift days: free days of the pass from the ambassador code a family signed up with (ambassadors.gift_days), to use
+-- whenever they choose. One per email, like the early family bonus, and fixed when they sign up.
+CREATE TABLE IF NOT EXISTS ref_gifts (
+  email TEXT PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  ambassador_id INTEGER REFERENCES ambassadors(id) ON DELETE SET NULL,
+  days INTEGER NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   redeemed_at TEXT
 );
@@ -363,6 +373,7 @@ CREATE TABLE IF NOT EXISTS ambassadors (
   user_id INTEGER REFERENCES users(id) ON DELETE SET NULL, -- their own account, so they can see their numbers in the app
   active INTEGER NOT NULL DEFAULT 1,
   notes TEXT,
+  gift_days INTEGER NOT NULL DEFAULT 0,           -- free days of the pass for families who sign up with the code; 0 = none
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -413,6 +424,8 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
   if (!db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'ref_code')) db.exec('ALTER TABLE users ADD COLUMN ref_code TEXT');
   if (!db.prepare('PRAGMA table_info(waitlist)').all().some((c) => c.name === 'ref_code')) db.exec('ALTER TABLE waitlist ADD COLUMN ref_code TEXT');
   db.exec('CREATE INDEX IF NOT EXISTS users_ref_code ON users(ref_code)');
+  // Free days of the pass a code gives the families who sign up with it.
+  if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'gift_days')) db.exec('ALTER TABLE ambassadors ADD COLUMN gift_days INTEGER NOT NULL DEFAULT 0');
   const pcols = db.prepare('PRAGMA table_info(country_programs)').all().map((c) => c.name);
   if (!pcols.includes('status')) {
     db.exec(`ALTER TABLE country_programs ADD COLUMN status TEXT NOT NULL DEFAULT 'open';
