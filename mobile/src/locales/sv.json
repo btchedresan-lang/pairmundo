@@ -736,5 +736,17 @@
   "This account has no gift of free days.": "Det här kontot har inga gratisdagar i gåva.",
   "You have already used your gift of free days.": "Ni har redan använt era gratisdagar i gåva.",
   "The time to use this gift of free days has passed.": "Tiden för att använda gratisdagarna i gåva har gått ut.",
-  "Gift days are a whole number from 0 to 365.": "Gåvodagar är ett heltal från 0 till 365."
+  "Gift days are a whole number from 0 to 365.": "Gåvodagar är ett heltal från 0 till 365.",
+  "6 months": "6 månader",
+  "Add it for {price}": "Lägg till för {price}",
+  "Add the Rematch Guarantee": "Lägg till rematchgarantin",
+  "If your au pair leaves in the first {months} months, or the stay is cancelled before it starts, you get {days} days of the Family Pass free to find your next au pair.": "Om din au pair slutar under de första {months} månaderna, eller om vistelsen ställs in innan den börjar, får du {days} dagar av Family Pass gratis för att hitta din nästa au pair.",
+  "Rematch Guarantee": "Rematchgaranti",
+  "Thank you! Your Rematch Guarantee is active.": "Tack! Din rematchgaranti är aktiv.",
+  "You already have a Rematch Guarantee.": "Du har redan en rematchgaranti.",
+  "Your Rematch Guarantee covers this placement.": "Din rematchgaranti gäller för den här placeringen.",
+  "Your Rematch Guarantee covers your current placement.": "Din rematchgaranti gäller för din nuvarande placering.",
+  "Your Rematch Guarantee gave you free days of the Family Pass to find your next au pair.": "Din rematchgaranti gav dig gratisdagar av Family Pass för att hitta din nästa au pair.",
+  "Your Rematch Guarantee will cover your next confirmed placement.": "Din rematchgaranti kommer att gälla för din nästa bekräftade placering.",
+  "in case your au pair leaves early.": "ifall din au pair slutar i förtid."
 }

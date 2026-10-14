@@ -698,7 +698,7 @@ test('Family Pass on the website: Stripe Checkout link, and the pass once paid (
     assert.notEqual(end2, end1);
 
     // The 1-month pass costs less and adds 30 days.
-    assert.deepEqual((await call2(fam.token, 'GET', '/family-pass')).body.plans.map((p) => [p.id, p.days]), [['month', 30], ['quarter', 90]]);
+    assert.deepEqual((await call2(fam.token, 'GET', '/family-pass')).body.plans.map((p) => [p.id, p.days]), [['month', 30], ['quarter', 90], ['half', 180]]);
     r = await call2(fam.token, 'POST', '/family-pass/checkout', { plan: 'month' });
     const o3 = sessions.get('cs_2').o;
     assert.equal(r.body.url, 'https://checkout.stripe.test/cs_2');
@@ -776,7 +776,82 @@ test('Family Pass in-app purchase: checked with RevenueCat, counted once, refund
     await hook({ ...ev, type: 'CANCELLATION' });
     await hook({ ...ev, type: 'CANCELLATION', transaction_id: 'GPA.1234', store: 'PLAY_STORE' });
     assert.equal((await call2(fam.token, 'GET', '/family-pass')).body.active, false);
+
+    // The Rematch Guarantee bought in the app is counted the same way, and a refund stops it covering.
+    await hook({ ...ev, product_id: 'rematch_guarantee', transaction_id: 'RM1' });
+    assert.equal((await call2(fam.token, 'GET', '/family-pass')).body.rematch.active, true);
+    await hook({ ...ev, type: 'REFUND', product_id: 'rematch_guarantee', transaction_id: 'RM1' });
+    assert.equal((await call2(fam.token, 'GET', '/family-pass')).body.rematch.active, false);
   } finally { srv.close(); delete process.env.REVENUECAT_WEBHOOK_AUTH; }
+});
+
+test('Rematch Guarantee: bought once, covers one placement, and a placement that ends early gives a free 3-month pass', async () => {
+  const sessions = new Map();
+  const checkout = {
+    async start(user, o) { const id = `rm_${sessions.size + 1}`; sessions.set(id, { paid: false, userId: user.id, o }); return { id, url: `https://checkout.stripe.test/${id}` }; },
+    async result(id) { const s = sessions.get(id); if (!s) throw new Error('No such session'); return { paid: s.paid, userId: s.userId, plan: s.o.plan }; },
+  };
+  const db2 = openDb(':memory:');
+  const app2 = createApp(db2, { mailer: async (m) => { outbox.push(m); }, pusher: async (m) => m.map(() => ({ status: 'ok' })), checkout });
+  const srv = await new Promise((r) => { const s = app2.listen(0, () => r(s)); });
+  const b2 = `http://127.0.0.1:${srv.address().port}/api`;
+  const call2 = async (token, method, path, body) => {
+    const res = await fetch(b2 + path, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: body ? JSON.stringify(body) : undefined });
+    return { status: res.status, body: await res.json() };
+  };
+  const reg = async (email, role) => (await call2(null, 'POST', '/auth/register', { email, password: 'password123', role, name: email, country: 'SE' })).body;
+  const placement = (fam, ap, status, start) => Number(db2.prepare(`INSERT INTO placements (aupair_id, family_id, country, start_date, end_date, weekly_hours, pocket_money, status, created_by)
+    VALUES (?, ?, 'SE', date('now', ?), date('now', '+300 days'), 25, 5000, ?, ?)`).run(ap.user.id, fam.user.id, start, status, fam.user.id).lastInsertRowid);
+  const passDays = async (token) => { const p = (await call2(token, 'GET', '/family-pass')).body; return p.active ? Math.round((new Date(p.ends_at.replace(' ', 'T') + 'Z') - Date.now()) / 86400000) : 0; };
+  const buy = async (token) => {
+    const r = await call2(token, 'POST', '/family-pass/checkout', { plan: 'rematch' });
+    const id = r.body.url.split('/').pop();
+    sessions.get(id).paid = true;
+    return call2(token, 'POST', `/family-pass/checkout/${id}`);
+  };
+  try {
+    const fam = await reg('rematch@test.io', 'family');
+    const ap = await reg('rematch-ap@test.io', 'aupair');
+    let rm = (await call2(fam.token, 'GET', '/family-pass')).body.rematch;
+    assert.deepEqual([rm.price, rm.can_buy, rm.active, rm.pass_days], ['€29', true, false, 90]);
+    assert.equal((await call2(ap.token, 'GET', '/family-pass')).body.rematch, null, 'au pairs never see it');
+
+    // Bought on the website for €29, it covers the family's confirmed placement; a second one can't be bought.
+    const p1 = placement(fam, ap, 'confirmed', '+20 days');
+    let r = await buy(fam.token);
+    assert.equal(sessions.get('rm_1').o.amount, 2900);
+    assert.equal(r.body.paid, true);
+    rm = r.body.pass.rematch;
+    assert.deepEqual([rm.active, rm.placement_id, rm.can_buy], [true, p1, false]);
+    assert.equal((await call2(fam.token, 'POST', '/family-pass/checkout', { plan: 'rematch' })).status, 409);
+    assert.equal(await passDays(fam.token), 0, 'buying it gives no pass days by itself');
+    assert.deepEqual((await call2(fam.token, 'GET', `/placements/${p1}`)).body.rematch, { covered: true, claimed: false });
+    assert.equal((await call2(ap.token, 'GET', `/placements/${p1}`)).body.rematch, null);
+
+    // The stay starts, then the au pair leaves early: the family gets 90 free days, once.
+    assert.equal((await call2(fam.token, 'POST', `/placements/${p1}/status`, { status: 'active' })).status, 200);
+    assert.equal((await call2(ap.token, 'POST', `/placements/${p1}/status`, { status: 'cancelled' })).status, 200);
+    assert.equal(await passDays(fam.token), 90);
+    assert.deepEqual((await call2(fam.token, 'GET', `/placements/${p1}`)).body.rematch, { covered: true, claimed: true });
+    assert.match((await call2(fam.token, 'GET', '/notifications')).body.notifications[0].text, /Rematch Guarantee/);
+    rm = (await call2(fam.token, 'GET', '/family-pass')).body.rematch;
+    assert.deepEqual([rm.active, rm.can_buy, !!rm.last_claimed_at], [false, true, true]);
+
+    // Bought with no placement yet, it waits and covers the next one once both confirm.
+    await buy(fam.token);
+    assert.equal((await call2(fam.token, 'GET', '/family-pass')).body.rematch.placement_id, null);
+    const p2 = placement(fam, ap, 'proposed', '+30 days');
+    await call2(ap.token, 'POST', `/placements/${p2}/confirm`);
+    await call2(fam.token, 'POST', `/placements/${p2}/confirm`);
+    assert.equal((await call2(fam.token, 'GET', '/family-pass')).body.rematch.placement_id, p2);
+
+    // More than 6 months into the stay, ending it gives nothing, and the guarantee is used up.
+    db2.prepare("UPDATE placements SET status = 'active', start_date = date('now', '-200 days') WHERE id = ?").run(p2);
+    const before = await passDays(fam.token);
+    await call2(fam.token, 'POST', `/placements/${p2}/status`, { status: 'cancelled' });
+    assert.equal(await passDays(fam.token), before);
+    assert.equal((await call2(fam.token, 'GET', '/family-pass')).body.rematch.can_buy, true);
+  } finally { srv.close(); }
 });
 
 test('waitlist: join once, email in their language, leave by link, admin sees it and downloads it', async () => {

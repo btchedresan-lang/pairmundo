@@ -88,6 +88,9 @@ export const DICT = {
   'Your ID is verified. Your profile now shows the ID verified badge.': {
     es: 'Tu identidad está verificada. Tu perfil ya muestra la insignia de ID verificado.', fr: "Votre identité est vérifiée. Votre profil affiche maintenant le badge Identité vérifiée.",
     de: 'Deine Identität ist bestätigt. Dein Profil zeigt jetzt das Abzeichen „Identität verifiziert“.', pt: 'Sua identidade foi verificada. Seu perfil agora mostra o selo de identidade verificada.' },
+  'Your Rematch Guarantee gave you {days} free days of the Family Pass to find your next au pair.': {
+    es: 'Tu Garantía de Rematch te ha dado {days} días gratis del Family Pass para encontrar a tu próximo au pair.', fr: 'Votre Garantie Rematch vous offre {days} jours gratuits du Family Pass pour trouver votre prochain au pair.',
+    de: 'Deine Rematch-Garantie schenkt dir {days} kostenlose Tage Family Pass, um dein nächstes Au-pair zu finden.', pt: 'Sua Garantia de Rematch deu a você {days} dias grátis do Family Pass para encontrar seu próximo au pair.' },
   'Your Family Pass is active. You can now message au pairs and see who liked you.': {
     es: 'Tu Family Pass está activo. Ya puedes escribir a au pairs y ver a quién le gustas.', fr: 'Votre Family Pass est actif. Vous pouvez maintenant écrire aux au pairs et voir qui vous a liké.',
     de: 'Dein Family Pass ist aktiv. Du kannst jetzt Au-pairs schreiben und sehen, wer dich mag.', pt: 'Seu Family Pass está ativo. Agora você pode mandar mensagens para au pairs e ver quem curtiu você.' },

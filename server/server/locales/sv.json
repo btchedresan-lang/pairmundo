@@ -78,5 +78,6 @@
   "See you in the app,\nThe {app} team": "Vi ses i appen,\n{app}-teamet",
   "You got this email because you have a {app} account.": "Du får det här mejlet eftersom du har ett konto på {app}.",
   "You got this email because you joined the {app} list. To leave the list, open this link: {link}": "Du får det här mejlet eftersom du skrev upp dig på listan för {app}. Om du vill lämna listan öppnar du den här länken: {link}",
-  "Your Family Pass has ended. You still have {free} free days saved, a gift from {from}. Use them whenever you are ready.": "Ert Family Pass har tagit slut. Ni har fortfarande {free} gratisdagar sparade, en gåva från {from}. Använd dem när ni vill."
+  "Your Family Pass has ended. You still have {free} free days saved, a gift from {from}. Use them whenever you are ready.": "Ert Family Pass har tagit slut. Ni har fortfarande {free} gratisdagar sparade, en gåva från {from}. Använd dem när ni vill.",
+  "Your Rematch Guarantee gave you {days} free days of the Family Pass to find your next au pair.": "Er rematchgaranti gav er {days} gratisdagar av Family Pass, så att ni kan hitta er nästa au pair."
 }

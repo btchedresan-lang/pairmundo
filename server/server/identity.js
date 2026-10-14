@@ -80,6 +80,7 @@ export function createCheckout({ secretKey = process.env.STRIPE_SECRET_KEY, fetc
         line_items: { 0: { quantity: 1, price_data: { currency, unit_amount: amount, product_data: { name } } } },
         customer_email: user.email,
         client_reference_id: String(user.id),
+        // plan is a Family Pass plan id, or 'rematch' for the Rematch Guarantee.
         metadata: { user_id: String(user.id), product: 'family_pass', plan },
         success_url: successUrl,
         cancel_url: cancelUrl,

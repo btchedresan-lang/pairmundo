@@ -40,6 +40,10 @@ export default function Placement() {
           <View key={k} style={{ flexDirection: 'row', gap: 10 }}><T small muted style={{ width: 100 }}>{k}</T><T small style={{ flex: 1 }}>{String(v)}</T></View>
         ))}
         {p.program ? <Pressable onPress={() => router.push(`/programs/${p.program.code}`)}><T small style={{ color: C.primary }}>{tr('Open the {name} program guide', { name: country(p.program.code) })} →</T></Pressable> : null}
+        {/* Only the family gets p.rematch: whether their Rematch Guarantee covers this placement. */}
+        {p.rematch?.claimed ? <T small muted>🔁 {tr('Your Rematch Guarantee gave you free days of the Family Pass to find your next au pair.')}</T>
+          : p.rematch && ['proposed', 'confirmed', 'active'].includes(p.status) ? (p.rematch.covered ? <T small muted>🔁 {tr('Your Rematch Guarantee covers this placement.')}</T>
+            : <Pressable onPress={() => router.push('/family-pass')}><T small style={{ color: C.primary }}>🔁 {tr('Add the Rematch Guarantee')} {tr('in case your au pair leaves early.')}</T></Pressable>) : null}
       </Card>
       <View style={{ gap: 8 }}>
         {p.status === 'proposed' && !myConfirmed ? <Button title={tr('Confirm placement')} onPress={() => act(() => api(`/placements/${id}/confirm`, { method: 'POST' }))} /> : null}

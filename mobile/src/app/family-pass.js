@@ -28,7 +28,7 @@ export default function FamilyPass() {
   const [busy, setBusy] = useState(false);
   const load = useCallback(() => api('/family-pass').then(setPass).catch((e) => setMsg({ level: 'error', text: e.message })), []);
   useFocusEffect(useCallback(() => { load(); }, [load]));
-  // Older servers send one pass; newer ones a 1-month and a 3-month plan.
+  // Older servers send one pass; newer ones a 1-month, a 3-month and a 6-month plan.
   const plans = pass ? (pass.plans?.length ? pass.plans : [{ id: 'quarter', days: pass.days, price: pass.price, product_id: pass.product_id }]) : [];
   const plan = plans.find((p) => p.id === planId) || plans[plans.length - 1];
   // Apple and Google show the price in the person's own currency.
@@ -37,13 +37,23 @@ export default function FamilyPass() {
     if (!productIds || !userId) return;
     productIds.split(',').forEach((id) => storePrice({ product_id: id }, userId).then((s) => s && setPrices((x) => ({ ...x, [id]: s }))));
   }, [productIds, userId]);
-  const planName = (p) => (p.days === 30 ? tr('1 month') : p.days === 90 ? tr('3 months') : tr('{n} days', { n: p.days }));
+  const planName = (p) => (p.days === 30 ? tr('1 month') : p.days === 90 ? tr('3 months') : p.days === 180 ? tr('6 months') : tr('{n} days', { n: p.days }));
+  // The longest plan costs the least per month.
+  const best = Math.max(...plans.map((p) => p.days));
+  const rm = pass?.rematch;
+  const rematchPrice = rm ? prices[rm.product_id] || rm.price : null;
+  useEffect(() => {
+    if (rm?.product_id && userId) storePrice({ product_id: rm.product_id }, userId).then((s) => s && setPrices((x) => ({ ...x, [rm.product_id]: s })));
+  }, [rm?.product_id, userId]);
 
-  const buy = async () => {
+  const buy = async (product = plan) => {
     setMsg(null); setBusy(true);
     try {
-      const done = await buyFamilyPass(plan, me.user.id);
-      if (done) { await load(); await refresh().catch(() => {}); setMsg({ level: 'ok', text: tr('Your Family Pass is active. You can now message au pairs and see who liked you.') }); }
+      const done = await buyFamilyPass(product, me.user.id);
+      if (done) {
+        await load(); await refresh().catch(() => {});
+        setMsg({ level: 'ok', text: product === rm ? tr('Thank you! Your Rematch Guarantee is active.') : tr('Your Family Pass is active. You can now message au pairs and see who liked you.') });
+      }
     } catch (e) { setMsg({ level: 'error', text: e.message }); } finally { setBusy(false); }
   };
   // Families who signed up before launch have free days saved, and pick when to use them.
@@ -113,7 +123,7 @@ export default function FamilyPass() {
             return (
               <Pressable key={p.id} onPress={() => setPlanId(p.id)} accessibilityRole="radio" accessibilityState={{ selected: on }}
                 style={{ flex: 1, alignItems: 'center', gap: 2, paddingVertical: 16, borderRadius: 16, borderWidth: 2, borderColor: on ? C.primary : '#d0d5dd' }}>
-                {p.days === 90 && plans.length > 1 ? <Text style={{ position: 'absolute', top: -11, backgroundColor: C.primary, color: '#fff', fontSize: 12, fontWeight: '700', paddingHorizontal: 10, paddingVertical: 2, borderRadius: 999, overflow: 'hidden' }}>{tr('Best value')}</Text> : null}
+                {p.days === best && plans.length > 1 ? <Text style={{ position: 'absolute', top: -11, backgroundColor: C.primary, color: '#fff', fontSize: 12, fontWeight: '700', paddingHorizontal: 10, paddingVertical: 2, borderRadius: 999, overflow: 'hidden' }}>{tr('Best value')}</Text> : null}
                 <T bold>{planName(p)}</T>
                 <T h1>{prices[p.product_id] || p.price}</T>
               </Pressable>
@@ -123,10 +133,18 @@ export default function FamilyPass() {
         {msg ? <Alert level={msg.level} text={msg.text} /> : null}
         {paymentsAvailable() ? (
           <>
-            <Button title={pass.active ? tr('Add {plan}', { plan: planName(plan) }) : tr('Get {plan}', { plan: planName(plan) })} onPress={buy} loading={busy} />
+            <Button title={pass.active ? tr('Add {plan}', { plan: planName(plan) }) : tr('Get {plan}', { plan: planName(plan) })} onPress={() => buy()} loading={busy} />
             <Button title={tr('Restore purchases')} kind="ghost" small onPress={restore} disabled={busy} />
           </>
         ) : <Alert level="info" text={pass.required ? tr('Payments are coming soon.') : tr('Payments are coming soon. Until then, families can use every feature for free.')} />}
+        {rm ? (
+          <Card style={{ gap: 8 }}>
+            <T bold>🔁 {tr('Rematch Guarantee')}</T>
+            <T>{tr('If your au pair leaves in the first {months} months, or the stay is cancelled before it starts, you get {days} days of the Family Pass free to find your next au pair.', { months: rm.cover_months, days: rm.pass_days })}</T>
+            {rm.active ? <T bold>{rm.placement_id ? tr('Your Rematch Guarantee covers your current placement.') : tr('Your Rematch Guarantee will cover your next confirmed placement.')}</T>
+              : paymentsAvailable() ? <Button kind="secondary" title={tr('Add it for {price}', { price: rematchPrice })} onPress={() => buy(rm)} loading={busy} /> : null}
+          </Card>
+        ) : null}
         <T small muted style={{ textAlign: 'center' }}>{tr('Au pairs never pay. Swiping and matching are free for everyone.')}</T>
         <Button title={tr('Not now')} kind="ghost" small onPress={() => (router.canGoBack() ? router.back() : router.replace('/discover'))} />
       </View>

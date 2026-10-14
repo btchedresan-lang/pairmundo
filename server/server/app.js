@@ -48,10 +48,14 @@ const CODE_MAX_ATTEMPTS = 5;
 export const PASS_PLANS = [
   { id: 'month', days: 30, price: '€39', amount: 3900, currency: 'eur', product_id: 'family_pass_30', name: 'PairMundo Family Pass (1 month)' },
   { id: 'quarter', days: 90, price: '€79', amount: 7900, currency: 'eur', product_id: 'family_pass_90', name: 'PairMundo Family Pass (3 months)' },
+  { id: 'half', days: 180, price: '€119', amount: 11900, currency: 'eur', product_id: 'family_pass_180', name: 'PairMundo Family Pass (6 months)' },
 ];
 // The 3-month pass is the default, and what app versions from before the 1-month pass show.
 export const FAMILY_PASS = PASS_PLANS[1];
 const passPlan = (key, value) => PASS_PLANS.find((p) => p[key] === value);
+/** The Rematch Guarantee: paid once, it covers one placement. If the placement is cancelled before the stay starts or
+ *  within cover_days of the start date, the family gets pass_days of the Family Pass free to find the next au pair. */
+export const REMATCH = { id: 'rematch', price: '€29', amount: 2900, currency: 'eur', product_id: 'rematch_guarantee', name: 'PairMundo Rematch Guarantee', cover_days: 183, pass_days: 90 };
 /** What an ambassador earns for people who join with their referral code, in US cents (ambassadors are paid in
  *  dollars, whatever the Family Pass costs). Au pair profile rewards count only once the au pair's ID is verified,
  *  and stop at the monthly cap, because a profile alone is easy to fake. */
@@ -876,16 +880,53 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   const passView = (u) => {
     const p = activePass(u.id);
     return { required: passRequired() && u.role === 'family', active: !!p, trial: p?.source === 'trial', early: p?.source === 'early', early_bonus: earlyView(u), gift_active: p?.source === 'gift', gift: giftView(u), ends_at: p?.ends_at ?? null, days: FAMILY_PASS.days, price: FAMILY_PASS.price, web_checkout: !!checkout, product_id: FAMILY_PASS.product_id,
-      plans: PASS_PLANS.map(({ id, days, price, product_id }) => ({ id, days, price, product_id })) };
+      plans: PASS_PLANS.map(({ id, days, price, product_id }) => ({ id, days, price, product_id })), rematch: u.role === 'family' ? rematchView(u.id) : null };
+  };
+  // ---------- Rematch Guarantee ----------
+  const openPlacementSql = "family_id = ? AND (status = 'confirmed' OR (status = 'active' AND date('now') < date(start_date, ?)))";
+  /** The guarantee that still protects a family: one waiting for a placement, or one on a placement that can still end early. */
+  const liveGuarantee = (userId) => db.prepare(`SELECT g.* FROM rematch_guarantees g LEFT JOIN placements p ON p.id = g.placement_id
+      WHERE g.user_id = ? AND g.claimed_at IS NULL AND g.refunded_at IS NULL
+        AND (g.placement_id IS NULL OR p.status = 'confirmed' OR (p.status = 'active' AND date('now') < date(p.start_date, ?)))
+      ORDER BY g.id LIMIT 1`).get(userId, `+${REMATCH.cover_days} days`);
+  /** Puts a family's waiting guarantee on their open placement that has no cover yet, if there is one. */
+  const attachGuarantee = (userId) => {
+    const g = db.prepare('SELECT id FROM rematch_guarantees WHERE user_id = ? AND placement_id IS NULL AND claimed_at IS NULL AND refunded_at IS NULL ORDER BY id LIMIT 1').get(userId);
+    if (!g) return;
+    const p = db.prepare(`SELECT id FROM placements WHERE ${openPlacementSql}
+        AND id NOT IN (SELECT placement_id FROM rematch_guarantees WHERE placement_id IS NOT NULL) ORDER BY start_date LIMIT 1`).get(userId, `+${REMATCH.cover_days} days`);
+    if (p) db.prepare('UPDATE rematch_guarantees SET placement_id = ? WHERE id = ?').run(p.id, g.id);
+  };
+  const rematchView = (userId) => {
+    const g = liveGuarantee(userId);
+    const claimed = db.prepare('SELECT claimed_at FROM rematch_guarantees WHERE user_id = ? AND claimed_at IS NOT NULL ORDER BY claimed_at DESC LIMIT 1').get(userId);
+    return { price: REMATCH.price, product_id: REMATCH.product_id, pass_days: REMATCH.pass_days, cover_months: Math.round(REMATCH.cover_days / 30.5),
+      active: !!g, placement_id: g?.placement_id ?? null, can_buy: !g, last_claimed_at: claimed?.claimed_at ?? null };
+  };
+  /** Records a bought guarantee. A purchase already counted (same source and ref) is ignored. */
+  const grantRematch = (userId, source, ref = null) => {
+    if (ref && db.prepare('SELECT 1 FROM rematch_guarantees WHERE source = ? AND ref = ?').get(source, ref)) return false;
+    db.prepare('INSERT INTO rematch_guarantees (user_id, source, ref) VALUES (?,?,?)').run(userId, source, ref);
+    attachGuarantee(userId);
+    return true;
+  };
+  /** A covered placement ended early: the family gets their free pass, once. */
+  const claimRematch = (p, from) => {
+    if (!(from === 'confirmed' || (from === 'active' && db.prepare("SELECT date('now') < date(?, ?) ok").get(p.start_date, `+${REMATCH.cover_days} days`).ok))) return;
+    const g = db.prepare('SELECT * FROM rematch_guarantees WHERE placement_id = ? AND claimed_at IS NULL AND refunded_at IS NULL').get(p.id);
+    if (!g) return;
+    db.prepare("UPDATE rematch_guarantees SET claimed_at = datetime('now') WHERE id = ?").run(g.id);
+    grantPass(p.family_id, 'rematch', `rematch-${g.id}`, REMATCH.pass_days, { quiet: true });
+    notify(p.family_id, 'pass', 'Your Rematch Guarantee gave you {days} free days of the Family Pass to find your next au pair.', { days: REMATCH.pass_days }, '#/discover');
   };
   /** Adds a pass, starting when the current one ends. A purchase already counted (same source and ref) is ignored. */
   const grantPass = (userId, source, ref = null, days = FAMILY_PASS.days, { quiet = false } = {}) => {
     if (ref && db.prepare('SELECT 1 FROM passes WHERE source = ? AND ref = ?').get(source, ref)) return false;
     const start = activePass(userId)?.ends_at ?? db.prepare("SELECT datetime('now') d").get().d;
     db.prepare("INSERT INTO passes (user_id, source, ref, starts_at, ends_at) VALUES (?,?,?,?, datetime(?, ?))").run(userId, source, ref, start, start, `+${Number(days)} days`);
-    // A family's first paid pass earns their ambassador a reward. Trials, the early family bonus, gift days and free days
-    // from an admin don't count.
-    const plan = !['trial', 'early', 'gift', 'admin'].includes(source) && passPlan('days', Number(days));
+    // A family's first paid pass earns their ambassador a reward. Trials, the early family bonus, gift days, free days
+    // from an admin and a Rematch Guarantee pass don't count.
+    const plan = !['trial', 'early', 'gift', 'admin', 'rematch'].includes(source) && passPlan('days', Number(days));
     if (plan) addReward(userId, 'pass', AMBASSADOR_REWARDS.pass, `First Family Pass (${plan.price})`);
     if (!quiet) notify(userId, 'pass', 'Your Family Pass is active. You can now message au pairs and see who liked you.', {}, '#/likes');
     return true;
@@ -1074,20 +1115,24 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   api.post('/family-pass/checkout', requireAuth, wrap(async (req) => {
     if (!checkout) throw new HttpError(503, 'Payments are coming soon.');
     if (req.user.role !== 'family') throw forbidden('Only families need the Family Pass.');
-    const plan = passPlan('id', req.body?.plan) || FAMILY_PASS;
+    const plan = req.body?.plan === REMATCH.id ? REMATCH : passPlan('id', req.body?.plan) || FAMILY_PASS;
+    if (plan === REMATCH && liveGuarantee(req.user.id)) throw new HttpError(409, 'You already have a Rematch Guarantee.');
     const s = await checkout.start(req.user, {
       amount: plan.amount, currency: plan.currency, name: plan.name, plan: plan.id,
       successUrl: `${publicBase()}/#/family-pass?paid={CHECKOUT_SESSION_ID}`, cancelUrl: `${publicBase()}/#/family-pass`,
     });
     return { url: s.url };
   }));
+  /** A paid Stripe Checkout session: a pass of the plan bought, or a Rematch Guarantee. */
+  const fulfilStripe = (userId, sessionId, planId) => (planId === REMATCH.id ? grantRematch(userId, 'stripe', sessionId)
+    : grantPass(userId, 'stripe', sessionId, (passPlan('id', planId) || FAMILY_PASS).days));
   api.post('/family-pass/checkout/:id', requireAuth, wrap(async (req) => {
     if (!checkout) throw new HttpError(503, 'Payments are coming soon.');
     let r;
     try { r = await checkout.result(req.params.id); } catch { throw notFound(); }
     if (r.userId !== req.user.id) throw notFound();
-    if (r.paid) grantPass(req.user.id, 'stripe', req.params.id, (passPlan('id', r.plan) || FAMILY_PASS).days);
-    return { paid: r.paid, pass: passView(req.user) };
+    if (r.paid) fulfilStripe(req.user.id, req.params.id, r.plan);
+    return { paid: r.paid, plan: r.plan, pass: passView(req.user) };
   }));
   // Apple and Google purchases, checked with RevenueCat. The app calls this after buying and for "Restore purchases";
   // RevenueCat's webhook below does the same thing in the background.
@@ -1103,6 +1148,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     for (const p of list) {
       const plan = planFor(p.product);
       if (plan && (!p.purchasedAt || Date.parse(p.purchasedAt) > Date.now() - plan.days * 86400000) && grantPass(req.user.id, p.store, p.ref, plan.days)) added++;
+      if (p.product === REMATCH.product_id && (!p.purchasedAt || Date.parse(p.purchasedAt) > Date.now() - REMATCH.cover_days * 86400000) && grantRematch(req.user.id, p.store, p.ref)) added++;
     }
     return { added, pass: passView(req.user) };
   }));
@@ -1111,6 +1157,13 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const e = req.body?.event || {};
     const u = getUser(Number(e.app_user_id));
     const plan = planFor(e.product_id);
+    if (u?.role === 'family' && e.product_id === REMATCH.product_id && e.transaction_id) {
+      const ref = String(e.transaction_id);
+      if (e.type === 'NON_RENEWING_PURCHASE') grantRematch(u.id, storeName(e.store), ref);
+      // A refunded guarantee stops covering; a free pass it already gave stays.
+      if (e.type === 'CANCELLATION' || e.type === 'REFUND') db.prepare("UPDATE rematch_guarantees SET refunded_at = datetime('now') WHERE user_id = ? AND source = ? AND ref = ?").run(u.id, storeName(e.store), ref);
+      return { received: true };
+    }
     if (!u || u.role !== 'family' || !plan || !e.transaction_id) return { received: true };
     const ref = String(e.transaction_id);
     if (e.type === 'NON_RENEWING_PURCHASE') grantPass(u.id, storeName(e.store), ref, plan.days);
@@ -1170,7 +1223,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     }
     if (event.type === 'checkout.session.completed' && s?.id && s.metadata?.product === 'family_pass' && s.payment_status === 'paid') {
       const u = getUser(Number(s.metadata.user_id));
-      if (u) grantPass(u.id, 'stripe', s.id, (passPlan('id', s.metadata.plan) || FAMILY_PASS).days);
+      if (u) fulfilStripe(u.id, s.id, s.metadata.plan);
     }
     res.json({ received: true });
   };
@@ -1458,6 +1511,10 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (!p || (req.user.role !== 'admin' && p.aupair_id !== req.user.id && p.family_id !== req.user.id)) throw notFound();
     return p;
   };
+  const rematchCover = (placementId) => {
+    const g = db.prepare('SELECT claimed_at FROM rematch_guarantees WHERE placement_id = ? AND refunded_at IS NULL').get(placementId);
+    return { covered: !!g, claimed: !!g?.claimed_at };
+  };
   const placementView = (p, me) => {
     const ap = getUser(p.aupair_id); const fam = getUser(p.family_id);
     const program = getProgram(p.country);
@@ -1472,6 +1529,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       my_review: myReview ? { ...myReview, criteria: json.parse(myReview.criteria, {}) } : null,
       can_review: me.role !== 'admin' && ['active', 'completed'].includes(p.status) && !myReview,
       review_criteria: REVIEW_CRITERIA[me.id === p.aupair_id ? 'family' : 'aupair'],
+      // Only the family sees whether their Rematch Guarantee covers this placement.
+      rematch: me.id === p.family_id ? rematchCover(p.id) : null,
     };
   };
 
@@ -1628,6 +1687,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const fresh = db.prepare('SELECT * FROM placements WHERE id = ?').get(p.id);
     if (fresh.aupair_confirmed && fresh.family_confirmed) {
       db.prepare("UPDATE placements SET status = 'confirmed' WHERE id = ?").run(p.id);
+      attachGuarantee(p.family_id);
       for (const uid of [p.aupair_id, p.family_id]) notify(uid, 'placement', 'Your placement is confirmed. Work through the checklist together.', {}, `#/placements/${p.id}`);
     }
     return placementView(db.prepare('SELECT * FROM placements WHERE id = ?').get(p.id), req.user);
@@ -1641,6 +1701,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     db.prepare('UPDATE placements SET status = ? WHERE id = ?').run(next, p.id);
     const other = req.user.id === p.aupair_id ? p.family_id : p.aupair_id;
     notify(other, 'placement', next === 'cancelled' ? 'Your placement was cancelled.' : `Your placement is now ${next}.`, {}, `#/placements/${p.id}`);
+    if (next === 'cancelled') claimRematch(p, p.status);
     // The stay has started: whoever an ambassador brought in, on either side, earns them the placement reward.
     if (next === 'active') for (const uid of [p.aupair_id, p.family_id]) addReward(uid, 'placement', AMBASSADOR_REWARDS.placement, `Placement ${p.id}`);
     if (next === 'completed') {
