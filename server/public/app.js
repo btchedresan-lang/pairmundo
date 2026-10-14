@@ -989,7 +989,7 @@ function resizeImage(file, max = 1200) {
   });
 }
 
-let PROGRAM_CODES = ['US', 'DE', 'FR', 'NL', 'DK', 'NO', 'SE', 'ES', 'CH', 'GB', 'IE', 'AU', 'BE'];
+let PROGRAM_CODES = ['US', 'DE', 'FR', 'NL', 'DK', 'NO', 'SE', 'ES', 'CH', 'GB', 'IE', 'AU', 'CA', 'BE'];
 
 // ---------- requests ----------
 function requestRow(r) {

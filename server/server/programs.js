@@ -131,6 +131,16 @@ export const PROGRAMS = [
     official_source: 'https://iapa.org/2026/08/19/no-visas-no-answers-australias-working-holiday-visa-delays-leave-au-pairs-and-families-in-limbo/',
   },
   {
+    code: 'CA', name: 'Canada', currency: 'CAD',
+    visa: 'International Experience Canada (IEC) Working Holiday open work permit; Canada has no dedicated au pair visa',
+    min_age: 18, max_age: 35, max_weekly_hours: 40, max_daily_hours: null,
+    min_pocket_money: null, pocket_money_note: 'Au pairs are employees in Canada: the provincial minimum wage applies, and room and board deductions are capped by each province.',
+    min_months: 6, max_months: 24, agency_required: 0,
+    family_obligations: ['Employment contract', 'Provincial minimum wage, overtime and vacation pay', 'Payroll deductions (CPP, EI, income tax) through a CRA payroll account', 'Private room and board, deducted only as the province allows'],
+    notes: 'Only citizens of countries with a youth mobility agreement with Canada can apply. The upper age limit is 30 or 35 and the permit lasts 12 or 24 months, depending on nationality. Invitations are drawn from pools, so apply early. Overtime starts at 40 to 44 hours a week depending on the province.',
+    official_source: 'https://www.canada.ca/en/immigration-refugees-citizenship/services/work-canada/iec.html',
+  },
+  {
     code: 'BE', name: 'Belgium', currency: 'EUR',
     visa: 'Single permit for au pairs (non-EU)',
     min_age: 18, max_age: 26, max_weekly_hours: 20, max_daily_hours: 4,
@@ -241,6 +251,16 @@ export const PAPERWORK = {
       { title: 'Register with the commune within 8 days of arrival', owner: 'aupair', offset: 8 },
     ],
     eu: [{ title: 'Register with the commune within 8 days of arrival', owner: 'aupair', offset: 8 }],
+  },
+  CA: {
+    visa: [
+      { title: 'Create an IEC profile and enter the Working Holiday pool', owner: 'aupair', offset: -150 },
+      { title: 'Accept the invitation and apply for the work permit within 20 days', owner: 'aupair', offset: -120 },
+      { title: 'Give your biometrics within 30 days if asked', owner: 'aupair', offset: -100 },
+      { title: 'Family registers for a CRA payroll account', owner: 'family', offset: -14 },
+      { title: 'Show your port of entry letter and health insurance at the border', owner: 'aupair', offset: 0 },
+      { title: 'Apply for a Social Insurance Number (SIN) after arrival', owner: 'aupair', offset: 7 },
+    ],
   },
   IE: {
     visa: [
