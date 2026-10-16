@@ -34,6 +34,24 @@ export const waitlistEmail = (lang, leaveUrl, earlyDays = 0) => {
   return { subject: t(lang, "You're on the {app} list", v), text: earlyDays ? `${body.slice(0, at)}\n\n${early}${body.slice(at)}` : body };
 };
 
+/**
+ * Before launch: tells a family on the waitlist, who has no account yet, that they can make their profile on the
+ * website now (kind 'invite'), or reminds them once (kind 'reminder'). earlyDays mentions the free days they saved.
+ */
+export const profileInviteEmail = (lang, { kind, email, signupUrl, leaveUrl, earlyDays = 0 }) => {
+  const v = { app: APP_NAME, email, link: signupUrl, days: earlyDays };
+  const parts = kind === 'reminder'
+    ? [t(lang, 'Hi!\n\nA quick reminder: your family can already make its {app} profile on the website. Sign up with this email address ({email}) here: {link}', v),
+      t(lang, 'Add a photo and a few lines about your family, and au pairs can start liking you.', v)]
+    : [t(lang, "Hi!\n\nThanks for joining the {app} list. You don't have to wait for the apps: your family can make its profile on the website today, and au pairs are joining now.", v),
+      t(lang, "It takes about 5 minutes:\n1. Sign up with this email address ({email}): {link}\n2. Add a photo of your family.\n3. Write a few lines about your family and the help you're looking for.", v),
+      t(lang, 'Au pairs can only like families who have a photo and a few words, so the sooner your profile is there, the sooner they can find you.', v)];
+  if (earlyDays) parts.push(t(lang, 'Your {days} extra free days of the Family Pass are already saved to this email address. Use them whenever it suits you.', v));
+  parts.push(t(lang, 'See you on {app},\nThe {app} team', v));
+  parts.push(t(lang, 'You got this email because you joined the {app} list. To leave the list, open this link: {link}', { ...v, link: leaveUrl }));
+  return { subject: t(lang, kind === 'reminder' ? 'Your family profile is waiting' : 'Your family profile on {app} is open', v), text: parts.join('\n\n') };
+};
+
 /** Asks someone an au pair named to confirm what they know about them. */
 export const referenceEmail = (lang, { aupair, referee, link }) => {
   const v = { app: APP_NAME, aupair, referee, link };

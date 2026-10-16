@@ -218,6 +218,23 @@ CREATE TABLE IF NOT EXISTS launch_emails (
   sent_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Before launch, families on the waitlist without an account are invited to make their profile on the website, then
+-- reminded once (kind: invite | reminder). One row per email and kind, so nobody gets either twice.
+CREATE TABLE IF NOT EXISTS profile_invites (
+  email TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  sent_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (email, kind)
+);
+
+-- New accounts still missing a photo or bio get a nudge 2 days and 7 days after signing up (kind: day2 | day7).
+CREATE TABLE IF NOT EXISTS profile_nudges (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  sent_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (user_id, kind)
+);
+
 -- Family Pass: paid access for host families (messaging au pairs, seeing who liked them).
 CREATE TABLE IF NOT EXISTS passes (
   id INTEGER PRIMARY KEY,

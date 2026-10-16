@@ -247,6 +247,42 @@ export const DICT = {
   "You got this email because you joined the {app} list. To leave the list, open this link: {link}": {
     es: "Recibes este email porque te uniste a la lista de {app}. Para salir de la lista, abre este enlace: {link}", fr: "Vous recevez cet e-mail parce que vous vous êtes inscrit à la liste {app}. Pour quitter la liste, ouvrez ce lien : {link}",
     de: "Du bekommst diese E-Mail, weil du dich auf die {app}-Liste gesetzt hast. Um die Liste zu verlassen, öffne diesen Link: {link}", pt: "Você recebeu este e-mail porque entrou na lista do {app}. Para sair da lista, abra este link: {link}" },
+  "Your family profile on {app} is open": {
+    es: "Ya puedes crear el perfil de tu familia en {app}", fr: "Le profil de votre famille sur {app} est ouvert",
+    de: "Euer Familienprofil auf {app} ist offen", pt: "O perfil da sua família no {app} já está aberto" },
+  "Hi!\n\nThanks for joining the {app} list. You don't have to wait for the apps: your family can make its profile on the website today, and au pairs are joining now.": {
+    es: "¡Hola!\n\nGracias por unirte a la lista de {app}. No hace falta esperar a las apps: tu familia ya puede crear su perfil en la web, y los au pairs se están uniendo ahora.", fr: "Bonjour !\n\nMerci de vous être inscrit à la liste {app}. Inutile d'attendre les applications : votre famille peut créer son profil sur le site dès aujourd'hui, et des au pairs s'inscrivent en ce moment.",
+    de: "Hallo!\n\nDanke, dass du dich auf die {app}-Liste gesetzt hast. Du musst nicht auf die Apps warten: Deine Familie kann ihr Profil schon heute auf der Website anlegen, und gerade melden sich Au-pairs an.", pt: "Olá!\n\nObrigado por entrar na lista do {app}. Não precisa esperar pelos apps: sua família já pode criar o perfil no site hoje, e au pairs estão entrando agora." },
+  "It takes about 5 minutes:\n1. Sign up with this email address ({email}): {link}\n2. Add a photo of your family.\n3. Write a few lines about your family and the help you're looking for.": {
+    es: "Se tarda unos 5 minutos:\n1. Regístrate con este email ({email}): {link}\n2. Añade una foto de tu familia.\n3. Escribe unas líneas sobre tu familia y la ayuda que buscas.", fr: "Cela prend environ 5 minutes :\n1. Inscrivez-vous avec cette adresse e-mail ({email}) : {link}\n2. Ajoutez une photo de votre famille.\n3. Écrivez quelques lignes sur votre famille et l'aide que vous cherchez.",
+    de: "Das dauert etwa 5 Minuten:\n1. Registriere dich mit dieser E-Mail-Adresse ({email}): {link}\n2. Füge ein Foto deiner Familie hinzu.\n3. Schreib ein paar Zeilen über deine Familie und die Hilfe, die du suchst.", pt: "Leva uns 5 minutos:\n1. Cadastre-se com este e-mail ({email}): {link}\n2. Adicione uma foto da sua família.\n3. Escreva algumas linhas sobre sua família e a ajuda que procura." },
+  "Au pairs can only like families who have a photo and a few words, so the sooner your profile is there, the sooner they can find you.": {
+    es: "Los au pairs solo pueden dar like a familias con foto y unas palabras, así que cuanto antes esté tu perfil, antes te encontrarán.", fr: "Les au pairs ne peuvent liker que les familles qui ont une photo et quelques mots : plus tôt votre profil est en ligne, plus tôt ils vous trouvent.",
+    de: "Au-pairs können nur Familien mit Foto und ein paar Worten liken. Je früher dein Profil steht, desto früher finden sie dich.", pt: "Au pairs só podem curtir famílias que têm foto e algumas palavras, então quanto antes seu perfil estiver lá, antes eles encontram vocês." },
+  "Your {days} extra free days of the Family Pass are already saved to this email address. Use them whenever it suits you.": {
+    es: "Tus {days} días gratis extra de Family Pass ya están guardados en este email. Úsalos cuando te venga bien.", fr: "Vos {days} jours gratuits de Family Pass en plus sont déjà réservés à cette adresse e-mail. Utilisez-les quand cela vous convient.",
+    de: "Deine {days} zusätzlichen Gratistage des Family Pass sind schon für diese E-Mail-Adresse gespeichert. Löse sie ein, wann es dir passt.", pt: "Seus {days} dias grátis extras de Family Pass já estão guardados neste e-mail. Use quando for melhor para você." },
+  "See you on {app},\nThe {app} team": {
+    es: "Nos vemos en {app},\nEl equipo de {app}", fr: "À bientôt sur {app},\nL'équipe {app}",
+    de: "Bis bald auf {app},\nDein {app}-Team", pt: "Até já no {app},\nEquipe {app}" },
+  "Your family profile is waiting": {
+    es: "El perfil de tu familia te espera", fr: "Le profil de votre famille vous attend",
+    de: "Euer Familienprofil wartet", pt: "O perfil da sua família está esperando" },
+  "Hi!\n\nA quick reminder: your family can already make its {app} profile on the website. Sign up with this email address ({email}) here: {link}": {
+    es: "¡Hola!\n\nUn recordatorio rápido: tu familia ya puede crear su perfil de {app} en la web. Regístrate con este email ({email}) aquí: {link}", fr: "Bonjour !\n\nPetit rappel : votre famille peut déjà créer son profil {app} sur le site. Inscrivez-vous avec cette adresse e-mail ({email}) ici : {link}",
+    de: "Hallo!\n\nKurze Erinnerung: Deine Familie kann ihr {app}-Profil schon auf der Website anlegen. Registriere dich mit dieser E-Mail-Adresse ({email}) hier: {link}", pt: "Olá!\n\nUm lembrete rápido: sua família já pode criar o perfil no {app} pelo site. Cadastre-se com este e-mail ({email}) aqui: {link}" },
+  "Add a photo and a few lines about your family, and au pairs can start liking you.": {
+    es: "Añade una foto y unas líneas sobre tu familia, y los au pairs podrán empezar a darte like.", fr: "Ajoutez une photo et quelques lignes sur votre famille, et les au pairs pourront commencer à vous liker.",
+    de: "Füge ein Foto und ein paar Zeilen über deine Familie hinzu, dann können Au-pairs dich liken.", pt: "Adicione uma foto e algumas linhas sobre sua família, e os au pairs já podem curtir vocês." },
+  "Au pairs can only like families with a photo and a few words. Add yours to your profile; it takes about 5 minutes.": {
+    es: "Los au pairs solo pueden dar like a familias con foto y unas palabras. Añade las tuyas a tu perfil; se tarda unos 5 minutos.", fr: "Les au pairs ne peuvent liker que les familles avec une photo et quelques mots. Ajoutez les vôtres à votre profil ; cela prend environ 5 minutes.",
+    de: "Au-pairs können nur Familien mit Foto und ein paar Worten liken. Ergänze beides in deinem Profil; das dauert etwa 5 Minuten.", pt: "Au pairs só podem curtir famílias com foto e algumas palavras. Adicione as suas ao perfil; leva uns 5 minutos." },
+  "Families can only like au pairs with a photo and a few words. Add yours to your profile; it takes about 5 minutes.": {
+    es: "Las familias solo pueden dar like a au pairs con foto y unas palabras. Añade las tuyas a tu perfil; se tarda unos 5 minutos.", fr: "Les familles ne peuvent liker que les au pairs avec une photo et quelques mots. Ajoutez les vôtres à votre profil ; cela prend environ 5 minutes.",
+    de: "Familien können nur Au-pairs mit Foto und ein paar Worten liken. Ergänze beides in deinem Profil; das dauert etwa 5 Minuten.", pt: "Famílias só podem curtir au pairs com foto e algumas palavras. Adicione as suas ao perfil; leva uns 5 minutos." },
+  "Finish your profile here: {link}": {
+    es: "Completa tu perfil aquí: {link}", fr: "Complétez votre profil ici : {link}",
+    de: "Vervollständige dein Profil hier: {link}", pt: "Complete seu perfil aqui: {link}" },
 };
 
 // Swedish lives in its own file, keyed by the same English text.
