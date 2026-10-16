@@ -79,5 +79,17 @@
   "You got this email because you have a {app} account.": "Du får det här mejlet eftersom du har ett konto på {app}.",
   "You got this email because you joined the {app} list. To leave the list, open this link: {link}": "Du får det här mejlet eftersom du skrev upp dig på listan för {app}. Om du vill lämna listan öppnar du den här länken: {link}",
   "Your Family Pass has ended. You still have {free} free days saved, a gift from {from}. Use them whenever you are ready.": "Ert Family Pass har tagit slut. Ni har fortfarande {free} gratisdagar sparade, en gåva från {from}. Använd dem när ni vill.",
-  "Your Rematch Guarantee gave you {days} free days of the Family Pass to find your next au pair.": "Er rematchgaranti gav er {days} gratisdagar av Family Pass, så att ni kan hitta er nästa au pair."
+  "Your Rematch Guarantee gave you {days} free days of the Family Pass to find your next au pair.": "Er rematchgaranti gav er {days} gratisdagar av Family Pass, så att ni kan hitta er nästa au pair.",
+  "Your family profile on {app} is open": "Nu kan ni skapa er familjeprofil på {app}",
+  "Hi!\n\nThanks for joining the {app} list. You don't have to wait for the apps: your family can make its profile on the website today, and au pairs are joining now.": "Hej!\n\nTack för att ni skrev upp er på {app}-listan. Ni behöver inte vänta på apparna: er familj kan skapa sin profil på webbplatsen redan i dag, och au pairer ansluter just nu.",
+  "It takes about 5 minutes:\n1. Sign up with this email address ({email}): {link}\n2. Add a photo of your family.\n3. Write a few lines about your family and the help you're looking for.": "Det tar ungefär 5 minuter:\n1. Registrera er med den här mejladressen ({email}): {link}\n2. Lägg till en bild på er familj.\n3. Skriv några rader om er familj och vilken hjälp ni söker.",
+  "Au pairs can only like families who have a photo and a few words, so the sooner your profile is there, the sooner they can find you.": "Au pairer kan bara gilla familjer som har en bild och några ord, så ju förr er profil finns där, desto förr kan de hitta er.",
+  "Your {days} extra free days of the Family Pass are already saved to this email address. Use them whenever it suits you.": "Era {days} extra gratisdagar av Family Pass är redan sparade på den här mejladressen. Använd dem när det passar er.",
+  "See you on {app},\nThe {app} team": "Vi ses på {app},\n{app}-teamet",
+  "Your family profile is waiting": "Er familjeprofil väntar",
+  "Hi!\n\nA quick reminder: your family can already make its {app} profile on the website. Sign up with this email address ({email}) here: {link}": "Hej!\n\nEn snabb påminnelse: er familj kan redan skapa sin {app}-profil på webbplatsen. Registrera er med den här mejladressen ({email}) här: {link}",
+  "Add a photo and a few lines about your family, and au pairs can start liking you.": "Lägg till en bild och några rader om er familj, så kan au pairer börja gilla er.",
+  "Au pairs can only like families with a photo and a few words. Add yours to your profile; it takes about 5 minutes.": "Au pairer kan bara gilla familjer med en bild och några ord. Lägg till era i profilen; det tar ungefär 5 minuter.",
+  "Families can only like au pairs with a photo and a few words. Add yours to your profile; it takes about 5 minutes.": "Familjer kan bara gilla au pairer med en bild och några ord. Lägg till dina i profilen; det tar ungefär 5 minuter.",
+  "Finish your profile here: {link}": "Gör klart din profil här: {link}"
 }

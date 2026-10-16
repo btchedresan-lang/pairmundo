@@ -7,7 +7,7 @@ import { hashPassword, verifyPassword, createSession, sessionMiddleware, require
 import { scoreMatch, checkCompliance, ageOn } from './matching.js';
 import { PROGRAMS, REVIEW_CRITERIA, placementTaskList } from './programs.js';
 import { buildAgreement, cleanTerms, defaultTerms, REQUIRED_TERMS } from './agreement.js';
-import { createMailer, codeEmail, launchEmail, referenceEmail, waitlistEmail } from './mailer.js';
+import { createMailer, codeEmail, launchEmail, profileInviteEmail, referenceEmail, waitlistEmail } from './mailer.js';
 import { countryName, pickLang, t as translate } from './i18n.js';
 import { createCheckout, createIdentity, verifyWebhook } from './identity.js';
 import { createRevenueCat, storeName, webhookAuthorized } from './revenuecat.js';
@@ -1106,6 +1106,33 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     return sent;
   };
   app.sendSearchNudges = sendSearchNudges;
+
+  // New accounts still missing a photo or bio can't be liked, so nudge them 2 days and 7 days after they sign up, in
+  // the app, by push and by email. Only accounts from the last 30 days, so old accounts aren't suddenly emailed.
+  const PROFILE_NUDGES = {
+    family: 'Au pairs can only like families with a photo and a few words. Add yours to your profile; it takes about 5 minutes.',
+    aupair: 'Families can only like au pairs with a photo and a few words. Add yours to your profile; it takes about 5 minutes.',
+  };
+  const sendProfileNudges = () => {
+    const rows = db.prepare(`SELECT * FROM users WHERE role IN ('family', 'aupair') AND suspended = 0 AND email_verified = 1
+      AND created_at <= datetime('now', '-2 days') AND created_at > datetime('now', '-30 days')`).all();
+    let sent = 0;
+    for (const u of rows) {
+      if (!profileGaps(u).length) continue;
+      const kind = Date.parse(u.created_at.replace(' ', 'T') + 'Z') <= Date.now() - 7 * 86400000 ? 'day7' : 'day2';
+      // One nudge per kind; an account first seen after day 7 gets only the day-7 one.
+      if (kind === 'day2' && db.prepare('SELECT 1 FROM profile_nudges WHERE user_id = ?').get(u.id)) continue;
+      if (!db.prepare('INSERT OR IGNORE INTO profile_nudges (user_id, kind) VALUES (?,?)').run(u.id, kind).changes) continue;
+      const message = PROFILE_NUDGES[u.role];
+      notify(u.id, 'profile', message, {}, '#/profile');
+      const subject = translate(u.lang, message);
+      const text = `${subject}\n\n${translate(u.lang, 'Finish your profile here: {link}', { link: `${publicBase()}/#/profile` })}`;
+      Promise.resolve(mailer({ to: u.email, subject, text })).catch((e) => console.error('Profile nudge email failed:', e.message));
+      sent++;
+    }
+    return sent;
+  };
+  app.sendProfileNudges = sendProfileNudges;
   const mustHavePass = (u) => {
     if (needsPass(u)) throw new HttpError(402, 'Get the Family Pass to message au pairs.', 'pass_required');
   };
@@ -1898,6 +1925,58 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const limit = Math.min(Math.max(Math.floor(Number(req.body?.limit)) || 100, 1), 5000);
     app.launchEmailRun = runLaunchEmails(limit).catch((e) => { launchJob.error = e.message; console.error('Launch email failed:', e); });
     return launchStatus();
+  }));
+
+  // Before launch: families on the waitlist can already make their profile on the website, so an admin can invite
+  // those without an account to do it now, then remind them once (PROFILE_REMINDER_DAYS, 5 unless set, after the
+  // invite). Each press sends up to `limit` emails; nobody gets the same kind twice, and anyone who has signed up since
+  // is skipped.
+  const reminderDays = () => envInt('PROFILE_REMINDER_DAYS', 5, 60);
+  const inviteRecipients = (kind) => db.prepare(`SELECT w.* FROM waitlist w WHERE w.role = 'family'
+      AND NOT EXISTS (SELECT 1 FROM users u WHERE lower(trim(u.email)) = w.email)
+      AND NOT EXISTS (SELECT 1 FROM profile_invites i WHERE i.email = w.email AND i.kind = ?)
+      ${kind === 'reminder' ? "AND EXISTS (SELECT 1 FROM profile_invites i WHERE i.email = w.email AND i.kind = 'invite' AND i.sent_at <= datetime('now', ?))" : ''}
+    ORDER BY w.created_at, w.rowid`).all(...(kind === 'reminder' ? [kind, `-${reminderDays()} days`] : [kind]));
+  const inviteEmailFor = (w, kind) => {
+    const b = earlyDays() && db.prepare('SELECT redeemed_at FROM early_bonus WHERE email = ?').get(w.email);
+    return profileInviteEmail(w.lang || 'en', { kind, email: w.email, earlyDays: b && !b.redeemed_at ? earlyDays() : 0,
+      signupUrl: `${publicBase()}/#/register?role=family&email=${encodeURIComponent(w.email)}`, leaveUrl: `${publicBase()}/api/waitlist/leave?t=${w.token}` });
+  };
+  const inviteStatus = () => {
+    const n = (sql, ...a) => db.prepare(sql).get(...a).n;
+    const families = db.prepare("SELECT * FROM users WHERE role = 'family' AND suspended = 0").all();
+    const onList = new Set(db.prepare("SELECT email FROM waitlist WHERE role = 'family'").all().map((r) => r.email));
+    const fromList = families.filter((u) => onList.has(normEmail(u.email)));
+    return {
+      waitlist_families: onList.size,
+      waitlist_signed_up: fromList.length,
+      waitlist_profiles_done: fromList.filter((u) => !profileGaps(u).length).length,
+      family_accounts: families.length,
+      family_profiles_done: families.filter((u) => !profileGaps(u).length).length,
+      invited: n("SELECT COUNT(*) n FROM profile_invites WHERE kind = 'invite'"),
+      reminded: n("SELECT COUNT(*) n FROM profile_invites WHERE kind = 'reminder'"),
+      invite_ready: inviteRecipients('invite').length,
+      reminder_ready: inviteRecipients('reminder').length,
+      reminder_days: reminderDays(),
+      samples: ['invite', 'reminder'].map((kind) => ({ kind, ...inviteEmailFor({ email: 'name@example.com', lang: 'en', token: '…' }, kind) })),
+    };
+  };
+  api.get('/admin/profile-invites', requireRole('admin'), wrap(() => inviteStatus()));
+  api.post('/admin/profile-invites/send', requireRole('admin'), wrap(async (req) => {
+    const kind = req.body?.kind === 'reminder' ? 'reminder' : 'invite';
+    const limit = Math.min(Math.max(Math.floor(Number(req.body?.limit)) || 100, 1), 1000);
+    let sent = 0; let error = null;
+    for (const w of inviteRecipients(kind).slice(0, limit)) {
+      try { await mailer({ to: w.email, ...inviteEmailFor(w, kind) }); } catch (e) { error = `Stopped at ${w.email}: ${e.message}`; console.error('Profile invite failed:', e.message); break; }
+      db.prepare('INSERT OR IGNORE INTO profile_invites (email, kind) VALUES (?,?)').run(w.email, kind);
+      sent++;
+    }
+    return { ...inviteStatus(), sent, error };
+  }));
+  api.post('/admin/profile-invites/test', requireRole('admin'), wrap(async (req) => {
+    const { samples } = inviteStatus();
+    for (const m of samples) await mailer({ to: req.user.email, subject: `[Test: ${m.kind}] ${m.subject}`, text: m.text });
+    return { ok: true, to: req.user.email, count: samples.length };
   }));
 
   // Ambassadors: create them, see what each code brought in, and record payouts.

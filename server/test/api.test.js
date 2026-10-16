@@ -1478,3 +1478,85 @@ test('partner offers: admin adds affiliate links, they show on the right checkli
   list = (await call(admin, 'GET', '/admin/partner-offers')).body.offers;
   assert.ok(!list.some((o) => o.id === w.id));
 });
+
+test('profile invites: waitlisted families without an account are invited once, reminded once after a few days, in their language', async () => {
+  const db2 = openDb(':memory:');
+  const box = [];
+  const app2 = createApp(db2, { mailer: async (m) => { box.push(m); }, pusher: async (m) => m.map(() => ({ status: 'ok' })) });
+  const srv = await new Promise((r) => { const s = app2.listen(0, () => r(s)); });
+  const b2 = `http://127.0.0.1:${srv.address().port}/api`;
+  const call2 = async (token, method, path, body, headers = {}) => {
+    const res = await fetch(b2 + path, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...headers }, body: body ? JSON.stringify(body) : undefined });
+    return { status: res.status, body: await res.json() };
+  };
+  try {
+    const { hashPassword } = await import('../server/auth.js');
+    db2.prepare("INSERT INTO users (email, password_hash, role, name, email_verified) VALUES ('boss@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+    const admin = (await call2(null, 'POST', '/auth/login', { email: 'boss@test.io', password: 'password123' })).body.token;
+    await call2(null, 'POST', '/waitlist', { email: 'inv-sv@test.io', role: 'family' }, { 'Accept-Language': 'sv' });
+    await call2(null, 'POST', '/waitlist', { email: 'inv-en@test.io', role: 'family' });
+    await call2(null, 'POST', '/waitlist', { email: 'inv-ap@test.io', role: 'aupair' });
+    await call2(null, 'POST', '/waitlist', { email: 'inv-joined@test.io', role: 'family' });
+    await call2(null, 'POST', '/auth/register', { email: 'inv-joined@test.io', password: 'password123', role: 'family', name: 'Joined', country: 'SE' });
+
+    let s = (await call2(admin, 'GET', '/admin/profile-invites')).body;
+    assert.deepEqual([s.waitlist_families, s.waitlist_signed_up, s.waitlist_profiles_done, s.invite_ready, s.reminder_ready], [3, 1, 0, 2, 0]);
+    assert.equal((await call2(null, 'GET', '/admin/profile-invites')).status, 401);
+
+    // Only families with no account get it, in their language, with a sign-up link carrying their email and their saved days.
+    box.length = 0;
+    s = (await call2(admin, 'POST', '/admin/profile-invites/send', { kind: 'invite' })).body;
+    assert.equal(s.sent, 2);
+    assert.deepEqual(box.map((m) => m.to).sort(), ['inv-en@test.io', 'inv-sv@test.io']);
+    const en = box.find((m) => m.to === 'inv-en@test.io');
+    assert.match(en.subject, /Your family profile on PairMundo is open/);
+    assert.match(en.text, /#\/register\?role=family&email=inv-en%40test\.io/);
+    assert.match(en.text, /30 extra free days/);
+    assert.match(en.text, /waitlist\/leave\?t=/);
+    assert.match(box.find((m) => m.to === 'inv-sv@test.io').subject, /familjeprofil/);
+    assert.equal((await call2(admin, 'POST', '/admin/profile-invites/send', { kind: 'invite' })).body.sent, 0, 'never twice');
+
+    // The reminder waits until the invite is a few days old, and skips families who have signed up since.
+    assert.equal((await call2(admin, 'POST', '/admin/profile-invites/send', { kind: 'reminder' })).body.sent, 0);
+    db2.prepare("UPDATE profile_invites SET sent_at = datetime('now', '-6 days')").run();
+    await call2(null, 'POST', '/auth/register', { email: 'inv-sv@test.io', password: 'password123', role: 'family', name: 'Svensson', country: 'SE' });
+    box.length = 0;
+    s = (await call2(admin, 'POST', '/admin/profile-invites/send', { kind: 'reminder' })).body;
+    assert.equal(s.sent, 1);
+    assert.deepEqual(box.map((m) => m.to), ['inv-en@test.io']);
+    assert.match(box[0].subject, /Your family profile is waiting/);
+    assert.equal(s.waitlist_signed_up, 2);
+    assert.equal((await call2(admin, 'POST', '/admin/profile-invites/send', { kind: 'reminder' })).body.sent, 0, 'reminded once');
+
+    const t = await call2(admin, 'POST', '/admin/profile-invites/test');
+    assert.equal(t.body.count, 2);
+  } finally {
+    srv.close();
+  }
+});
+
+test('profile nudges: accounts without a photo or bio are nudged 2 and 7 days after signing up, once each', async () => {
+  const fam = await register('nudge-fam@test.io', 'family', 'SE', 'Nudge Family', { complete: false });
+  const done = await register('nudge-done@test.io', 'family', 'SE', 'Done Family');
+  const old = await register('nudge-old@test.io', 'aupair', 'CO', 'Old Ana', { complete: false });
+  testDb.prepare("UPDATE users SET created_at = datetime('now', '-40 days') WHERE id = ?").run(old.id);
+  const nudgesFor = (id) => testDb.prepare("SELECT COUNT(*) n FROM notifications WHERE user_id = ? AND kind = 'profile'").get(id).n;
+  app.sendProfileNudges();
+  assert.equal(nudgesFor(fam.id), 0, 'too early on the first day');
+  testDb.prepare("UPDATE users SET created_at = datetime('now', '-3 days') WHERE id IN (?, ?)").run(fam.id, done.id);
+  outbox.length = 0;
+  app.sendProfileNudges();
+  assert.equal(nudgesFor(fam.id), 1);
+  assert.equal(nudgesFor(done.id), 0, 'a finished profile gets nothing');
+  assert.equal(nudgesFor(old.id), 0, 'accounts older than 30 days get nothing');
+  const mail = outbox.find((m) => m.to === 'nudge-fam@test.io');
+  assert.match(mail.subject, /Au pairs can only like families with a photo/);
+  assert.match(mail.text, /#\/profile/);
+  app.sendProfileNudges();
+  assert.equal(nudgesFor(fam.id), 1, 'once per step');
+  testDb.prepare("UPDATE users SET created_at = datetime('now', '-8 days') WHERE id = ?").run(fam.id);
+  app.sendProfileNudges();
+  assert.equal(nudgesFor(fam.id), 2);
+  app.sendProfileNudges();
+  assert.equal(nudgesFor(fam.id), 2);
+});
