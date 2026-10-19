@@ -507,7 +507,7 @@ views.register = (_, query) => {
       <div class="field"><label>${tr('Name')}</label><input name="name" required placeholder="${tr('e.g. Maria Lopez or The Smith Family')}"></div>
       <div class="form-grid"><div class="field"><label>${tr('Country you live in')}</label><select name="country" required>${options(COUNTRIES, '', tr('Choose…'))}</select></div>
       <div class="field"><label>${tr('City')}</label><input name="city"></div></div>
-      <div class="field"><label>${tr('Email')}</label><input name="email" type="email" required autocomplete="email"></div>
+      <div class="field"><label>${tr('Email')}</label><input name="email" type="email" required autocomplete="email" value="${esc(query.get('email') || '')}"></div>
       <div class="field"><label>${tr('Password')}</label><input name="password" type="password" minlength="8" required autocomplete="new-password"></div>
       <div class="field"><label>${tr('Referral code (optional)')}</label><input name="ref_code" value="${esc(refCode() || '')}" autocapitalize="characters" autocomplete="off" placeholder="${tr('From the person who invited you')}"></div>
       <div id="err"></div><button class="btn" style="width:100%">${tr('Create account')}</button>
@@ -1338,6 +1338,34 @@ async function adminBackup() {
   };
   try { show(await api('/admin/backup')); } catch (e) { box.textContent = e.message; }
 }
+// Before launch: email waitlisted families without an account that they can make their profile on the website now,
+// then a reminder a few days later. Nothing goes out until the admin presses a button.
+async function adminProfileInvites() {
+  const box = document.getElementById('profileInvites'); if (!box) return;
+  const show = (p) => {
+    box.innerHTML = `<p><strong>${p.waitlist_signed_up}</strong> of ${p.waitlist_families} waitlisted families have an account, and <strong>${p.waitlist_profiles_done}</strong> of them have a photo and bio.
+        Across all families: <strong>${p.family_profiles_done}</strong> of ${p.family_accounts} profiles have a photo and bio.</p>
+      <p class="muted small">${p.invited} invited and ${p.reminded} reminded so far. Families who sign up are skipped, and nobody gets the same email twice.
+        The reminder goes to families invited at least ${p.reminder_days} days ago who still have no account.</p>
+      ${p.error ? `<div class="alert error small">${esc(p.error)}. Press the button again to carry on.</div>` : p.sent != null ? `<div class="alert ok small">Sent ${p.sent}.</div>` : ''}
+      <div class="row"><label class="small">Send up to <input id="inviteLimit" type="number" min="1" max="1000" value="100" style="width:80px"></label>
+        <button class="btn sm" id="inviteSend" ${p.invite_ready ? '' : 'disabled'}>Invite ${p.invite_ready} families</button>
+        <button class="btn secondary sm" id="reminderSend" ${p.reminder_ready ? '' : 'disabled'}>Remind ${p.reminder_ready} families</button>
+        <button class="btn ghost sm" id="inviteTest">Email me the samples</button></div>
+      <details><summary class="small">Read what families get</summary>${p.samples.map((m) => `<p class="small"><strong>${esc(m.subject)}</strong></p><pre class="small" style="white-space:pre-wrap">${esc(m.text)}</pre>`).join('')}</details>`;
+    const send = (kind) => async (e) => {
+      e.target.disabled = true;
+      try { show(await api('/admin/profile-invites/send', { method: 'POST', body: { kind, limit: Number(document.getElementById('inviteLimit').value) } })); }
+      catch (err) { toast(err.message); e.target.disabled = false; }
+    };
+    document.getElementById('inviteSend').onclick = send('invite');
+    document.getElementById('reminderSend').onclick = send('reminder');
+    document.getElementById('inviteTest').onclick = async () => {
+      try { const r = await api('/admin/profile-invites/test', { method: 'POST' }); toast(`Sent ${r.count} samples to ${r.to}`); } catch (err) { toast(err.message); }
+    };
+  };
+  try { show(await api('/admin/profile-invites')); } catch (e) { box.textContent = e.message; }
+}
 // Launch day: email everyone that the apps are out. Nothing goes out until the admin presses Send.
 async function adminLaunchEmail() {
   const box = document.getElementById('launchEmail'); if (!box) return;
@@ -1439,6 +1467,7 @@ views.admin = async ([tab = 'overview', id], qs) => {
     const w = await api('/admin/waitlist');
     const role = (r) => (r === 'aupair' ? 'Au pair' : r === 'family' ? 'Family' : '—');
     render(`${head}<div class="spread"><p><strong>${w.total}</strong> people want to hear when the apps launch.</p><a class="btn sm" href="/api/admin/waitlist.csv">⬇ Download as a spreadsheet (CSV)</a></div>
+      <div class="card"><h2>Invite families to make their profile now</h2><div id="profileInvites" class="muted small">Loading…</div></div>
       <div class="card"><h2>Launch email</h2><div id="launchEmail" class="muted small">Loading…</div></div>
       ${w.early_bonus ? `<div class="card"><h2>Early family bonus</h2><p><strong>${w.early_bonus.taken}</strong> of ${w.early_bonus.cap} spots taken (${w.early_bonus.accounts} with an account), <strong>${w.early_bonus.redeemed}</strong> used.
         ${w.early_bonus.open ? 'Open to new families.' : 'Closed to new families.'} ${w.early_bonus.launch_date ? `Launch date ${esc(w.early_bonus.launch_date)}; families can use their ${w.early_bonus.days} days until ${esc(w.early_bonus.use_by)}.` : 'Set LAUNCH_DATE to close it at launch and start the 12 months families have to use it.'}</p></div>` : ''}
@@ -1450,6 +1479,7 @@ views.admin = async ([tab = 'overview', id], qs) => {
         <table><tr><th>Source</th><th>Families</th><th>Au pairs</th></tr>${(w.signups_by_source || []).map((r) => `<tr><td>${esc(r.source || 'Website')}</td><td>${r.families}</td><td>${r.aupairs}</td></tr>`).join('')}</table></div>
       <div class="card table-wrap"><h2>Latest</h2><table><tr><th>Email</th><th>Role</th><th>Region</th><th>Language</th><th>Source</th><th>Joined</th></tr>
       ${w.people.map((p) => `<tr><td>${esc(p.email)}</td><td>${role(p.role)}</td><td>${cname(p.country) || '—'}</td><td>${esc(LANGUAGES[p.lang] || p.lang)}</td><td>${esc(p.source || '—')}</td><td>${fmtTime(p.created_at)}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">Nobody yet.</td></tr>'}</table></div>`);
+    adminProfileInvites();
     return adminLaunchEmail();
   }
   if (tab === 'ambassadors') return adminAmbassadors(head, id, qs);
