@@ -145,8 +145,18 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   };
 
   const photosOf = (u) => { const ph = json.parse(u.photos); return ph.length ? ph : u.photo_url ? [u.photo_url] : []; };
-  const publicUser = (u) => u && ({
-    id: u.id, role: u.role, name: u.name, country: u.country, city: u.city, photo_url: photosOf(u)[0] || null, photos: photosOf(u),
+  /** "Maria García López" → "Maria G.": the name other members see. */
+  const shortName = (name) => {
+    const w = String(name || '').trim().split(/\s+/);
+    return w.length < 2 ? w[0] : `${w[0]} ${Array.from(w[w.length - 1])[0].toLocaleUpperCase()}.`;
+  };
+  /** The full name is for the person themselves, admins, and the other side of a confirmed placement (contracts and visa papers need it). */
+  const seesFullName = (viewer, u) => !!viewer && (viewer.id === u.id || viewer.role === 'admin'
+    || !!db.prepare(`SELECT 1 FROM placements WHERE status IN ('confirmed', 'active', 'completed')
+        AND ((aupair_id = ? AND family_id = ?) OR (aupair_id = ? AND family_id = ?))`).get(viewer.id, u.id, u.id, viewer.id));
+  /** A member as `viewer` may see them. With no viewer, only the short name is shown. */
+  const publicUser = (u, viewer = null) => u && ({
+    id: u.id, role: u.role, name: seesFullName(viewer, u) ? u.name : shortName(u.name), country: u.country, city: u.city, photo_url: photosOf(u)[0] || null, photos: photosOf(u),
     verification: { id: !!u.id_verified, references: !!u.references_checked, background: !!u.background_checked },
     member_since: u.created_at, last_active_at: u.last_active_at,
   });
@@ -427,7 +437,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const s = createSession(db, user.id);
     setCookie(res, s.token);
     res.status(201);
-    return { user: { ...publicUser(user), email: user.email, email_verified: false }, token: s.token };
+    return { user: { ...publicUser(user, user), email: user.email, email_verified: false }, token: s.token };
   }));
 
   api.post('/auth/login', authLimit, wrap((req, res) => {
@@ -437,7 +447,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (user.suspended) throw forbidden('This account is suspended. Contact support.');
     const s = createSession(db, user.id);
     setCookie(res, s.token);
-    return { user: { ...publicUser(user), email: user.email, email_verified: !!user.email_verified }, token: s.token };
+    return { user: { ...publicUser(user, user), email: user.email, email_verified: !!user.email_verified }, token: s.token };
   }));
 
   api.post('/auth/verify-email', requireAuth, authLimit, wrap((req) => {
@@ -473,7 +483,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     });
     const s = createSession(db, user.id);
     setCookie(res, s.token);
-    return { user: { ...publicUser(user), email: user.email, email_verified: true }, token: s.token };
+    return { user: { ...publicUser(user, user), email: user.email, email_verified: true }, token: s.token };
   }));
 
   api.post('/auth/logout', wrap((req, res) => {
@@ -488,7 +498,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   api.get('/me', requireAuth, wrap((req) => {
     const u = req.user;
     return {
-      user: { ...publicUser(u), email: u.email, email_verified: !!u.email_verified },
+      user: { ...publicUser(u, u), email: u.email, email_verified: !!u.email_verified },
       profile: ownProfile(u),
       profile_missing: profileGaps(u),
       pass: passView(u),
@@ -548,7 +558,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     });
     checkProfileReward(u.id);
     const fresh = getUser(u.id);
-    return { user: publicUser(fresh), profile: ownProfile(fresh) };
+    return { user: publicUser(fresh, fresh), profile: ownProfile(fresh) };
   }));
 
   // Deletes the account and everything tied to it. Placements and reviews with the other person go too.
@@ -583,7 +593,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
           p.start_date, p.end_date, p.country, ru.id reviewer_id, ru.name reviewer_name, ru.role reviewer_role
         FROM reviews r JOIN placements p ON p.id = r.placement_id JOIN users ru ON ru.id = r.reviewer_id
         WHERE r.reviewee_id = ? AND ${visibleReviewsSql} ORDER BY r.created_at DESC`).all(u.id)
-      .map((r) => ({ ...r, criteria: json.parse(r.criteria, {}) }));
+      .map((r) => ({ ...r, reviewer_name: shortName(r.reviewer_name), criteria: json.parse(r.criteria, {}) }));
     const me = req.user;
     let match = null;
     if (me.role !== u.role && me.role !== 'admin') {
@@ -593,7 +603,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const req_ = db.prepare(`SELECT id, from_user, status FROM match_requests WHERE
         ((from_user = ? AND to_user = ?) OR (from_user = ? AND to_user = ?)) ORDER BY id DESC LIMIT 1`).get(me.id, u.id, u.id, me.id);
     return {
-      user: publicUser(u),
+      user: publicUser(u, me),
       profile: getProfile(u),
       rating: ratingSummary(u.id),
       reviews,
@@ -696,7 +706,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
 
   api.get('/blocks', requireAuth, wrap((req) => ({
     blocked: db.prepare('SELECT u.* FROM blocks b JOIN users u ON u.id = b.target_id WHERE b.user_id = ? ORDER BY b.created_at DESC')
-      .all(req.user.id).map(publicUser),
+      .all(req.user.id).map((u) => publicUser(u, req.user)),
   })));
 
   // ---------- certificate checks ----------
@@ -765,7 +775,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
         `u.id NOT IN (SELECT from_user FROM match_requests WHERE to_user = ? AND status = 'accepted')`);
       params.push(me.id, me.id, me.id);
     }
-    if (q.q) { where.push('(u.name LIKE ? OR p.bio LIKE ? OR u.city LIKE ?)'); const like = `%${q.q}%`; params.push(like, like, like); }
+    // Names match from the start only, so a search can't confirm someone's hidden last name.
+    if (q.q) { where.push('(u.name LIKE ? OR p.bio LIKE ? OR u.city LIKE ?)'); const like = `%${q.q}%`; params.push(`${q.q}%`, like, like); }
     const rows = db.prepare(`SELECT u.* FROM users u JOIN ${table} p ON p.user_id = u.id WHERE ${where.join(' AND ')}`).all(...params);
 
     let results = rows.map((u) => {
@@ -776,7 +787,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
         : [{ user: u, profile }, { user: me, profile: myProfile }];
       const match = scoreMatch(ap, fam, getProgram(fam.user.country), ratingSummary(ap.user.id), me.lang);
       const likesYou = !!db.prepare("SELECT 1 FROM match_requests WHERE from_user = ? AND to_user = ? AND status = 'pending'").get(u.id, me.id);
-      return { user: publicUser(u), profile, rating, match, likes_you: likesYou && !lockLikes };
+      return { user: publicUser(u, me), profile, rating, match, likes_you: likesYou && !lockLikes };
     });
 
     if (q.language) {
@@ -819,13 +830,13 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     }
     if (theirs) {
       const c = acceptRequest(theirs);
-      notify(t.id, 'match', "It's a match! {name} liked you back.", { name: me.name }, `#/messages/${c.id}`);
-      return { matched: true, conversation_id: c.id, other: publicUser(t) };
+      notify(t.id, 'match', "It's a match! {name} liked you back.", { name: shortName(me.name) }, `#/messages/${c.id}`);
+      return { matched: true, conversation_id: c.id, other: publicUser(t, me) };
     }
     const mine = db.prepare("SELECT id FROM match_requests WHERE from_user = ? AND to_user = ? AND status IN ('pending','accepted')").get(me.id, t.id);
     if (!mine) {
       db.prepare('INSERT INTO match_requests (from_user, to_user, message) VALUES (?, ?, ?)').run(me.id, t.id, str(message, 2000));
-      notify(t.id, 'like', direction === 'super' ? '{name} super liked you! ⭐' : 'Someone new liked you. See who in Likes.', { name: me.name }, '#/likes');
+      notify(t.id, 'like', direction === 'super' ? '{name} super liked you! ⭐' : 'Someone new liked you. See who in Likes.', { name: shortName(me.name) }, '#/likes');
     }
     return { matched: false };
   }));
@@ -844,7 +855,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       db.prepare("UPDATE match_requests SET status = 'pending', responded_at = NULL WHERE from_user = ? AND to_user = ? AND status = 'declined'").run(last.target_id, me.id);
     });
     const t = getUser(last.target_id);
-    return { user: publicUser(t) };
+    return { user: publicUser(t, me) };
   }));
 
   api.delete('/swipes/passes', requireRole('aupair', 'family'), wrap((req) => {
@@ -865,7 +876,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
         const [ap, fam] = me.role === 'aupair' ? [{ user: me, profile: myProfile }, { user: u, profile }] : [{ user: u, profile }, { user: me, profile: myProfile }];
         const sw = db.prepare('SELECT direction FROM swipes WHERE user_id = ? AND target_id = ?').get(u.id, me.id);
         return { request_id: u.request_id, message: u.message, created_at: u.created_at, super: sw?.direction === 'super',
-          user: publicUser(u), profile, rating: ratingSummary(u.id), match: scoreMatch(ap, fam, getProgram(fam.user.country), ratingSummary(ap.user.id), req.user.lang) };
+          user: publicUser(u, req.user), profile, rating: ratingSummary(u.id), match: scoreMatch(ap, fam, getProgram(fam.user.country), ratingSummary(ap.user.id), req.user.lang) };
       }),
     };
   }));
@@ -1316,7 +1327,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   // ---------- favorites ----------
   api.get('/favorites', requireAuth, wrap((req) => ({
     results: db.prepare('SELECT u.* FROM favorites f JOIN users u ON u.id = f.target_id WHERE f.user_id = ? ORDER BY f.created_at DESC')
-      .all(req.user.id).map((u) => ({ user: publicUser(u), rating: ratingSummary(u.id) })),
+      .all(req.user.id).map((u) => ({ user: publicUser(u, req.user), rating: ratingSummary(u.id) })),
   })));
   api.post('/favorites/:id', requireAuth, wrap((req) => {
     const t = getUser(req.params.id);
@@ -1340,7 +1351,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (open) throw new HttpError(409, 'You already have an open request with this person.');
     const r = db.prepare('INSERT INTO match_requests (from_user, to_user, message) VALUES (?, ?, ?)')
       .run(req.user.id, to.id, str(req.body?.message, 2000));
-    notify(to.id, 'request', '{name} is interested in matching with you.', { name: req.user.name }, '#/requests');
+    notify(to.id, 'request', '{name} is interested in matching with you.', { name: shortName(req.user.name) }, '#/requests');
     res.status(201);
     return { id: Number(r.lastInsertRowid) };
   }));
@@ -1349,7 +1360,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const rows = db.prepare(`SELECT r.*, fu.name from_name, fu.role from_role, fu.country from_country, fu.photo_url from_photo,
           tu.name to_name, tu.role to_role, tu.country to_country, tu.photo_url to_photo
         FROM match_requests r JOIN users fu ON fu.id = r.from_user JOIN users tu ON tu.id = r.to_user
-        WHERE r.from_user = ? OR r.to_user = ? ORDER BY r.created_at DESC`).all(req.user.id, req.user.id);
+        WHERE r.from_user = ? OR r.to_user = ? ORDER BY r.created_at DESC`).all(req.user.id, req.user.id)
+      .map((r) => (r.from_user === req.user.id ? { ...r, to_name: shortName(r.to_name) } : { ...r, from_name: shortName(r.from_name) }));
     return {
       // Pending likes stay hidden without the Family Pass, as on the Likes screen.
       incoming: rows.filter((r) => r.to_user === req.user.id && !(r.status === 'pending' && needsPass(req.user))),
@@ -1373,7 +1385,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       if (status === 'accepted') acceptRequest(r);
       else db.prepare("UPDATE match_requests SET status = 'declined', responded_at = datetime('now') WHERE id = ?").run(r.id);
       db.prepare('INSERT OR REPLACE INTO swipes (user_id, target_id, direction) VALUES (?,?,?)').run(me, r.from_user, status === 'accepted' ? 'like' : 'pass');
-      if (status === 'accepted') notify(r.from_user, 'match', "It's a match! {name} liked you back.", { name: req.user.name }, '#/matches');
+      if (status === 'accepted') notify(r.from_user, 'match', "It's a match! {name} liked you back.", { name: shortName(req.user.name) }, '#/matches');
     } else throw bad('Unknown action.');
     return { ok: true };
   }));
@@ -1387,7 +1399,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
             (SELECT created_at FROM messages WHERE conversation_id = c.id ORDER BY id DESC LIMIT 1) last_at,
             (SELECT COUNT(*) FROM messages WHERE conversation_id = c.id AND sender_id != ? AND read_at IS NULL) unread
           FROM conversations c WHERE c.user_a = ? OR c.user_b = ? ORDER BY COALESCE(last_at, c.created_at) DESC`)
-        .all(me, me, me, me).filter((c) => !blockedBetween(me, c.other_id)).map((c) => ({ ...c, other: publicUser(getUser(c.other_id)) })),
+        .all(me, me, me, me).filter((c) => !blockedBetween(me, c.other_id)).map((c) => ({ ...c, other: publicUser(getUser(c.other_id), req.user) })),
     };
   }));
 
@@ -1415,7 +1427,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     db.prepare("UPDATE messages SET read_at = datetime('now') WHERE conversation_id = ? AND sender_id != ? AND read_at IS NULL").run(c.id, req.user.id);
     const otherId = c.user_a === req.user.id ? c.user_b : c.user_a;
     return {
-      other: publicUser(getUser(otherId)),
+      other: publicUser(getUser(otherId), req.user),
       messages: db.prepare(`SELECT ${MSG_COLS} FROM messages WHERE conversation_id = ? AND id > ? ORDER BY id`).all(c.id, after),
     };
   }));
@@ -1427,7 +1439,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const body = str(req.body?.body, 4000);
     if (!body) throw bad('Message is empty.');
     const r = db.prepare('INSERT INTO messages (conversation_id, sender_id, body) VALUES (?,?,?)').run(c.id, req.user.id, body);
-    push(c.user_a === req.user.id ? c.user_b : c.user_a, body.length > 140 ? `${body.slice(0, 139)}…` : body, `#/messages/${c.id}`, req.user.name);
+    push(c.user_a === req.user.id ? c.user_b : c.user_a, body.length > 140 ? `${body.slice(0, 139)}…` : body, `#/messages/${c.id}`, shortName(req.user.name));
     res.status(201);
     return db.prepare(`SELECT ${MSG_COLS} FROM messages WHERE id = ?`).get(Number(r.lastInsertRowid));
   }));
@@ -1445,7 +1457,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const url = await video.createRoom();
     const r = db.prepare('INSERT INTO messages (conversation_id, sender_id, body, call_url) VALUES (?,?,?,?)').run(c.id, req.user.id, '📹 Video call', url);
     const other = getUser(c.user_a === req.user.id ? c.user_b : c.user_a);
-    push(other.id, translate(other.lang, '{name} started a video call. Tap to join.', { name: req.user.name }), `#/messages/${c.id}`, req.user.name);
+    push(other.id, translate(other.lang, '{name} started a video call. Tap to join.', { name: shortName(req.user.name) }), `#/messages/${c.id}`, shortName(req.user.name));
     res.status(201);
     return db.prepare(`SELECT ${MSG_COLS} FROM messages WHERE id = ?`).get(Number(r.lastInsertRowid));
   }));
@@ -1454,7 +1466,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const m = db.prepare('SELECT * FROM messages WHERE id = ? AND conversation_id = ? AND call_url IS NOT NULL').get(Number(req.params.messageId), c.id);
     if (!m) throw notFound();
     if (openCall(c)?.id !== m.id) throw new HttpError(410, 'This call has ended. Start a new one.');
-    const url = await video.joinUrl(m.call_url, req.user.name);
+    const url = await video.joinUrl(m.call_url, shortName(req.user.name));
     // Private Daily rooms open inside the phone app. Jitsi rooms open in the browser, since Jitsi's sign-in doesn't work inside an app.
     return { url, in_app: /^https:\/\/[^/]+\.daily\.co\//.test(url) };
   }));
@@ -1528,7 +1540,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       placementTaskList(program, getProfile(ap)?.nationality, b.start_date, b.end_date).forEach((t, i) => ins.run(pid, t.title, t.owner, t.due_date, i, t.link));
       return pid;
     });
-    notify(other.id, 'placement', '{name} proposed a placement. Review and confirm it.', { name: req.user.name }, `#/placements/${id}`);
+    notify(other.id, 'placement', '{name} proposed a placement. Review and confirm it.', { name: shortName(req.user.name) }, `#/placements/${id}`);
     res.status(201);
     return { id, compliance };
   }));
@@ -1548,7 +1560,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const myReview = db.prepare('SELECT * FROM reviews WHERE placement_id = ? AND reviewer_id = ?').get(p.id, me.id);
     return {
       ...p,
-      aupair: publicUser(ap), family: publicUser(fam),
+      aupair: publicUser(ap, me), family: publicUser(fam, me),
       program: program ? { code: program.code, name: program.name, currency: program.currency, visa: program.visa } : null,
       compliance: checkCompliance(program, { ...p, birth_date: getProfile(ap)?.birth_date, nationality: getProfile(ap)?.nationality }, me.lang),
       tasks: withOffers(db.prepare('SELECT * FROM placement_tasks WHERE placement_id = ? ORDER BY sort').all(p.id), p.country, me.role),
@@ -1666,7 +1678,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const other = req.user.id === p.aupair_id ? p.family_id : p.aupair_id;
     if (wasSigned) {
       db.prepare("UPDATE placement_tasks SET done = 0 WHERE placement_id = ? AND title = 'Sign au pair agreement / contract'").run(p.id);
-      notify(other, 'placement', '{name} changed the au pair agreement. Read it again and sign it.', { name: req.user.name }, `#/placements/${p.id}/agreement`);
+      notify(other, 'placement', '{name} changed the au pair agreement. Read it again and sign it.', { name: shortName(req.user.name) }, `#/placements/${p.id}/agreement`);
     }
     return agreementView(p, req.user, reqLang(req));
   }));
@@ -1688,7 +1700,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       db.prepare("UPDATE placement_tasks SET done = 1 WHERE placement_id = ? AND title = 'Sign au pair agreement / contract'").run(p.id);
       notify(other, 'placement', 'Your au pair agreement is signed by both of you.', {}, `#/placements/${p.id}/agreement`);
     } else {
-      notify(other, 'placement', '{name} signed the au pair agreement. Read it and sign it too.', { name: req.user.name }, `#/placements/${p.id}/agreement`);
+      notify(other, 'placement', '{name} signed the au pair agreement. Read it and sign it too.', { name: shortName(req.user.name) }, `#/placements/${p.id}/agreement`);
     }
     return agreementView(p, req.user, reqLang(req));
   }));
@@ -1698,7 +1710,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       ? db.prepare('SELECT * FROM placements ORDER BY created_at DESC').all()
       : db.prepare('SELECT * FROM placements WHERE aupair_id = ? OR family_id = ? ORDER BY created_at DESC').all(req.user.id, req.user.id);
     return {
-      placements: rows.map((p) => ({ ...p, aupair: publicUser(getUser(p.aupair_id)), family: publicUser(getUser(p.family_id)),
+      placements: rows.map((p) => ({ ...p, aupair: publicUser(getUser(p.aupair_id), req.user), family: publicUser(getUser(p.family_id), req.user),
         tasks_done: db.prepare('SELECT COUNT(*) n FROM placement_tasks WHERE placement_id = ? AND done = 1').get(p.id).n,
         tasks_total: db.prepare('SELECT COUNT(*) n FROM placement_tasks WHERE placement_id = ?').get(p.id).n })),
     };
@@ -1765,7 +1777,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const reviewee = revieweeIsAupair ? p.aupair_id : p.family_id;
     const r = db.prepare('INSERT INTO reviews (placement_id, reviewer_id, reviewee_id, overall, criteria, comment) VALUES (?,?,?,?,?,?)')
       .run(p.id, req.user.id, reviewee, overall, JSON.stringify(criteria), str(b.comment, 3000));
-    notify(reviewee, 'review', '{name} left you a review. It appears once you review them too, or {days} days after the placement ends.', { name: req.user.name, days: REVIEW_REVEAL_DAYS }, `#/placements/${p.id}`);
+    notify(reviewee, 'review', '{name} left you a review. It appears once you review them too, or {days} days after the placement ends.', { name: shortName(req.user.name), days: REVIEW_REVEAL_DAYS }, `#/placements/${p.id}`);
     res.status(201);
     return { id: Number(r.lastInsertRowid) };
   }));
@@ -2069,7 +2081,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const like = `%${req.query.q || ''}%`;
     return {
       users: db.prepare("SELECT * FROM users WHERE role != 'admin' AND (name LIKE ? OR email LIKE ?) ORDER BY created_at DESC LIMIT 200").all(like, like)
-        .map((u) => ({ ...publicUser(u), email: u.email, suspended: !!u.suspended, rating: ratingSummary(u.id), source: u.source, pass_ends_at: u.role === 'family' ? activePass(u.id)?.ends_at ?? null : undefined })),
+        .map((u) => ({ ...publicUser(u, req.user), email: u.email, suspended: !!u.suspended, rating: ratingSummary(u.id), source: u.source, pass_ends_at: u.role === 'family' ? activePass(u.id)?.ends_at ?? null : undefined })),
     };
   }));
   api.post('/admin/users/:id', requireRole('admin'), wrap((req) => {
@@ -2079,13 +2091,13 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const sets = Object.keys(map).filter((k) => k in (req.body || {}));
     // An admin can give a family a free pass (for example to test, or as a goodwill gesture).
     const passDays = Number(req.body?.grant_pass_days);
-    if (passDays > 0 && passDays <= 400 && u.role === 'family') { grantPass(u.id, 'admin', null, passDays); if (!sets.length) return { ...publicUser(getUser(u.id)), pass: passView(u) }; }
+    if (passDays > 0 && passDays <= 400 && u.role === 'family') { grantPass(u.id, 'admin', null, passDays); if (!sets.length) return { ...publicUser(getUser(u.id), req.user), pass: passView(u) }; }
     if (!sets.length) throw bad('Nothing to change.');
     db.prepare(`UPDATE users SET ${sets.map((k) => `${map[k]} = ?`).join(', ')} WHERE id = ?`).run(...sets.map((k) => (req.body[k] ? 1 : 0)), u.id);
     if (req.body.suspended) db.prepare('DELETE FROM sessions WHERE user_id = ?').run(u.id);
     if (sets.some((k) => k !== 'suspended' && req.body[k])) notify(u.id, 'verification', 'Your profile has a new verification badge.', {}, '#/profile');
     if (req.body.id_verified) checkProfileReward(u.id);
-    return { ...publicUser(getUser(u.id)), suspended: !!getUser(u.id).suspended };
+    return { ...publicUser(getUser(u.id), req.user), suspended: !!getUser(u.id).suspended };
   }));
   api.get('/admin/reports', requireRole('admin'), wrap(() => ({
     reports: db.prepare(`SELECT rp.*, ru.name reporter_name, tu.name target_name, rv.comment review_comment, rv.hidden review_hidden

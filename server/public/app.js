@@ -504,7 +504,7 @@ views.register = (_, query) => {
         <option value="family" ${role === 'family' ? 'selected' : ''}>${tr('A host family')}</option>
         <option value="aupair" ${role === 'aupair' ? 'selected' : ''}>${tr('An au pair')}</option></select></div>
       <div id="earlyOffer"></div>
-      <div class="field"><label>${tr('Name')}</label><input name="name" required placeholder="${tr('e.g. Maria Lopez or The Smith Family')}"></div>
+      <div class="field"><label>${tr('Name')}</label><input name="name" required placeholder="${tr('e.g. Maria Lopez or The Smith Family')}"><p class="muted small">${tr('Other members see only your first name and last initial, like Maria L. Your full name is shared once you both confirm a placement.')}</p></div>
       <div class="form-grid"><div class="field"><label>${tr('Country you live in')}</label><select name="country" required>${options(COUNTRIES, '', tr('Choose…'))}</select></div>
       <div class="field"><label>${tr('City')}</label><input name="city"></div></div>
       <div class="field"><label>${tr('Email')}</label><input name="email" type="email" required autocomplete="email" value="${esc(query.get('email') || '')}"></div>
@@ -842,7 +842,7 @@ views.profile = async () => {
   <div class="card"><h2>${tr('Photos')}</h2><p class="muted small">${isAp ? tr('Your first photo is what people see when they swipe. Add up to 6; clear, smiling, recent photos work best. Photos with children need their parents\' permission.') : tr('Your first photo is what people see when they swipe. Add up to 6; clear, smiling, recent photos work best, and a family photo plus your home helps.')}</p>
     <div class="photo-grid" id="photoGrid"></div></div>
   <form id="f"><div class="card"><h2>${tr('Basics')}</h2><div class="form-grid">
-      <div class="field"><label>${tr('Name')}</label><input name="name" value="${esc(u.name)}" required></div>
+      <div class="field"><label>${tr('Name')}</label><input name="name" value="${esc(u.name)}" required><p class="muted small">${tr('Other members see only your first name and last initial, like Maria L. Your full name is shared once you both confirm a placement.')}</p></div>
       <div class="field"><label>${tr('Country')}</label><select name="country">${options(COUNTRIES, u.country, tr('Choose…'))}</select></div>
       <div class="field"><label>${tr('City')}</label><input name="city" value="${esc(u.city)}"></div>
 </div>

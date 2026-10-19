@@ -55,7 +55,7 @@ export function Chip({ label, on, onPress, tone, style }) {
 
 export const Chips = ({ children }) => <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{children}</View>;
 
-export function Field({ label, value, onChangeText, multiline, keyboardType, placeholder, secureTextEntry, autoCapitalize }) {
+export function Field({ label, hint, value, onChangeText, multiline, keyboardType, placeholder, secureTextEntry, autoCapitalize }) {
   const t = useTheme();
   return (
     <View style={{ gap: 4 }}>
@@ -63,6 +63,7 @@ export function Field({ label, value, onChangeText, multiline, keyboardType, pla
       <TextInput value={value == null ? '' : String(value)} onChangeText={onChangeText} multiline={multiline} keyboardType={keyboardType}
         placeholder={placeholder} placeholderTextColor={t.muted} secureTextEntry={secureTextEntry} autoCapitalize={autoCapitalize}
         style={{ borderWidth: 1, borderColor: t.line, borderRadius: 12, padding: 12, color: t.ink, backgroundColor: t.bg, minHeight: multiline ? 96 : undefined, textAlignVertical: multiline ? 'top' : 'center' }} />
+      {hint ? <T small muted>{hint}</T> : null}
     </View>
   );
 }
