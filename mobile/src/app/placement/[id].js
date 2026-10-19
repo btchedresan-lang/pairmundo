@@ -8,6 +8,7 @@ import { cname, country, CRIT_LABEL, fmtDate, statusLabel, statusTone } from '..
 import { tr } from '../../i18n';
 import { Alert, Button, Card, Chip, ComplianceBox, Field, Loading, Screen, StarInput, Stars, T } from '../../components/ui';
 import { C, useTheme } from '../../theme';
+import { ReferButton } from '../../components/Visa';
 
 const NEXT = { confirmed: ['active'], active: ['completed'] };
 
@@ -58,6 +59,14 @@ export default function Placement() {
           <Button small kind={p.agreement.aupair_signed_at && p.agreement.family_signed_at ? 'ghost' : 'primary'} title={tr('Open the agreement')} onPress={() => router.push(`/agreement/${id}`)} />
         </Card>
       ) : null}
+      {p.documents ? (
+        <Card>
+          <T bold>{tr('Visa documents')}</T>
+          <T small muted>{tr('What the host family hands in for the visa, with an invitation letter PairMundo writes for you.')}</T>
+          <T small>{tr('{done} of {total} ready', { done: p.documents.done, total: p.documents.total })}</T>
+          <Button small kind={p.documents.done === p.documents.total ? 'ghost' : 'secondary'} title={tr('Open the visa documents')} onPress={() => router.push(`/documents/${id}`)} />
+        </Card>
+      ) : null}
       <Card><T bold>{tr('Program check')}</T><ComplianceBox compliance={p.compliance} /></Card>
       <Card>
         <T bold>{tr('Checklist · {done} of {total} done', { done, total: p.tasks.length })}</T>
@@ -71,13 +80,13 @@ export default function Placement() {
               <T style={task.done ? { textDecorationLine: 'line-through', color: t.muted } : null}>{tr(task.title)}</T>
               <T small muted>{task.owner === 'both' ? tr('Both') : task.owner === 'aupair' ? tr('Au pair') : tr('Family')} · {fmtDate(task.due_date)}</T>
               {task.link ? <Pressable onPress={() => Linking.openURL(task.link)} hitSlop={6}><T small style={{ color: C.primary }}>{tr('Official site')} ↗</T></Pressable> : null}
-              {(task.offers || []).map((o) => (
+              {(task.offers || []).map((o) => (o.referral ? <ReferButton key={o.id} agency={o} placementId={p.id} /> : (
                 <Pressable key={o.id} onPress={() => Linking.openURL(`${getBase()}/api/partner-offers/${o.id}/go`)} hitSlop={6}>
                   <T small style={{ color: C.primary }}>{tr('Partner offer')}: {o.name} ↗</T>
                   {o.blurb ? <T small muted>{o.blurb}</T> : null}
                 </Pressable>
-              ))}
-              {task.offers?.length ? <T small muted>{tr('We may earn a fee if you buy through a partner link.')}</T> : null}
+              )))}
+              {task.offers?.some((o) => !o.referral) ? <T small muted>{tr('We may earn a fee if you buy through a partner link.')}</T> : null}
             </View>
           </Pressable>
         ))}

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { openDb } from '../server/db.js';
 import { createApp } from '../server/app.js';
 import { scoreMatch, checkCompliance } from '../server/matching.js';
-import { PROGRAMS } from '../server/programs.js';
+import { PROGRAMS, visaRoute } from '../server/programs.js';
 
 let server; let base; let testDb; let app;
 const outbox = [];
@@ -1559,4 +1559,95 @@ test('profile nudges: accounts without a photo or bio are nudged 2 and 7 days af
   assert.equal(nudgesFor(fam.id), 2);
   app.sendProfileNudges();
   assert.equal(nudgesFor(fam.id), 2);
+});
+
+test('visa step: who needs a visa, how long it takes and when to start, per country and nationality', () => {
+  const prog = (code) => PROGRAMS.find((p) => p.code === code);
+  assert.equal(visaRoute(prog('DE'), 'PL').kind, 'none');
+  assert.equal(visaRoute(prog('SE'), 'SE').kind, 'none');
+  assert.equal(visaRoute(prog('NO'), 'ES').kind, 'none');
+  assert.equal(visaRoute(prog('NO'), 'PH').kind, 'closed');
+  assert.equal(visaRoute(prog('GB'), 'FR').kind, 'closed');
+  assert.equal(visaRoute(prog('AU'), 'CO').kind, 'paused');
+  assert.equal(visaRoute(prog('DE'), null).kind, 'unknown');
+  const se = visaRoute(prog('SE'), 'PH', '2027-03-01');
+  assert.equal(se.kind, 'visa');
+  assert.equal(se.weeks, 13);
+  assert.equal(se.apply_by, '2026-12-01');
+  assert.ok(se.steps.some((s) => s.title.startsWith('Apply online to Migrationsverket')));
+  const us = visaRoute(prog('US'), 'BR');
+  assert.equal(us.kind, 'sponsor');
+  assert.equal(us.apply_by, null);
+  assert.equal(us.steps[0].owner, 'family');
+  // Countries without their own paperwork use the generic 8 weeks.
+  assert.equal(visaRoute(prog('ES'), 'CO').weeks, 11);
+  assert.equal(visaRoute({ ...prog('ES'), code: 'XX' }, 'CO').weeks, 8);
+});
+
+test('visa help: partner agency referrals with consent, the family document pack and invitation letter', async () => {
+  const fam = await register('visafam@test.io', 'family', 'US', 'The Millers');
+  const ap = await register('visaap@test.io', 'aupair', 'BR', 'Bia Souza');
+  await call(ap.token, 'PUT', '/me', { profile: { birth_date: '2003-04-04', nationality: 'BR' } });
+  await call(fam.token, 'PUT', '/me', { city: 'Denver', profile: { start_date: '2027-03-01' } });
+  const { hashPassword } = await import('../server/auth.js');
+  testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
+  assert.equal((await call(admin, 'POST', '/admin/partner-offers', { name: 'Sponsor Co', slot: 'sponsor', url: 'https://sponsor.example', countries: 'US', lead_email: 'nope' })).status, 400);
+  const offer = (await call(admin, 'POST', '/admin/partner-offers', { name: 'Sponsor Co', slot: 'sponsor', url: 'https://sponsor.example', countries: 'US', lead_email: 'leads@sponsor.example' })).body;
+  assert.equal(offer.lead_email, 'leads@sponsor.example');
+
+  // Before matching, the family sees what the visa takes and who can sponsor it.
+  const view = (await call(fam.token, 'GET', `/users/${ap.id}`)).body;
+  assert.equal(view.visa.kind, 'sponsor');
+  assert.equal(view.visa.apply_by, '2026-12-16');
+  assert.deepEqual(view.visa.agencies.map((a) => a.name), ['Sponsor Co']);
+  assert.equal((await call(ap.token, 'GET', `/users/${fam.id}`)).body.visa.kind, 'sponsor');
+
+  // Sharing details needs consent; the agency gets them with a referral code, once.
+  assert.equal((await call(fam.token, 'POST', `/partner-offers/${offer.id}/refer`, {})).status, 400);
+  const ref = await call(fam.token, 'POST', `/partner-offers/${offer.id}/refer`, { consent: true });
+  assert.equal(ref.status, 201);
+  assert.match(ref.body.code, /^PM-[0-9A-F]{8}$/);
+  const lead = outbox.findLast((m) => m.to === 'leads@sponsor.example');
+  assert.match(lead.text, /visafam@test\.io/);
+  assert.ok(lead.text.includes(ref.body.code));
+  const again = (await call(fam.token, 'POST', `/partner-offers/${offer.id}/refer`, { consent: true })).body;
+  assert.equal(again.code, ref.body.code);
+  assert.equal(again.already, true);
+
+  const req = await call(fam.token, 'POST', '/requests', { to_user: ap.id });
+  await call(ap.token, 'POST', `/requests/${req.body.id}/respond`, { action: 'accept' });
+  const pl = await call(fam.token, 'POST', '/placements', { other_user_id: ap.id, start_date: '2027-03-01', end_date: '2028-02-28', weekly_hours: 40, pocket_money: 848 });
+  assert.equal(pl.status, 201, JSON.stringify(pl.body));
+  const pid = pl.body.id;
+  let p = (await call(fam.token, 'GET', `/placements/${pid}`)).body;
+  assert.deepEqual(p.tasks.find((t) => t.title.includes('designated au pair sponsor')).offers, [{ id: offer.id, name: 'Sponsor Co', blurb: null, referral: true }]);
+  assert.equal(p.documents, null);
+  assert.equal((await call(fam.token, 'GET', `/placements/${pid}/documents`)).status, 400);
+  await call(ap.token, 'POST', `/placements/${pid}/confirm`);
+
+  // The document pack: the US list, with the invitation letter written from the placement.
+  let d = (await call(fam.token, 'GET', `/placements/${pid}/documents`)).body;
+  assert.deepEqual(d.documents.map((x) => x.key), ['sponsor', 'home_check', 'agreement']);
+  assert.equal(d.editable, true);
+  assert.ok(d.letter.some(([text, vars]) => text.includes('pocket money') && vars.amount === 848 && vars.currency === 'USD'));
+  assert.ok(d.letter.some(([text, vars]) => text.startsWith('Our address') && vars.address.startsWith('Denver')));
+  d = (await call(fam.token, 'PUT', `/placements/${pid}/documents`, { address: '12 Elm St, Denver, CO 80202', doc: 'sponsor', done: true })).body;
+  assert.ok(d.letter.some(([, vars]) => vars.address === '12 Elm St, Denver, CO 80202'));
+  assert.equal(d.documents.find((x) => x.key === 'sponsor').done, true);
+  assert.equal((await call(fam.token, 'PUT', `/placements/${pid}/documents`, { doc: 'nope', done: true })).status, 400);
+  assert.equal((await call(ap.token, 'PUT', `/placements/${pid}/documents`, { doc: 'sponsor', done: false })).status, 403);
+  assert.equal((await call(ap.token, 'GET', `/placements/${pid}/documents`)).body.editable, false);
+  assert.deepEqual((await call(fam.token, 'GET', `/placements/${pid}`)).body.documents, { done: 1, total: 3 });
+
+  // The referral counts as started when the placement starts; admins see and update referrals.
+  await call(fam.token, 'POST', `/placements/${pid}/status`, { status: 'active' });
+  let refs = (await call(admin, 'GET', '/admin/referrals')).body.referrals;
+  const mine = refs.find((r) => r.code === ref.body.code);
+  assert.equal(mine.status, 'started');
+  assert.equal(mine.host_country, 'US');
+  assert.ok(mine.started_at);
+  assert.equal((await call(fam.token, 'GET', '/admin/referrals')).status, 403);
+  assert.equal((await call(admin, 'PUT', `/admin/referrals/${mine.id}`, { status: 'maybe' })).status, 400);
+  assert.equal((await call(admin, 'PUT', `/admin/referrals/${mine.id}`, { status: 'not_going' })).body.started_at, null);
 });

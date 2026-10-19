@@ -771,6 +771,7 @@ views.u = async ([id]) => {
       ${d.match ? `<div class="card"><h3>${tr('Why you match')}</h3>
         ${d.match.reasons.map((r) => `<div class="small" style="color:var(--ok)">✓ ${esc(r)}</div>`).join('')}
         ${d.match.warnings.map((r) => `<div class="small" style="color:var(--warn)">⚠ ${esc(r)}</div>`).join('')}</div>` : ''}
+      ${visaCard(d.visa)}
       ${ap ? `${verifyBadges(u.verification) ? `<div style="margin-bottom:10px">${verifyBadges(u.verification)}</div>` : ''}${posterBody(u, p, d.references)}` : `<div class="card"><h3>${tr('About us')}</h3><p style="white-space:pre-wrap;margin-top:0">${esc(p.bio) || `<span class="muted">${tr('No description yet.')}</span>`}</p>
         <div>${verifyBadges(u.verification) || `<span class="muted small">${tr('Not yet verified')}</span>`}</div></div>
       <div class="card"><h3>${tr('Basics')}</h3><div class="facts">${facts.filter(([, , v]) => v != null && v !== '').map(([i, k, v]) => `<div class="fact"><span>${i}</span><div><div class="muted small">${k}</div>${esc(v)}</div></div>`).join('')}</div></div>
@@ -781,6 +782,7 @@ views.u = async ([id]) => {
     </div></div>`);
 
   const on = (sel, fn) => { const el = document.getElementById(sel); if (el) el.onclick = fn; };
+  bindReferrals();
   document.querySelectorAll('[data-swipe]').forEach((b) => { b.onclick = async () => {
     try {
       const res = await api('/swipe', { method: 'POST', body: { target_id: u.id, direction: b.dataset.swipe } });
@@ -1101,6 +1103,7 @@ function placementRow(p) {
 }
 views.placements = async ([id, sub]) => {
   if (id && sub === 'agreement') return agreementPage(id);
+  if (id && sub === 'documents') return documentsPage(id);
   if (id) return placementDetail(id);
   const { placements } = await api('/placements');
   render(`<h1>${tr('Placements')}</h1><div class="card">${placements.map(placementRow).join('') || `<div class="empty">${tr("No placements yet. Once you match, propose one from the other person's profile.")}</div>`}</div>`);
@@ -1175,12 +1178,17 @@ async function placementDetail(id) {
       <p class="muted small">${tr('PairMundo wrote it from your placement and the country rules. Read it, change what you need and sign it together.')}</p>
       <div>${p.agreement.aupair_signed_at ? '✓' : '○'} ${tr('au pair')} · ${p.agreement.family_signed_at ? '✓' : '○'} ${tr('family')}</div>
       <a class="btn ${p.agreement.aupair_signed_at && p.agreement.family_signed_at ? 'ghost' : ''}" style="margin-top:10px" href="#/placements/${p.id}/agreement">${tr('Open the agreement')}</a></div>` : ''}
+    ${p.documents ? `<div class="card"><h2>${tr('Visa documents')}</h2>
+      <p class="muted small">${tr('What the host family hands in for the visa, with an invitation letter PairMundo writes for you.')}</p>
+      <div>${tr('{done} of {total} ready', { done: p.documents.done, total: p.documents.total })}</div>
+      <a class="btn ${p.documents.done === p.documents.total ? 'ghost' : 'secondary'}" style="margin-top:10px" href="#/placements/${p.id}/documents">${tr('Open the visa documents')}</a></div>` : ''}
     <div class="card"><h2>${tr('Program check')}</h2>${complianceBox(p.compliance)}</div>
   </div><div>
     <div class="card"><h2>${tr('Checklist')}</h2><div class="muted small">${tr('{done} of {total} done', { done: p.tasks.filter((t) => t.done).length, total: p.tasks.length })}</div>
       ${p.tasks.map((t) => `<label class="task ${t.done ? 'done' : ''}"><input type="checkbox" data-task="${t.id}" ${t.done ? 'checked' : ''} ${isAdmin ? 'disabled' : ''}>
         <span class="t" style="flex:1">${esc(tr(t.title))}${t.link ? ` <a class="small" href="${esc(t.link)}" target="_blank" rel="noopener">${tr('Official site')} ↗</a>` : ''}
-          ${(t.offers || []).map((o) => `<span class="small partner-offer">${tr('Partner offer')}: <a href="/api/partner-offers/${o.id}/go" target="_blank" rel="noopener sponsored">${esc(o.name)} ↗</a>${o.blurb ? ` · ${esc(o.blurb)}` : ''}</span>`).join('')}
+          ${(t.offers || []).map((o) => o.referral && !isAdmin ? referButton(o, p.id)
+            : `<span class="small partner-offer">${tr('Partner offer')}: <a href="/api/partner-offers/${o.id}/go" target="_blank" rel="noopener sponsored">${esc(o.name)} ↗</a>${o.blurb ? ` · ${esc(o.blurb)}` : ''}</span>`).join('')}
           ${(t.offers || []).length ? `<span class="muted small partner-offer"><a href="#/partners">${tr('We may earn a fee if you buy through a partner link.')}</a></span>` : ''}</span><span class="chip">${t.owner === 'both' ? tr('Both') : t.owner === 'aupair' ? tr('Au pair') : tr('Family')}</span>
         <span class="muted small" style="min-width:90px;text-align:right">${fmtDate(t.due_date)}</span></label>`).join('')}</div>
     ${p.can_review ? `<form class="card" id="review"><h2>${tr('Review {name}', { name: esc(other.name) })}</h2>
@@ -1203,6 +1211,7 @@ async function placementDetail(id) {
     cb.closest('.task').classList.toggle('done', cb.checked);
   }; });
   bindStarInputs();
+  bindReferrals(id);
   const rf = document.getElementById('review');
   if (rf) rf.onsubmit = async (e) => {
     e.preventDefault();
@@ -1214,6 +1223,75 @@ async function placementDetail(id) {
     } catch (err) { document.getElementById('err').innerHTML = `<div class="alert error">${esc(err.message)}</div>`; }
   };
 }
+// ---------- visa help ----------
+// The server works out what the visa takes (visaRoute in programs.js); this shows it, with the viewer's own steps.
+function visaCard(v) {
+  if (!v) return '';
+  const where = country(v.country);
+  const mine = me.user.role === 'family' ? ['family', 'both'] : ['aupair', 'both'];
+  const steps = (v.steps || []).filter((x) => mine.includes(x.owner));
+  const head = {
+    none: `<div class="alert ok">✓ ${tr('No visa needed: free movement applies.')}</div>`,
+    unknown: `<div class="muted small">${tr("The au pair hasn't added a nationality yet, so we can't show the visa steps.")}</div>`,
+    closed: `<div class="alert error">✖ ${tr('There is no au pair visa route into {country} for this nationality right now.', { country: where })}</div>`,
+    paused: `<div class="alert warning">⚠ ${tr("{country}'s au pair visas are currently stalled", { country: where })}</div>`,
+  }[v.kind] || `<div class="alert info">🛂 ${tr('A visa is needed. Allow about {weeks} weeks for the paperwork.', { weeks: v.weeks })}</div>`;
+  return `<div class="card"><h3>${tr('Visa')}</h3>${head}
+    ${v.apply_by && v.kind !== 'paused' ? `<div class="small"><strong>${tr('Start the paperwork by {date}.', { date: fmtDate(v.apply_by) })}</strong>
+      ${v.apply_by < new Date().toISOString().slice(0, 10) ? `<span style="color:var(--warn)">${tr('That date has passed, so this start date may be too soon.')}</span>` : ''}</div>` : ''}
+    ${v.weeks ? `<div class="small muted">${tr('Visa route')}: ${esc(v.visa)}</div>` : ''}
+    ${v.kind === 'sponsor' ? `<p class="small">${tr('{country} grants this visa only through a sponsor agency.', { country: where })}</p>${(v.agencies || []).map((a) => referButton(a)).join('')}` : ''}
+    ${steps.length ? `<h4 style="margin:12px 0 4px">${tr('Your steps')}</h4><ol class="small" style="margin:0;padding-left:20px">${steps.map((x) => `<li>${esc(tr(x.title))}</li>`).join('')}</ol>` : ''}
+    ${v.kind !== 'unknown' ? `<p class="muted small" style="margin-bottom:0">${tr('A guide only: check the official site before you apply.')}${v.official_source ? ` <a href="${esc(v.official_source)}" target="_blank" rel="noopener">${tr('Official site')} ↗</a>` : ''}</p>` : ''}</div>`;
+}
+const referButton = (o, placementId) => `<span class="partner-offer small"><button type="button" class="btn sm secondary" data-refer="${o.id}" data-name="${esc(o.name)}" ${placementId ? `data-placement="${placementId}"` : ''}>${tr('Get help from {name}', { name: esc(o.name) })}</button>${o.blurb ? ` <span class="muted">${esc(o.blurb)}</span>` : ''}</span>`;
+/** "Get help from a partner agency": asks before sharing, then sends the person's details to the agency. */
+function bindReferrals() {
+  document.querySelectorAll('[data-refer]').forEach((b) => { b.onclick = async () => {
+    const name = b.dataset.name;
+    if (!confirm(tr('{name} will get your name, email and country so they can help you with the visa. Share your details?', { name }))) return;
+    try {
+      const r = await api(`/partner-offers/${b.dataset.refer}/refer`, { method: 'POST', body: { consent: true, placement_id: Number(b.dataset.placement) || undefined } });
+      b.outerHTML = `<span class="alert ok small" style="display:block">✓ ${tr('Sent to {name}. They will contact you by email. Your referral code is {code}.', { name: esc(r.agency), code: esc(r.code) })}</span>`;
+    } catch (e) { toast(e.message); }
+  }; });
+}
+
+async function documentsPage(id) {
+  const d = await api(`/placements/${id}/documents`);
+  const madeLink = (x) => (x.made === 'agreement' ? ` <a class="small" href="#/placements/${id}/agreement">${tr('Open the agreement')}</a>`
+    : x.made === 'letter' ? ` <a class="small" href="#letter" onclick="document.getElementById('letter').scrollIntoView();return false">${tr('See the letter')}</a>` : '');
+  render(`<p class="no-print"><a href="#/placements/${id}">← ${tr('Back to the placement')}</a></p>
+  <div class="cols-2"><div>
+    <article class="card agreement" id="letter"><h1>${tr('Invitation letter')}</h1>
+      ${d.letter.map((x) => `<p>${clause(x)}</p>`).join('')}
+      <div class="sigs"><div class="sig"><div class="muted small">${tr('Host family')}</div><div>${esc(d.family_name)}</div></div>
+        <div class="sig"><div class="muted small">${tr('Place and date')}</div></div></div>
+    </article>
+    <p class="no-print"><button class="btn ghost" id="print">🖨️ ${tr('Print or save as PDF')}</button></p>
+  </div><div class="no-print">
+    <div class="card"><h2>${tr('Visa documents')}</h2>
+      <p class="muted small">${tr('What the host family usually hands in. Each country asks for its own, so check the official site too.')}</p>
+      ${d.documents.map((x) => `<label class="task ${x.done ? 'done' : ''}"><input type="checkbox" data-doc="${x.key}" ${x.done ? 'checked' : ''} ${d.editable ? '' : 'disabled'}>
+        <span class="t" style="flex:1">${esc(tr(x.title))}${x.made ? ` <span class="chip ok">${tr('PairMundo writes this')}</span>` : ''}${madeLink(x)}</span></label>`).join('')}</div>
+    ${d.editable ? `<form class="card" id="addr"><h2>${tr('Your address for the letter')}</h2>
+      <div class="field"><input name="address" maxlength="300" value="${esc(d.address)}" placeholder="${tr('Street, postcode and city')}"></div>
+      <button class="btn secondary">${tr('Save address')}</button></form>` : ''}
+    ${visaCard(d.route)}
+  </div></div>`);
+  document.getElementById('print').onclick = () => window.print();
+  bindReferrals();
+  document.querySelectorAll('[data-doc]').forEach((cb) => { cb.onchange = async () => {
+    try { await api(`/placements/${id}/documents`, { method: 'PUT', body: { doc: cb.dataset.doc, done: cb.checked } }); cb.closest('.task').classList.toggle('done', cb.checked); }
+    catch (e) { toast(e.message); cb.checked = !cb.checked; }
+  }; });
+  const af = document.getElementById('addr');
+  if (af) af.onsubmit = async (e) => {
+    e.preventDefault();
+    try { await api(`/placements/${id}/documents`, { method: 'PUT', body: { address: af.address.value } }); toast(tr('Saved')); documentsPage(id); } catch (err) { toast(err.message); }
+  };
+}
+
 // ---------- au pair agreement ----------
 // The server writes the agreement as [English sentence, values] pairs; each is translated here.
 const clause = ([text, vars]) => tr(text, Object.fromEntries(Object.entries(vars || {}).map(([k, v]) => [k, esc(['start', 'end'].includes(k) ? fmtDate(v) : v)])));
@@ -1410,7 +1488,7 @@ async function adminLaunchEmail() {
 }
 views.admin = async ([tab = 'overview', id], qs) => {
   if (me.user.role !== 'admin') return go('#/');
-  const tabs = { overview: 'Overview', users: 'Users & verification', reports: 'Reports', programs: 'Program rules', placements: 'Placements', waitlist: 'Waitlist', ambassadors: 'Ambassadors', certificates: 'Certificates', partners: 'Partners' };
+  const tabs = { overview: 'Overview', users: 'Users & verification', reports: 'Reports', programs: 'Program rules', placements: 'Placements', waitlist: 'Waitlist', ambassadors: 'Ambassadors', certificates: 'Certificates', partners: 'Partners', referrals: 'Referrals' };
   const head = `<h1>Program administration</h1><div class="row" style="margin-bottom:16px">${Object.entries(tabs).map(([k, v]) =>
     `<a class="btn ${k === tab ? '' : 'ghost'} sm" href="#/admin/${k}">${v}</a>`).join('')}</div>`;
   if (tab === 'overview') {
@@ -1485,7 +1563,7 @@ views.admin = async ([tab = 'overview', id], qs) => {
   if (tab === 'ambassadors') return adminAmbassadors(head, id, qs);
   if (tab === 'partners') {
     const { offers, slots } = await api('/admin/partner-offers');
-    const stepName = { insurance: 'Insurance step', travel: 'Book travel', language: 'Language course', arrival: 'Arrival and local registration' };
+    const stepName = { insurance: 'Insurance step', travel: 'Book travel', language: 'Language course', arrival: 'Arrival and local registration', sponsor: 'Visa sponsor or agency' };
     const form = (o = {}) => `<form class="card" data-offer="${o.id || ''}"><div class="form-grid">
         <div class="field"><label>Partner</label><input name="name" required value="${esc(o.name || '')}" placeholder="Wise"></div>
         <div class="field"><label>Checklist step</label><select name="slot">${options(Object.fromEntries(slots.map((k) => [k, stepName[k] || k])), o.slot || 'arrival', null)}</select></div>
@@ -1493,6 +1571,7 @@ views.admin = async ([tab = 'overview', id], qs) => {
         <div class="field"><label>Countries (codes, empty = all)</label><input name="countries" value="${esc((o.countries || []).join(', '))}" placeholder="SE, DE"></div></div>
       <div class="field"><label>Affiliate link (https://…)</label><input name="url" required value="${esc(o.url || '')}"></div>
       <div class="field"><label>One line under the step</label><input name="blurb" maxlength="200" value="${esc(o.blurb || '')}" placeholder="Send pocket money home with low fees"></div>
+      <div class="field"><label>Referral email (optional): people who tap "Get help" and agree are sent here with a referral code</label><input name="lead_email" type="email" value="${esc(o.lead_email || '')}" placeholder="partners@agency.com"></div>
       <div class="row"><label class="check"><input type="checkbox" name="active" ${o.id && !o.active ? '' : 'checked'}> Active</label>
         <button class="btn sm">${o.id ? 'Save' : 'Add partner offer'}</button>${o.id ? `<button type="button" class="btn ghost sm" data-del="${o.id}">Delete</button>
         <span class="muted small">${o.clicks_this_month} clicks this month · ${o.clicks} in total</span>` : ''}</div></form>`;
@@ -1509,6 +1588,19 @@ views.admin = async ([tab = 'overview', id], qs) => {
     document.querySelectorAll('[data-del]').forEach((b) => { b.onclick = async () => {
       if (!confirm('Delete this partner offer and its click counts?')) return;
       await api(`/admin/partner-offers/${b.dataset.del}`, { method: 'DELETE' }); toast('Deleted'); views.admin(['partners']);
+    }; });
+    return;
+  }
+  if (tab === 'referrals') {
+    const { referrals, statuses } = await api('/admin/referrals');
+    const label = { referred: 'Referred', in_process: 'In process', started: 'Started', not_going: 'Not going' };
+    render(`${head}<p class="muted">People who asked a partner agency for help and agreed to share their details. A referral turns to Started when their placement on PairMundo starts; set it by hand for starts the agency reports. Invoice agencies for the Started ones each month.</p>
+      <div class="card table-wrap"><table><tr><th>Code</th><th>Agency</th><th>Person</th><th>Stay in</th><th>Referred</th><th>Started</th><th>Status</th></tr>
+      ${referrals.map((r) => `<tr><td>${esc(r.code)}</td><td>${esc(r.agency)}</td><td>${r.user_id ? `<a href="#/u/${r.user_id}">${esc(r.user_name)}</a> · ${esc(r.user_email)} · ${esc(r.user_role)}` : '<span class="muted">Deleted account</span>'}</td>
+        <td>${cname(r.host_country) || '—'}</td><td>${fmtTime(r.created_at)}</td><td>${r.started_at ? fmtTime(r.started_at) : '—'}</td>
+        <td><select data-referral="${r.id}">${options(Object.fromEntries(statuses.map((k) => [k, label[k] || k])), r.status, null)}</select></td></tr>`).join('') || '<tr><td colspan="7" class="muted">No referrals yet.</td></tr>'}</table></div>`);
+    document.querySelectorAll('[data-referral]').forEach((sel) => { sel.onchange = async () => {
+      try { await api(`/admin/referrals/${sel.dataset.referral}`, { method: 'PUT', body: { status: sel.value } }); toast('Saved'); views.admin(['referrals']); } catch (err) { toast(err.message); }
     }; });
     return;
   }

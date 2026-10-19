@@ -284,11 +284,68 @@ export const AGREEMENT_DEFAULTS = {
   ES: { days_off: 1 },
 };
 
+// What the host family hands in for the au pair's visa or permit, per country. "visa" and "eu" work as in PAPERWORK.
+// made: what PairMundo writes for them ('agreement', or 'letter' for the invitation letter). Indicative, like the rules above.
+const doc = (key, title, made) => ({ key, title, made: made || null });
+const AGREEMENT = doc('agreement', 'The au pair agreement, signed by both of you', 'agreement');
+const LETTER = doc('letter', 'An invitation letter from your family', 'letter');
+const INSURANCE = doc('insurance', "Proof of the au pair's health, accident and liability insurance");
+const ADDRESS = doc('address', 'Proof of your address, such as your registration certificate or a recent bill');
+const PARENT_ID = doc('parent_id', 'A copy of one parent’s passport or ID card');
+export const FAMILY_DOCUMENTS = {
+  default: { visa: [AGREEMENT, LETTER, INSURANCE, ADDRESS, PARENT_ID], eu: [AGREEMENT, INSURANCE] },
+  US: { visa: [doc('sponsor', 'Your host family application with a designated au pair sponsor'), doc('home_check', 'Background checks and a home interview, arranged by the sponsor'), AGREEMENT] },
+  DE: { visa: [AGREEMENT, LETTER, INSURANCE, doc('address', 'Your registration certificate (Meldebescheinigung)'), PARENT_ID] },
+  FR: { visa: [AGREEMENT, LETTER, ADDRESS, PARENT_ID] },
+  NL: { visa: [doc('sponsor', 'Sign up with an IND-recognised au pair agency, which files the application'), doc('income', 'Proof of your income for the agency'), AGREEMENT] },
+  DK: { visa: [doc('official_contract', "SIRI's standard au pair contract, signed by both of you"), doc('fee', 'The receipt for the application fee'), INSURANCE, PARENT_ID] },
+  CH: { visa: [doc('official_contract', "Your canton's standard au pair contract, signed by both of you"), LETTER, INSURANCE, ADDRESS] },
+  BE: { visa: [AGREEMENT, INSURANCE, doc('good_conduct', 'A certificate of good conduct for each adult in your home'), ADDRESS] },
+  IE: { visa: [doc('agreement', 'The employment contract, signed by both of you', 'agreement'), doc('employer', 'Your employer registration number from Revenue')],
+    eu: [doc('agreement', 'The employment contract, signed by both of you', 'agreement'), doc('employer', 'Your employer registration number from Revenue')] },
+  CA: { visa: [doc('agreement', 'The employment contract, signed by both of you', 'agreement'), LETTER, doc('employer', 'Your CRA payroll account number')] },
+};
+
+/** Does an au pair of this nationality need a visa for this country? Same country or EU/EEA citizens in an EU/EEA country don't. */
+export const needsVisa = (program, nationality) => {
+  const nat = String(nationality || '').toUpperCase();
+  return !(nat === program?.code || (EU_EEA.has(nat) && EU_EEA.has(program?.code)));
+};
+
+/** The documents a family supplies for this placement's visa or permit. */
+export function familyDocuments(program, nationality) {
+  const docs = FAMILY_DOCUMENTS[program?.code] || FAMILY_DOCUMENTS.default;
+  return needsVisa(program, nationality) ? docs.visa : docs.eu || FAMILY_DOCUMENTS.default.eu;
+}
+
+/**
+ * The visa picture for an au pair of this nationality going to this country, shown before anyone matches or pays.
+ * kind: 'none' (no visa needed), 'visa', 'sponsor' (only through a recognised agency), 'paused', 'closed' or 'unknown'
+ * (no nationality yet). weeks is how far ahead the paperwork starts; apply_by is that date for a given start date.
+ */
+export function visaRoute(program, nationality, startDate) {
+  if (!program) return null;
+  const base = { country: program.code, visa: program.visa, official_source: program.official_source || null };
+  if (!nationality) return { ...base, kind: 'unknown' };
+  if (!needsVisa(program, nationality)) return { ...base, kind: 'none' };
+  if (program.status === 'closed') return { ...base, kind: 'closed' };
+  const steps = PAPERWORK[program.code]?.visa || PLACEMENT_TASKS.filter((t) => t.paperwork);
+  const days = Math.max(...steps.map((s) => -s.offset));
+  const start = startDate ? new Date(startDate).getTime() : NaN;
+  return {
+    ...base,
+    kind: program.status === 'paused' ? 'paused' : program.agency_required ? 'sponsor' : 'visa',
+    weeks: Math.ceil(days / 7),
+    apply_by: Number.isFinite(start) ? new Date(start - days * 86400000).toISOString().slice(0, 10) : null,
+    steps: steps.map((s) => ({ title: s.title, owner: s.owner })),
+  };
+}
+
 /** The checklist for a new placement, with the country's paperwork in place of the generic visa step. */
 export function placementTaskList(program, nationality, startDate, endDate) {
   const start = new Date(startDate).getTime(); const end = new Date(endDate).getTime();
   const steps = PAPERWORK[program?.code];
-  const free = EU_EEA.has(nationality) && EU_EEA.has(program?.code);
+  const free = !needsVisa(program, nationality);
   return PLACEMENT_TASKS.flatMap((t) => (t.paperwork && steps ? (free ? steps.eu || [] : steps.visa).map((s) => ({ ...s, link: program.official_source })) : [t]))
     .map((t) => {
       const due = t.offset === 'mid' ? (start + end) / 2 : t.offset === 'end' ? end : start + t.offset * 86400000;

@@ -13,6 +13,7 @@ import { PosterBody, PosterHeader } from '../../components/Poster';
 import { confirmAsync } from '../../components/dialogs';
 import { C } from '../../theme';
 import { askToFinishProfile } from '../setup';
+import { VisaCard } from '../../components/Visa';
 
 const W = Math.min(Dimensions.get('window').width, 520);
 
@@ -134,6 +135,7 @@ export default function UserProfile() {
             {d.match.warnings.map((r) => <T key={r} small style={{ color: C.warn }}>⚠ {tr(r)}</T>)}
           </Card>
         ) : null}
+        <VisaCard visa={d.visa} />
 
         {u.role === 'aupair' ? <>
           {u.verification.id || u.verification.references || u.verification.background ? <Chips>
