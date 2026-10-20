@@ -20,6 +20,9 @@ export default function Account() {
   const [idBusy, setIdBusy] = useState(false);
   const [idErr, setIdErr] = useState(null);
   const [amb, setAmb] = useState(null);
+  const [agencyCode, setAgencyCode] = useState('');
+  const [agencyErr, setAgencyErr] = useState(null);
+  const [agencyBusy, setAgencyBusy] = useState(false);
 
   const loadIdCheck = useCallback(() => api('/me/id-check').then((d) => {
     setIdCheck(d);
@@ -42,6 +45,13 @@ export default function Account() {
     catch (e) { setIdErr(e.message); } finally { setIdBusy(false); }
   };
 
+  // An au pair whose agency gave them a code after they signed up links their account to it here.
+  const addAgency = async () => {
+    setAgencyErr(null); setAgencyBusy(true);
+    try { await api('/me/agency', { method: 'POST', body: { code: agencyCode.trim() } }); await refresh(); setAgencyCode(''); }
+    catch (e) { setAgencyErr(e.message); } finally { setAgencyBusy(false); }
+  };
+
   const unblock = async (u) => {
     if (!(await confirmAsync(tr('Unblock {name}?', { name: u.name }), tr('You will be able to see each other again.'), tr('Unblock')))) return;
     await api(`/users/${u.id}/block`, { method: 'DELETE' });
@@ -61,7 +71,18 @@ export default function Account() {
 
   return (
     <Screen>
-      {amb ? <AmbassadorCard amb={amb} /> : null}
+      {amb && amb.kind !== 'agency' ? <AmbassadorCard amb={amb} /> : null}
+      {me.user.role === 'aupair' && (me.user.agency || !me.has_code) ? (
+        <Card>
+          <T h2>🎓 {tr('Your agency')}</T>
+          {me.user.agency ? <T>{tr('Your profile is linked to {agency}. Families see it on your profile.', { agency: me.user.agency })}</T> : <>
+            <T small muted>{tr('Did an au pair agency prepare you? Enter the code they gave you, and families will see the agency on your profile.')}</T>
+            <Field label={tr('Agency code')} value={agencyCode} onChangeText={setAgencyCode} autoCapitalize="characters" autoCorrect={false} />
+            {agencyErr ? <Alert level="error" text={agencyErr} /> : null}
+            <Button title={tr('Add')} onPress={addAgency} loading={agencyBusy} disabled={!agencyCode.trim()} />
+          </>}
+        </Card>
+      ) : null}
       <Card>
         <T h2>{tr('Language')}</T>
         <Chips>

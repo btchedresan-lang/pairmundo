@@ -27,7 +27,7 @@ export default function Register() {
       <Field label={tr('Email')} value={f.email} onChangeText={set('email')} keyboardType="email-address" autoCapitalize="none" />
       <Field label={tr('Password')} value={f.password} onChangeText={set('password')} secureTextEntry placeholder={tr('At least 8 characters')} />
       {/* An ambassador's code. Installs from the app stores can't carry their link, so people type it. */}
-      <Field label={tr('Referral code (optional)')} value={f.ref_code} onChangeText={set('ref_code')} autoCapitalize="characters" placeholder={tr('From the person who invited you')} />
+      <Field label={tr('Referral code (optional)')} value={f.ref_code} onChangeText={set('ref_code')} autoCapitalize="characters" placeholder={tr('From the person or agency who invited you')} />
       {err ? <Alert level="error" text={err} /> : null}
       <Button title={tr('Create account')} onPress={submit} loading={busy} />
       <T small muted style={{ textAlign: 'center' }}>

@@ -61,6 +61,7 @@ export function CardCaption({ r, onPress }) {
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
         {langs.slice(0, 3).map((l) => <Text key={l} style={styles.glass}>{l}</Text>)}
         {r.rating?.avg ? <Text style={styles.glass}>★ {r.rating.avg}</Text> : null}
+        {u.agency ? <Text style={styles.glass} numberOfLines={1}>🎓 {u.agency}</Text> : null}
         {u.role === 'aupair' && p.drivers_license ? <Text style={styles.glass}>🚗 {tr('Driver')}</Text> : null}
         {u.role === 'aupair' && (p.certificates || []).some((c) => ['cpr', 'first_aid'].includes(c.kind)) ? <Text style={styles.glass}>❤️ {tr('CPR')}</Text> : null}
       </View>
