@@ -551,7 +551,7 @@ const errBox = (err) => { document.getElementById('err').innerHTML = `<div class
 // ---------- partner agencies ----------
 // Agencies get their own account: no profile, nobody sees it, and once PairMundo links it to the agency's code it
 // shows how the agency's au pairs are doing.
-views['agency-signup'] = () => {
+views['agency-signup'] = (_, query) => {
   if (me) return go('#/');
   render(`<div class="card" style="max-width:480px;margin:32px auto"><h1>${tr('Create an agency account')}</h1>
     <p class="muted">${tr('For au pair agencies that work with PairMundo. Your au pairs join with your agency code, and this account shows you how they are doing. It is free.')}</p>
@@ -559,7 +559,7 @@ views['agency-signup'] = () => {
       <div class="field"><label>${tr('Agency name')}</label><input name="name" required></div>
       <div class="form-grid"><div class="field"><label>${tr('Country')}</label><select name="country" required>${options(COUNTRIES, '', tr('Choose…'))}</select></div>
       <div class="field"><label>${tr('City')}</label><input name="city"></div></div>
-      <div class="field"><label>${tr('Work email')}</label><input name="email" type="email" required autocomplete="email"></div>
+      <div class="field"><label>${tr('Work email')}</label><input name="email" type="email" required autocomplete="email" value="${esc(query.get('email') || '')}"></div>
       <div class="field"><label>${tr('Password')}</label><input name="password" type="password" minlength="8" required autocomplete="new-password"></div>
       <div id="err"></div><button class="btn" style="width:100%">${tr('Create agency account')}</button>
       <p class="muted small" style="text-align:center">${tr('By creating an account you agree to the {terms} and the {privacy}.', { terms: `<a href="/terms" target="_blank">${tr('Terms of Use')}</a>`, privacy: `<a href="/privacy" target="_blank">${tr('Privacy Policy')}</a>` })}</p></form></div>`);
@@ -1750,7 +1750,8 @@ async function adminAmbassadors(head, id, qs) {
     <div class="form-grid"><div class="field"><label>Name</label><input name="name" required value="${esc(a.name)}"></div>
       <div class="field"><label>Country</label><select name="country">${options(COUNTRIES, a.country || '', '—')}</select></div></div>
     <div class="form-grid"><div class="field"><label>Phone or email (only you see this)</label><input name="contact" value="${esc(a.contact)}"></div>
-      <div class="field"><label>Their PairMundo account email (lets them see their numbers)</label><input name="account_email" type="email" value="${esc(a.account_email)}"></div></div>
+      <div class="field"><label>Their PairMundo account email (lets them see their numbers; no account yet? We email them an invite)</label><input name="account_email" type="email" value="${esc(a.account_email)}">
+        ${a.invite_email ? `<p class="small muted">✉️ Invite sent. It links when they sign up and confirm this email. <a href="#" id="resendInvite">Send it again</a></p>` : a.user_id ? '<p class="small muted">✓ Linked to their account.</p>' : ''}</div></div>
     <div class="form-grid"><div class="field"><label>Notes</label><input name="notes" value="${esc(a.notes)}"></div>
       <div class="field"><label>Gift days for families (free Family Pass days for families who sign up with this code; 0 = none)</label><input name="gift_days" type="number" min="0" max="365" step="1" value="${Number(a.gift_days) || 0}"></div></div>`;
   if (id) {
@@ -1780,8 +1781,15 @@ async function adminAmbassadors(head, id, qs) {
     };
     document.getElementById('ambEdit').onsubmit = async (e) => {
       e.preventDefault();
-      try { await api(`/admin/ambassadors/${a.id}`, { method: 'POST', body: { ...formData(e.target), active: e.target.active.checked } }); toast('Saved'); views.admin(['ambassadors', a.id], qs); }
-      catch (err) { toast(err.message); }
+      try {
+        const r = await api(`/admin/ambassadors/${a.id}`, { method: 'POST', body: { ...formData(e.target), active: e.target.active.checked } });
+        toast(r.invite_email && r.invite_email !== a.invite_email ? `Saved. Invite sent to ${r.invite_email}` : 'Saved'); views.admin(['ambassadors', a.id], qs);
+      } catch (err) { toast(err.message); }
+    };
+    const resend = document.getElementById('resendInvite');
+    if (resend) resend.onclick = async (e) => {
+      e.preventDefault();
+      try { await api(`/admin/ambassadors/${a.id}?resend=1`, { method: 'POST', body: {} }); toast(`Invite sent again to ${a.invite_email}`); } catch (err) { toast(err.message); }
     };
     return;
   }
@@ -1803,7 +1811,7 @@ async function adminAmbassadors(head, id, qs) {
   document.querySelector('#monthPick input').onchange = (e) => go(`#/admin/ambassadors?month=${e.target.value}`);
   document.getElementById('ambNew').onsubmit = async (e) => {
     e.preventDefault();
-    try { const a = await api('/admin/ambassadors', { method: 'POST', body: formData(e.target) }); toast(`Added. Their link: ${a.link}`); go(`#/admin/ambassadors/${a.id}`); }
+    try { const a = await api('/admin/ambassadors', { method: 'POST', body: formData(e.target) }); toast(a.invite_email ? `Added. Invite sent to ${a.invite_email}` : `Added. Their link: ${a.link}`); go(`#/admin/ambassadors/${a.id}`); }
     catch (err) { toast(err.message); }
   };
 }

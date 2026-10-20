@@ -428,6 +428,7 @@ CREATE TABLE IF NOT EXISTS ambassadors (
   notes TEXT,
   gift_days INTEGER NOT NULL DEFAULT 0,           -- free days of the pass for families who sign up with the code; 0 = none
   kind TEXT NOT NULL DEFAULT 'ambassador',        -- ambassador (earns rewards) | agency (a partner agency: tags its au pairs, earns nothing)
+  invite_email TEXT,                              -- invited to create their own account; linked when they sign up and confirm this email
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -482,6 +483,8 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
   if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'gift_days')) db.exec('ALTER TABLE ambassadors ADD COLUMN gift_days INTEGER NOT NULL DEFAULT 0');
   // Partner agencies use the same codes: their au pairs are tagged to them, and families see the agency on the profile.
   if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'kind')) db.exec("ALTER TABLE ambassadors ADD COLUMN kind TEXT NOT NULL DEFAULT 'ambassador'");
+  // Someone invited to create the account that sees a code's numbers, before they have one.
+  if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'invite_email')) db.exec('ALTER TABLE ambassadors ADD COLUMN invite_email TEXT');
   // An agency's email for referrals: offers with one get a "Get help" button that sends the person's details there.
   if (!db.prepare('PRAGMA table_info(partner_offers)').all().some((c) => c.name === 'lead_email')) db.exec('ALTER TABLE partner_offers ADD COLUMN lead_email TEXT');
   // The family's street address, for the visa invitation letter.

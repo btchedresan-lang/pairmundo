@@ -101,3 +101,19 @@ export const agencyLeadEmail = (l) => ({
     `Please contact them directly, and quote the referral code when you tell us who started their au pair year.`, '', `The ${APP_NAME} team`,
   ].filter((x) => x != null).join('\n'),
 });
+
+/** Invites a partner agency or an ambassador to create the account that shows their code's numbers. In English, like agencyLeadEmail. */
+export const ambassadorInviteEmail = ({ kind, name, code, link, signup, email }) => ({
+  subject: kind === 'agency' ? `Your ${APP_NAME} agency account (code ${code})` : `Your ${APP_NAME} ambassador code: ${code}`,
+  text: [`Hello ${name},`, '',
+    kind === 'agency'
+      ? `We've set up the agency code ${code} for ${name} on ${APP_NAME}. Your au pairs type it when they create their free account, or use this link, which fills it in for them:`
+      : `Your ${APP_NAME} ambassador code is ${code}. People type it when they sign up, or use this link, which fills it in for them:`,
+    link, '',
+    kind === 'agency'
+      ? `Create your agency account here to see how many of your au pairs have joined, how many profiles families can see, and how many placements are agreed:`
+      : `Create your ${APP_NAME} account here to see the people you bring and what you've earned:`,
+    signup, '',
+    `Sign up with this email address (${email}). Your account is linked to your code as soon as you confirm the email.`, '',
+    `The ${APP_NAME} team`].join('\n'),
+});

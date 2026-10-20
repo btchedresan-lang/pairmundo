@@ -7,7 +7,7 @@ import { hashPassword, verifyPassword, createSession, sessionMiddleware, require
 import { scoreMatch, checkCompliance, ageOn } from './matching.js';
 import { PROGRAMS, REVIEW_CRITERIA, familyDocuments, placementTaskList, visaRoute } from './programs.js';
 import { buildAgreement, buildHostLetter, cleanTerms, defaultTerms, REQUIRED_TERMS } from './agreement.js';
-import { createMailer, agencyLeadEmail, codeEmail, launchEmail, profileInviteEmail, referenceEmail, waitlistEmail } from './mailer.js';
+import { createMailer, agencyLeadEmail, ambassadorInviteEmail, codeEmail, launchEmail, profileInviteEmail, referenceEmail, waitlistEmail } from './mailer.js';
 import { countryName, pickLang, t as translate } from './i18n.js';
 import { createCheckout, createIdentity, verifyWebhook } from './identity.js';
 import { createRevenueCat, storeName, webhookAuthorized } from './revenuecat.js';
@@ -368,7 +368,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     return { aupairs: r.aupairs || 0, profiles: r.profiles || 0, verified: r.verified || 0, placements: r.placements || 0 };
   };
   const adminAmbassador = (id, month = null, detail = true) => {
-    const a = db.prepare('SELECT a.*, u.email account_email FROM ambassadors a LEFT JOIN users u ON u.id = a.user_id WHERE a.id = ?').get(Number(id));
+    const a = db.prepare('SELECT a.*, COALESCE(u.email, a.invite_email) account_email FROM ambassadors a LEFT JOIN users u ON u.id = a.user_id WHERE a.id = ?').get(Number(id));
     if (!a) throw notFound();
     return {
       ...a, active: !!a.active, link: referralLink(a), stats: ambassadorStats(a, month),
@@ -448,7 +448,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       return getUser(id);
     });
     // The admin links a new agency account to the agency's code.
-    if (role === 'agency') {
+    if (role === 'agency' && !db.prepare('SELECT 1 FROM ambassadors WHERE user_id IS NULL AND invite_email = ?').get(email)) {
       for (const a of db.prepare("SELECT id FROM users WHERE role = 'admin'").all()) notify(a.id, 'agency', 'New agency account: {name}. Link it to a code under Ambassadors.', { name: user.name }, '#/admin/ambassadors');
     }
     // New families can get a free trial of the Family Pass (FAMILY_TRIAL_DAYS, off unless set).
@@ -479,6 +479,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     useCode(req.user.id, 'verify', req.body?.code);
     db.prepare('UPDATE users SET email_verified = 1 WHERE id = ?').run(req.user.id);
     checkProfileReward(req.user.id);
+    claimInvite(req.user);
     return { ok: true };
   }));
 
@@ -505,6 +506,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       db.prepare('UPDATE users SET password_hash = ?, email_verified = 1 WHERE id = ?').run(hashPassword(String(password)), user.id);
       db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user.id);
     });
+    claimInvite(user);
     const s = createSession(db, user.id);
     setCookie(res, s.token);
     return { user: { ...publicUser(user, user), email: user.email, email_verified: true }, token: s.token };
@@ -2129,10 +2131,15 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const name = 'name' in body ? str(body.name, 120) : a.name;
     if (!name) throw bad('Name is required.');
     let userId = a.user_id ?? null;
+    let inviteEmail = a.invite_email ?? null;
     if ('account_email' in body) {
       const email = normEmail(body.account_email);
-      userId = email ? db.prepare("SELECT id FROM users WHERE lower(trim(email)) = ? AND role != 'admin'").get(email)?.id : null;
-      if (email && !userId) throw bad('No PairMundo account uses that email.');
+      if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw bad('Enter a valid email.');
+      const user = email ? db.prepare('SELECT id, role FROM users WHERE lower(trim(email)) = ?').get(email) : null;
+      if (user?.role === 'admin') throw bad('That email belongs to an admin account.');
+      // No account with that email yet: they're invited to create one, and it's linked when they confirm the email.
+      userId = user?.id ?? null;
+      inviteEmail = email && !user ? email : null;
     }
     const text = (k, max) => (k in body ? str(body[k], max) || null : a[k] ?? null);
     // Free days of the pass for families who sign up with the code. Families already signed up keep what they got.
@@ -2140,7 +2147,20 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (!Number.isInteger(giftDays) || giftDays < 0 || giftDays > 365) throw bad('Gift days are a whole number from 0 to 365.');
     return { name, country: text('country', 2)?.toUpperCase() ?? null, contact: text('contact', 200), notes: text('notes', 2000), user_id: userId,
       active: 'active' in body ? (body.active ? 1 : 0) : Number(a.active ?? 1), gift_days: giftDays,
-      kind: 'kind' in body ? (body.kind === 'agency' ? 'agency' : 'ambassador') : a.kind ?? 'ambassador' };
+      kind: 'kind' in body ? (body.kind === 'agency' ? 'agency' : 'ambassador') : a.kind ?? 'ambassador', invite_email: inviteEmail };
+  };
+  /** Emails someone without an account an invite to create one, so they can see their code's numbers. */
+  const sendAmbassadorInvite = (a) => {
+    const signup = `${publicBase()}/#/${a.kind === 'agency' ? 'agency-signup' : 'register'}?email=${encodeURIComponent(a.invite_email)}`;
+    Promise.resolve(mailer({ to: a.invite_email, ...ambassadorInviteEmail({ ...a, link: referralLink(a), signup, email: a.invite_email }) }))
+      .catch((e) => console.error('Email failed:', e.message));
+  };
+  /** Links an account to the code it was invited to, once its email is confirmed. */
+  const claimInvite = (user) => {
+    const a = db.prepare('SELECT id, code FROM ambassadors WHERE user_id IS NULL AND invite_email = ?').get(normEmail(user.email));
+    if (!a) return;
+    db.prepare('UPDATE ambassadors SET user_id = ?, invite_email = NULL WHERE id = ?').run(user.id, a.id);
+    agencyLinked(user.id, a.code);
   };
   /** Tells an agency account that its code is ready, the first time it is linked to one. */
   const agencyLinked = (userId, code) => {
@@ -2159,9 +2179,10 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (!code) throw bad('A code is 3 to 24 letters, numbers or dashes, like ANACO.');
     if (db.prepare('SELECT 1 FROM ambassadors WHERE code = ?').get(code)) throw new HttpError(409, 'That code is already taken.');
     const f = ambassadorFields(req.body);
-    const r = db.prepare('INSERT INTO ambassadors (code, name, country, contact, notes, user_id, active, gift_days, kind) VALUES (?,?,?,?,?,?,?,?,?)')
-      .run(code, f.name, f.country, f.contact, f.notes, f.user_id, f.active, f.gift_days, f.kind);
+    const r = db.prepare('INSERT INTO ambassadors (code, name, country, contact, notes, user_id, active, gift_days, kind, invite_email) VALUES (?,?,?,?,?,?,?,?,?,?)')
+      .run(code, f.name, f.country, f.contact, f.notes, f.user_id, f.active, f.gift_days, f.kind, f.invite_email);
     if (f.user_id) agencyLinked(f.user_id, code);
+    if (f.invite_email) sendAmbassadorInvite({ ...f, code });
     res.status(201);
     return adminAmbassador(r.lastInsertRowid);
   }));
@@ -2170,9 +2191,11 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   api.post('/admin/ambassadors/:id', requireRole('admin'), wrap((req) => {
     const a = adminAmbassador(req.params.id, null, false);
     const f = ambassadorFields(req.body || {}, a);
-    db.prepare('UPDATE ambassadors SET name = ?, country = ?, contact = ?, notes = ?, user_id = ?, active = ?, gift_days = ?, kind = ? WHERE id = ?')
-      .run(f.name, f.country, f.contact, f.notes, f.user_id, f.active, f.gift_days, f.kind, a.id);
+    db.prepare('UPDATE ambassadors SET name = ?, country = ?, contact = ?, notes = ?, user_id = ?, active = ?, gift_days = ?, kind = ?, invite_email = ? WHERE id = ?')
+      .run(f.name, f.country, f.contact, f.notes, f.user_id, f.active, f.gift_days, f.kind, f.invite_email, a.id);
     if (f.user_id && f.user_id !== a.user_id) agencyLinked(f.user_id, a.code);
+    // Saving the form again doesn't re-send; a new email (or ?resend=1) does.
+    if (f.invite_email && (f.invite_email !== a.invite_email || req.query.resend)) sendAmbassadorInvite({ ...f, code: a.code });
     return adminAmbassador(a.id);
   }));
   // After paying an ambassador, mark what they earned up to the end of that month (or everything) as paid.
