@@ -89,7 +89,7 @@ export default function MyProfile() {
 
       <Card>
         <T h2>{tr('Basics')}</T>
-        <Field label={tr('Name')} value={f.name} onChangeText={set('name')} />
+        <Field label={tr('Name')} hint={tr('Other members see only your first name and last initial, like Maria L. Your full name is shared once you both confirm a placement.')} value={f.name} onChangeText={set('name')} />
         <CountryPicker label={tr('Country you live in')} value={f.country} onChange={set('country')} />
         <Field label={tr('City')} value={f.city} onChangeText={set('city')} />
         <Field label={isAp ? tr('About me') : tr('About our family')} multiline value={f.bio} onChangeText={set('bio')} />

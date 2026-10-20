@@ -21,7 +21,7 @@ export default function Register() {
   return (
     <Screen>
       <ChoiceChips label={tr('I am')} options={{ family: `🏡 ${tr('A host family')}`, aupair: `🎒 ${tr('An au pair')}` }} value={f.role} onChange={(v) => v && set('role')(v)} />
-      <Field label={tr('Name')} value={f.name} onChangeText={set('name')} placeholder={f.role === 'family' ? tr('The Smith Family') : 'Maria Lopez'} />
+      <Field label={tr('Name')} hint={tr('Other members see only your first name and last initial, like Maria L. Your full name is shared once you both confirm a placement.')} value={f.name} onChangeText={set('name')} placeholder={f.role === 'family' ? tr('The Smith Family') : 'Maria Lopez'} />
       <CountryPicker label={tr('Country you live in')} value={f.country} onChange={set('country')} />
       <Field label={tr('City')} value={f.city} onChangeText={set('city')} />
       <Field label={tr('Email')} value={f.email} onChangeText={set('email')} keyboardType="email-address" autoCapitalize="none" />

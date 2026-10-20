@@ -125,6 +125,35 @@ test('end-to-end: register, match, message, placement, compliance, two-way revie
   assert.equal((await call(stranger.token, 'GET', '/admin/stats')).status, 403);
 });
 
+test('names: others see first name and last initial; the full name only after a confirmed placement', async () => {
+  const fam = await register('namefam@test.io', 'family', 'DE', 'Familie Nachname');
+  const ap = await register('nameap@test.io', 'aupair', 'PL', 'Zofia Maria Łukasik');
+  const other = await register('nameap2@test.io', 'aupair', 'BR', 'Solo');
+  await call(ap.token, 'PUT', '/me', { profile: { bio: 'Hi, I love kids.' } });
+  await call(fam.token, 'PUT', '/me', { profile: { children: [{ age: 3 }], languages: ['de'], start_date: '2027-01-01', duration_months: 12, weekly_hours: 30, pocket_money: 280 } });
+
+  assert.equal((await call(ap.token, 'GET', '/me')).body.user.name, 'Zofia Maria Łukasik', 'you see your own full name');
+  const card = (await call(fam.token, 'GET', '/discover')).body.results.find((x) => x.user.id === ap.id);
+  assert.equal(card.user.name, 'Zofia Ł.');
+  assert.equal((await call(fam.token, 'GET', `/users/${other.id}`)).body.user.name, 'Solo');
+  assert.ok(!(await call(fam.token, 'GET', '/search?q=Łukasik')).body.results.length, 'a search cannot confirm a hidden last name');
+  assert.ok((await call(fam.token, 'GET', '/search?q=Zofia')).body.results.some((x) => x.user.id === ap.id));
+
+  await call(fam.token, 'POST', '/swipe', { target_id: ap.id, direction: 'like' });
+  const match = (await call(ap.token, 'POST', '/swipe', { target_id: fam.id, direction: 'like' })).body;
+  assert.equal(match.other.name, 'Familie N.');
+  const convs = (await call(fam.token, 'GET', '/conversations')).body.conversations;
+  assert.equal(convs.find((c) => c.other.id === ap.id).other.name, 'Zofia Ł.');
+  assert.ok(!JSON.stringify((await call(fam.token, 'GET', '/notifications')).body).includes('Łukasik'));
+
+  const pid = (await call(fam.token, 'POST', '/placements', { other_user_id: ap.id, start_date: '2027-01-01', end_date: '2027-12-31', weekly_hours: 30, pocket_money: 280 })).body.id;
+  assert.equal((await call(fam.token, 'GET', `/placements/${pid}`)).body.aupair.name, 'Zofia Ł.', 'a proposal is not enough');
+  await call(ap.token, 'POST', `/placements/${pid}/confirm`);
+  assert.equal((await call(fam.token, 'GET', `/placements/${pid}`)).body.aupair.name, 'Zofia Maria Łukasik');
+  assert.equal((await call(ap.token, 'GET', `/users/${fam.id}`)).body.user.name, 'Familie Nachname');
+  assert.equal((await call(other.token, 'GET', `/users/${ap.id}`)).body.user.name, 'Zofia Ł.', 'everyone else still sees the short name');
+});
+
 test('programs are public and admin-only to edit', async () => {
   const r = await call(null, 'GET', '/programs');
   assert.equal(r.body.programs.length, PROGRAMS.length);
@@ -376,7 +405,7 @@ test('push notifications: matches and messages reach the phone; logout and unins
   await call(ap.token, 'POST', `/conversations/${m.body.conversation_id}/messages`, { body: 'Hello from Brazil' });
   await wait();
   const msg = pushed.at(-1);
-  assert.deepEqual([msg.to, msg.title, msg.body], [tok, 'Push Aupair', 'Hello from Brazil']);
+  assert.deepEqual([msg.to, msg.title, msg.body], [tok, 'Push A.', 'Hello from Brazil']);
 
   // Signing out with the token stops pushes to that phone.
   const before = pushed.length;
