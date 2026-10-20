@@ -453,7 +453,8 @@ function landing() {
       <h1>${tr('Swipe. Match. Welcome your au pair.')}</h1>
       <p>${tr("Photo-first profiles from families and au pairs worldwide. Swipe right on the ones you like; when it's mutual, you're matched and can chat. Program rules, verification and two-way reviews are built in.")}</p>
       <div class="row" style="justify-content:center"><a class="btn" href="#/register?role=family">${tr("I'm a host family")}</a>
-      <a class="btn secondary" href="#/register?role=aupair">${tr('I want to be an au pair')}</a></div>
+      <a class="btn secondary" href="#/register?role=aupair">${tr('I want to be an au pair')}</a>
+      <a class="btn secondary" href="#/agency-signup">${tr("I'm an au pair agency")}</a></div>
       <p class="small muted" style="margin-top:12px">${tr('Free for au pairs. Swiping and matching are free for everyone.')}</p>
     </section>
     <section class="card wait-card"><div id="invited"></div><h2>${tr('Be the first to get the app')}</h2>
