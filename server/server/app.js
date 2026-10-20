@@ -156,10 +156,14 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   const seesFullName = (viewer, u) => !!viewer && (viewer.id === u.id || viewer.role === 'admin'
     || !!db.prepare(`SELECT 1 FROM placements WHERE status IN ('confirmed', 'active', 'completed')
         AND ((aupair_id = ? AND family_id = ?) OR (aupair_id = ? AND family_id = ?))`).get(viewer.id, u.id, u.id, viewer.id));
+  /** The partner agency an au pair joined with, shown on their profile so families know who prepared them. */
+  const agencyOf = (u) => (u.role === 'aupair' && u.ref_code
+    ? db.prepare("SELECT name FROM ambassadors WHERE code = ? AND kind = 'agency' AND active = 1").get(u.ref_code)?.name ?? null : null);
   /** A member as `viewer` may see them. With no viewer, only the short name is shown. */
   const publicUser = (u, viewer = null) => u && ({
     id: u.id, role: u.role, name: seesFullName(viewer, u) ? u.name : shortName(u.name), country: u.country, city: u.city, photo_url: photosOf(u)[0] || null, photos: photosOf(u),
     verification: { id: !!u.id_verified, references: !!u.references_checked, background: !!u.background_checked },
+    agency: agencyOf(u),
     member_since: u.created_at, last_active_at: u.last_active_at,
   });
 
@@ -320,7 +324,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   const addReward = (userId, kind, amount, note = null) => {
     const u = getUser(userId);
     const a = u?.ref_code ? db.prepare('SELECT * FROM ambassadors WHERE code = ?').get(u.ref_code) : null;
-    if (!a?.active || a.user_id === u.id || u.suspended) return;
+    // Partner agencies tag their au pairs but earn nothing.
+    if (!a?.active || a.kind === 'agency' || a.user_id === u.id || u.suspended) return;
     if (kind === 'profile') {
       const used = db.prepare("SELECT COALESCE(SUM(amount_cents), 0) n FROM referral_rewards WHERE ambassador_id = ? AND kind = 'profile' AND created_at >= datetime('now', 'start of month')").get(a.id).n;
       amount = Math.max(0, Math.min(amount, AMBASSADOR_REWARDS.profile_monthly_cap - used));
@@ -368,7 +373,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   api.get('/referral/:code', authLimit, wrap((req) => {
     const a = ambassadorByCode(referralCode(req.params.code));
     if (!a) throw notFound('That referral code is not valid. Check it, or leave it empty.');
-    return { code: a.code, name: a.name.split(/\s+/)[0] };
+    // An agency is known by its full name; an ambassador by their first name.
+    return { code: a.code, name: a.kind === 'agency' ? a.name : a.name.split(/\s+/)[0], kind: a.kind };
   }));
 
   // ---------- auth ----------
@@ -506,6 +512,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       pass: passView(u),
       rating: ratingSummary(u.id),
       ambassador: db.prepare('SELECT code FROM ambassadors WHERE user_id = ? AND active = 1').get(u.id) ?? null,
+      // Whether they joined with a referral or agency code (an au pair without one can still add their agency's).
+      has_code: !!u.ref_code,
       counts: {
         notifications: db.prepare('SELECT COUNT(*) n FROM notifications WHERE user_id = ? AND read = 0').get(u.id).n,
         requests: db.prepare("SELECT COUNT(*) n FROM match_requests WHERE to_user = ? AND status = 'pending'").get(u.id).n,
@@ -1906,6 +1914,16 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     return { ok: true };
   }));
 
+  // An au pair who signed up without their agency's code can add it later. It can't be changed once set, because the
+  // code also decides which ambassador or agency they count for.
+  api.post('/me/agency', requireRole('aupair'), wrap((req) => {
+    const a = ambassadorByCode(referralCode(req.body?.code));
+    if (!a || a.kind !== 'agency') throw bad('That agency code is not valid. Check it with your agency.');
+    if (req.user.ref_code) throw bad('Your account is already linked to a code.');
+    db.prepare('UPDATE users SET ref_code = ? WHERE id = ?').run(a.code, req.user.id);
+    return { agency: a.name };
+  }));
+
   // An ambassador's own numbers, shown in their app.
   api.get('/me/ambassador', requireAuth, wrap((req) => {
     const a = db.prepare('SELECT * FROM ambassadors WHERE user_id = ? AND active = 1').get(req.user.id);
@@ -2100,7 +2118,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const giftDays = 'gift_days' in body ? Number(body.gift_days || 0) : Number(a.gift_days ?? 0);
     if (!Number.isInteger(giftDays) || giftDays < 0 || giftDays > 365) throw bad('Gift days are a whole number from 0 to 365.');
     return { name, country: text('country', 2)?.toUpperCase() ?? null, contact: text('contact', 200), notes: text('notes', 2000), user_id: userId,
-      active: 'active' in body ? (body.active ? 1 : 0) : Number(a.active ?? 1), gift_days: giftDays };
+      active: 'active' in body ? (body.active ? 1 : 0) : Number(a.active ?? 1), gift_days: giftDays,
+      kind: 'kind' in body ? (body.kind === 'agency' ? 'agency' : 'ambassador') : a.kind ?? 'ambassador' };
   };
   api.get('/admin/ambassadors', requireRole('admin'), wrap((req) => {
     const month = monthParam(req.query.month);
@@ -2112,8 +2131,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (!code) throw bad('A code is 3 to 24 letters, numbers or dashes, like ANACO.');
     if (db.prepare('SELECT 1 FROM ambassadors WHERE code = ?').get(code)) throw new HttpError(409, 'That code is already taken.');
     const f = ambassadorFields(req.body);
-    const r = db.prepare('INSERT INTO ambassadors (code, name, country, contact, notes, user_id, active, gift_days) VALUES (?,?,?,?,?,?,?,?)')
-      .run(code, f.name, f.country, f.contact, f.notes, f.user_id, f.active, f.gift_days);
+    const r = db.prepare('INSERT INTO ambassadors (code, name, country, contact, notes, user_id, active, gift_days, kind) VALUES (?,?,?,?,?,?,?,?,?)')
+      .run(code, f.name, f.country, f.contact, f.notes, f.user_id, f.active, f.gift_days, f.kind);
     res.status(201);
     return adminAmbassador(r.lastInsertRowid);
   }));
@@ -2122,8 +2141,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   api.post('/admin/ambassadors/:id', requireRole('admin'), wrap((req) => {
     const a = adminAmbassador(req.params.id, null, false);
     const f = ambassadorFields(req.body || {}, a);
-    db.prepare('UPDATE ambassadors SET name = ?, country = ?, contact = ?, notes = ?, user_id = ?, active = ?, gift_days = ? WHERE id = ?')
-      .run(f.name, f.country, f.contact, f.notes, f.user_id, f.active, f.gift_days, a.id);
+    db.prepare('UPDATE ambassadors SET name = ?, country = ?, contact = ?, notes = ?, user_id = ?, active = ?, gift_days = ?, kind = ? WHERE id = ?')
+      .run(f.name, f.country, f.contact, f.notes, f.user_id, f.active, f.gift_days, f.kind, a.id);
     return adminAmbassador(a.id);
   }));
   // After paying an ambassador, mark what they earned up to the end of that month (or everything) as paid.
