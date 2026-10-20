@@ -66,3 +66,17 @@ export function buildAgreement({ placement: p, program, aupair, family, national
   ].filter(Boolean);
   return sections.map((s) => ({ ...s, clauses: s.clauses?.filter(Boolean) }));
 }
+
+/** The family's invitation letter for the au pair's visa application, as sentences like the agreement. */
+export function buildHostLetter({ placement: p, program, aupair, family, address, nationalityName, countryName }) {
+  return [
+    c('To the embassy, consulate or migration office handling this application'),
+    c('We, {family}, invite {aupair}, a citizen of {country}, to live with our family as an au pair.', { family: family.name, aupair: aupair.name, country: nationalityName || '' }),
+    c('Our address: {address}.', { address: address || [family.city, countryName].filter(Boolean).join(', ') }),
+    c('The stay runs from {start} to {end}.', { start: p.start_date, end: p.end_date }),
+    c('{aupair} will help with our children and light housework for up to {hours} hours a week, and will have time to attend a language course.', { aupair: aupair.name, hours: p.weekly_hours }),
+    c('We will pay {amount} {currency} pocket money each month and give {aupair} a private room and meals at no cost.', { amount: p.pocket_money, currency: program?.currency || '', aupair: aupair.name }),
+    c('We will meet the duties of the au pair program in {country}, including insurance where it is required.', { country: countryName }),
+    c('Please contact us if you need anything more.'),
+  ];
+}

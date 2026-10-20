@@ -89,3 +89,15 @@ export const launchEmail = (lang, { kind, role, email, links, earlyDays = 0, use
     : t(lang, 'You got this email because you joined the {app} list. To leave the list, open this link: {link}', v));
   return { subject: t(lang, 'The {app} app is here', v), text: parts.join('\n\n') };
 };
+
+/** Tells a partner agency about someone who asked for its help and agreed to share their details. Agencies get it in English. */
+export const agencyLeadEmail = (l) => ({
+  subject: `New ${APP_NAME} referral: ${l.name} (${l.code})`,
+  text: [`Hello ${l.agency},`, '',
+    `${l.name} asked for your help through ${APP_NAME} and agreed to share these details with you:`, '',
+    `Name: ${l.name}`, `Email: ${l.email}`, `${l.role === 'family' ? 'Host family' : 'Au pair'}${l.lives_in ? `, living in ${l.lives_in}` : ''}`,
+    l.nationality ? `Nationality: ${l.nationality}` : null, l.host_country ? `Au pair stay in: ${l.host_country}` : null, l.dates ? `Dates: ${l.dates}` : null,
+    `Referral code: ${l.code}`, '',
+    `Please contact them directly, and quote the referral code when you tell us who started their au pair year.`, '', `The ${APP_NAME} team`,
+  ].filter((x) => x != null).join('\n'),
+});

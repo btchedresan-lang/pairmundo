@@ -377,7 +377,7 @@ CREATE TABLE IF NOT EXISTS country_programs (
 CREATE TABLE IF NOT EXISTS partner_offers (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL,                             -- the partner, e.g. Wise
-  slot TEXT NOT NULL,                             -- which checklist step: insurance | travel | language | arrival
+  slot TEXT NOT NULL,                             -- which checklist step: insurance | travel | language | arrival | sponsor
   url TEXT NOT NULL,                              -- the tracked affiliate link; people reach it through /api/partner-offers/:id/go
   blurb TEXT,                                     -- one line shown under the step
   countries TEXT NOT NULL DEFAULT '[]',           -- JSON host-country codes; empty = every country
@@ -392,6 +392,28 @@ CREATE TABLE IF NOT EXISTS partner_clicks (
   offer_id INTEGER NOT NULL REFERENCES partner_offers(id) ON DELETE CASCADE,
   user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Which visa documents the family has ready for a placement (the list itself comes from programs.js).
+CREATE TABLE IF NOT EXISTS placement_documents (
+  placement_id INTEGER NOT NULL REFERENCES placements(id) ON DELETE CASCADE,
+  doc_key TEXT NOT NULL,
+  done_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (placement_id, doc_key)
+);
+
+-- People who asked a partner agency for help (e.g. a US J-1 sponsor) and agreed to share their details with it.
+-- Kept after the person deletes their account (user_id becomes NULL) so the agency can still be invoiced.
+CREATE TABLE IF NOT EXISTS agency_referrals (
+  id INTEGER PRIMARY KEY,
+  offer_id INTEGER REFERENCES partner_offers(id) ON DELETE SET NULL,
+  agency TEXT NOT NULL,                           -- the partner's name when referred
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  host_country TEXT,
+  code TEXT NOT NULL UNIQUE,                      -- the referral code the agency quotes back
+  status TEXT NOT NULL DEFAULT 'referred',        -- referred | in_process | started | not_going
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  started_at TEXT
 );
 
 -- Ambassadors share a referral code (on a link or typed at sign-up). People who join with it earn them rewards.
@@ -457,6 +479,10 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
   db.exec('CREATE INDEX IF NOT EXISTS users_ref_code ON users(ref_code)');
   // Free days of the pass a code gives the families who sign up with it.
   if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'gift_days')) db.exec('ALTER TABLE ambassadors ADD COLUMN gift_days INTEGER NOT NULL DEFAULT 0');
+  // An agency's email for referrals: offers with one get a "Get help" button that sends the person's details there.
+  if (!db.prepare('PRAGMA table_info(partner_offers)').all().some((c) => c.name === 'lead_email')) db.exec('ALTER TABLE partner_offers ADD COLUMN lead_email TEXT');
+  // The family's street address, for the visa invitation letter.
+  if (!db.prepare('PRAGMA table_info(placements)').all().some((c) => c.name === 'host_address')) db.exec('ALTER TABLE placements ADD COLUMN host_address TEXT');
   const pcols = db.prepare('PRAGMA table_info(country_programs)').all().map((c) => c.name);
   if (!pcols.includes('status')) {
     db.exec(`ALTER TABLE country_programs ADD COLUMN status TEXT NOT NULL DEFAULT 'open';

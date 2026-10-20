@@ -30,7 +30,9 @@ for (const block of site.matchAll(/options\(\{([^}]*)\}/g)) for (const m of bloc
 // Fixed text the server sends (errors, checklist items), which the page translates.
 const server = ['app.js', 'matching.js', 'programs.js', 'agreement.js'].map((f) => read(`server/${f}`)).join('\n');
 for (const re of [String.raw`HttpError\(\d+, (?:${literal})`, String.raw`\bbad\((?:${literal})`, String.raw`\berror: (?:${literal})`,
-  String.raw`\bmsg = (?:${literal})`, String.raw`\b(?:notFound|forbidden)\((?:${literal})`, String.raw`\{ title: (?:${literal}), owner`]) {
+  String.raw`\bmsg = (?:${literal})`, String.raw`\b(?:notFound|forbidden)\((?:${literal})`, String.raw`\{ title: (?:${literal}), owner`,
+  // Visa documents a family hands in: doc('key', 'Title').
+  String.raw`\bdoc\('\w+', (?:${literal})`]) {
   for (const m of server.matchAll(new RegExp(re, 'g'))) add(unq(m));
 }
 // The au pair agreement's sentences, written as c('...') in the server.

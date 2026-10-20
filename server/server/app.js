@@ -5,9 +5,9 @@ import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto
 import { json, tx } from './db.js';
 import { hashPassword, verifyPassword, createSession, sessionMiddleware, requireAuth, requireRole, rateLimit } from './auth.js';
 import { scoreMatch, checkCompliance, ageOn } from './matching.js';
-import { PROGRAMS, REVIEW_CRITERIA, placementTaskList } from './programs.js';
-import { buildAgreement, cleanTerms, defaultTerms, REQUIRED_TERMS } from './agreement.js';
-import { createMailer, codeEmail, launchEmail, profileInviteEmail, referenceEmail, waitlistEmail } from './mailer.js';
+import { PROGRAMS, REVIEW_CRITERIA, familyDocuments, placementTaskList, visaRoute } from './programs.js';
+import { buildAgreement, buildHostLetter, cleanTerms, defaultTerms, REQUIRED_TERMS } from './agreement.js';
+import { createMailer, agencyLeadEmail, codeEmail, launchEmail, profileInviteEmail, referenceEmail, waitlistEmail } from './mailer.js';
 import { countryName, pickLang, t as translate } from './i18n.js';
 import { createCheckout, createIdentity, verifyWebhook } from './identity.js';
 import { createRevenueCat, storeName, webhookAuthorized } from './revenuecat.js';
@@ -35,7 +35,9 @@ const USER_FIELDS = ['name', 'country', 'city'];
 // Asked during family onboarding: "Would you also use PairMundo to find a babysitter?" Private: only the family and admins see it.
 const SITTER_ANSWERS = ['yes', 'maybe', 'no'];
 // Checklist steps a partner offer can sit on, found from the step's title.
-const PARTNER_SLOTS = { insurance: /insurance/i, travel: /^Book travel$/, language: /language course|Swedish course|French classes/i, arrival: /^Arrival and local registration$/ };
+const PARTNER_SLOTS = { insurance: /insurance/i, travel: /^Book travel$/, language: /language course|Swedish course|French classes/i, arrival: /^Arrival and local registration$/,
+  sponsor: /designated au pair sponsor|recognised au pair agency/i };
+const REFERRAL_STATUSES = ['referred', 'in_process', 'started', 'not_going'];
 const taskSlot = (title) => Object.keys(PARTNER_SLOTS).find((k) => PARTNER_SLOTS[k].test(title)) || null;
 // Reviews become visible once both sides have reviewed, or 14 days after the placement ends.
 const REVIEW_REVEAL_DAYS = 14;
@@ -585,10 +587,14 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
         WHERE r.reviewee_id = ? AND ${visibleReviewsSql} ORDER BY r.created_at DESC`).all(u.id)
       .map((r) => ({ ...r, criteria: json.parse(r.criteria, {}) }));
     const me = req.user;
-    let match = null;
+    let match = null; let visa = null;
     if (me.role !== u.role && me.role !== 'admin') {
       const [ap, fam] = me.role === 'aupair' ? [me, u] : [u, me];
-      match = scoreMatch({ user: ap, profile: getProfile(ap) }, { user: fam, profile: getProfile(fam) }, getProgram(fam.country), ratingSummary(ap.id), req.user.lang);
+      const apProfile = getProfile(ap); const famProfile = getProfile(fam); const program = getProgram(fam.country);
+      match = scoreMatch({ user: ap, profile: apProfile }, { user: fam, profile: famProfile }, program, ratingSummary(ap.id), req.user.lang);
+      // What the visa takes, before anyone matches or pays. Where only an agency can sponsor it, the partner agencies for that country.
+      visa = visaRoute(program, apProfile?.nationality, famProfile?.start_date);
+      if (visa?.kind === 'sponsor') visa.agencies = referralAgencies(fam.country, me.role);
     }
     const req_ = db.prepare(`SELECT id, from_user, status FROM match_requests WHERE
         ((from_user = ? AND to_user = ?) OR (from_user = ? AND to_user = ?)) ORDER BY id DESC LIMIT 1`).get(me.id, u.id, u.id, me.id);
@@ -600,6 +606,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       references: u.role === 'aupair' ? confirmedReferences(u.id) : [],
       placements_completed: db.prepare(`SELECT COUNT(*) n FROM placements WHERE status = 'completed' AND (aupair_id = ? OR family_id = ?)`).get(u.id, u.id).n,
       match,
+      visa,
       // Who liked you is part of the Family Pass.
       request: req_ && !(req_.status === 'pending' && req_.from_user === u.id && needsPass(me)) ? req_ : null,
       favorite: !!db.prepare('SELECT 1 FROM favorites WHERE user_id = ? AND target_id = ?').get(me.id, u.id),
@@ -1553,6 +1560,10 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       compliance: checkCompliance(program, { ...p, birth_date: getProfile(ap)?.birth_date, nationality: getProfile(ap)?.nationality }, me.lang),
       tasks: withOffers(db.prepare('SELECT * FROM placement_tasks WHERE placement_id = ? ORDER BY sort').all(p.id), p.country, me.role),
       agreement: agreementStatus(p),
+      // How many of the family's visa documents are ready, once the placement is confirmed.
+      documents: AGREEMENT_OPEN.includes(p.status) ? {
+        done: db.prepare('SELECT COUNT(*) n FROM placement_documents WHERE placement_id = ?').get(p.id).n,
+        total: familyDocuments(program, getProfile(ap)?.nationality).length } : null,
       my_review: myReview ? { ...myReview, criteria: json.parse(myReview.criteria, {}) } : null,
       can_review: me.role !== 'admin' && ['active', 'completed'].includes(p.status) && !myReview,
       review_criteria: REVIEW_CRITERIA[me.id === p.aupair_id ? 'family' : 'aupair'],
@@ -1569,9 +1580,13 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       .filter((o) => (!o.countries.length || o.countries.includes(country)) && (role === 'admin' || o.audience === 'both' || o.audience === role));
     return tasks.map((t) => {
       const slot = taskSlot(t.title);
-      return { ...t, offers: slot ? offers.filter((o) => o.slot === slot).map(({ id, name, blurb }) => ({ id, name, blurb })) : [] };
+      return { ...t, offers: slot ? offers.filter((o) => o.slot === slot).map(({ id, name, blurb, lead_email }) => ({ id, name, blurb, referral: !!lead_email })) : [] };
     });
   };
+  /** Partner agencies that take referrals for a host country, e.g. J-1 sponsors for the US. */
+  const referralAgencies = (country, role) => db.prepare("SELECT * FROM partner_offers WHERE active = 1 AND slot = 'sponsor' AND lead_email IS NOT NULL ORDER BY id").all()
+    .map(offerRow).filter((o) => (!o.countries.length || o.countries.includes(country)) && (o.audience === 'both' || o.audience === role))
+    .map(({ id, name, blurb }) => ({ id, name, blurb, referral: true }));
   const cleanOffer = (b, old = {}) => {
     const o = { ...old, ...b };
     const name = str(o.name, 80); const url = str(o.url, 1000); const slot = o.slot;
@@ -1581,7 +1596,9 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const audience = ['aupair', 'family', 'both'].includes(o.audience) ? o.audience : 'both';
     const countries = (Array.isArray(o.countries) ? o.countries : String(o.countries || '').split(','))
       .map((c) => String(c).trim().toUpperCase()).filter((c) => /^[A-Z]{2}$/.test(c));
-    return [name, slot, url, str(o.blurb, 200) || null, json.str([...new Set(countries)]), audience, o.active === false || o.active === 0 ? 0 : 1];
+    const lead = str(o.lead_email, 254) || null;
+    if (lead && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(lead)) throw bad('Enter a valid email.');
+    return [name, slot, url, str(o.blurb, 200) || null, json.str([...new Set(countries)]), audience, o.active === false || o.active === 0 ? 0 : 1, lead];
   };
   // People leave through this link, so every click is counted. Works without signing in (the phone app opens it in the browser).
   api.get('/partner-offers/:id/go', wrap((req, res) => {
@@ -1602,19 +1619,57 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       FROM partner_offers o ORDER BY o.active DESC, o.slot, o.name`).all().map(offerRow),
   })));
   api.post('/admin/partner-offers', requireRole('admin'), wrap((req) => {
-    const r = db.prepare('INSERT INTO partner_offers (name, slot, url, blurb, countries, audience, active) VALUES (?,?,?,?,?,?,?)').run(...cleanOffer(req.body || {}));
+    const r = db.prepare('INSERT INTO partner_offers (name, slot, url, blurb, countries, audience, active, lead_email) VALUES (?,?,?,?,?,?,?,?)').run(...cleanOffer(req.body || {}));
     return offerRow(db.prepare('SELECT * FROM partner_offers WHERE id = ?').get(r.lastInsertRowid));
   }));
   api.put('/admin/partner-offers/:id', requireRole('admin'), wrap((req) => {
     const old = db.prepare('SELECT * FROM partner_offers WHERE id = ?').get(Number(req.params.id));
     if (!old) throw notFound();
-    db.prepare('UPDATE partner_offers SET name = ?, slot = ?, url = ?, blurb = ?, countries = ?, audience = ?, active = ? WHERE id = ?')
+    db.prepare('UPDATE partner_offers SET name = ?, slot = ?, url = ?, blurb = ?, countries = ?, audience = ?, active = ?, lead_email = ? WHERE id = ?')
       .run(...cleanOffer(req.body || {}, offerRow(old)), old.id);
     return offerRow(db.prepare('SELECT * FROM partner_offers WHERE id = ?').get(old.id));
   }));
   api.delete('/admin/partner-offers/:id', requireRole('admin'), wrap((req) => {
     db.prepare('DELETE FROM partner_offers WHERE id = ?').run(Number(req.params.id));
     return { ok: true };
+  }));
+
+  // ---------- partner agency referrals ----------
+  // "Get help from a partner agency": with the person's consent, their details go to the agency with a referral code.
+  // The referral counts as started when a placement of theirs on PairMundo starts, or when the agency reports it.
+  api.post('/partner-offers/:id/refer', requireRole('aupair', 'family'), wrap((req, res) => {
+    const o = db.prepare('SELECT * FROM partner_offers WHERE id = ? AND active = 1 AND lead_email IS NOT NULL').get(Number(req.params.id));
+    if (!o) throw notFound();
+    if (req.body?.consent !== true) throw bad('Agree to share your details with the agency first.');
+    const me = req.user;
+    // One referral per person and agency for 12 months.
+    const old = db.prepare("SELECT * FROM agency_referrals WHERE user_id = ? AND offer_id = ? AND created_at >= datetime('now', '-12 months')").get(me.id, o.id);
+    if (old) return { code: old.code, agency: o.name, already: true };
+    const placement = req.body?.placement_id ? db.prepare('SELECT * FROM placements WHERE id = ? AND (aupair_id = ? OR family_id = ?)').get(Number(req.body.placement_id), me.id, me.id) : null;
+    const hostCountry = placement?.country || (me.role === 'family' ? me.country : json.parse(o.countries, [])[0]) || null;
+    const code = `PM-${randomBytes(4).toString('hex').toUpperCase()}`;
+    db.prepare('INSERT INTO agency_referrals (offer_id, agency, user_id, host_country, code) VALUES (?,?,?,?,?)').run(o.id, o.name, me.id, hostCountry, code);
+    const profile = getProfile(me);
+    const lead = { agency: o.name, code, name: me.name, email: me.email, role: me.role, lives_in: me.country ? countryName('en-GB', me.country, me.country) : '',
+      nationality: profile?.nationality ? countryName('en-GB', profile.nationality, profile.nationality) : '',
+      host_country: hostCountry ? countryName('en-GB', hostCountry, hostCountry) : '',
+      dates: placement ? `${placement.start_date} to ${placement.end_date}` : profile?.start_date || profile?.available_from || '' };
+    Promise.resolve(mailer({ to: o.lead_email, ...agencyLeadEmail(lead) })).catch((e) => console.error('Email failed:', e.message));
+    res.status(201);
+    return { code, agency: o.name };
+  }));
+  api.get('/admin/referrals', requireRole('admin'), wrap(() => ({
+    statuses: REFERRAL_STATUSES,
+    referrals: db.prepare(`SELECT r.*, u.name user_name, u.email user_email, u.role user_role FROM agency_referrals r
+      LEFT JOIN users u ON u.id = r.user_id ORDER BY r.id DESC`).all(),
+  })));
+  api.put('/admin/referrals/:id', requireRole('admin'), wrap((req) => {
+    const status = req.body?.status;
+    if (!REFERRAL_STATUSES.includes(status)) throw bad('Choose a status.');
+    const r = db.prepare(`UPDATE agency_referrals SET status = ?, started_at = CASE WHEN ? = 'started' THEN COALESCE(started_at, datetime('now')) ELSE NULL END
+      WHERE id = ?`).run(status, status, Number(req.params.id));
+    if (!r.changes) throw notFound();
+    return db.prepare('SELECT * FROM agency_referrals WHERE id = ?').get(Number(req.params.id));
   }));
 
   // ---------- au pair agreement ----------
@@ -1693,6 +1748,40 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     return agreementView(p, req.user, reqLang(req));
   }));
 
+  // ---------- visa documents ----------
+  // What the family hands in for the au pair's visa, with the invitation letter written from the placement.
+  const documentsView = (p, me, lang) => {
+    const ap = getUser(p.aupair_id); const fam = getUser(p.family_id);
+    const program = getProgram(p.country);
+    const nat = getProfile(ap)?.nationality;
+    const done = new Set(db.prepare('SELECT doc_key FROM placement_documents WHERE placement_id = ?').all(p.id).map((r) => r.doc_key));
+    const route = visaRoute(program, nat, p.start_date);
+    if (route?.kind === 'sponsor') route.agencies = referralAgencies(p.country, me.role === 'admin' ? 'family' : me.role);
+    return {
+      placement_id: p.id, status: p.status, country: p.country, route,
+      editable: me.id === p.family_id && ['confirmed', 'active'].includes(p.status),
+      documents: familyDocuments(program, nat).map((d) => ({ ...d, done: done.has(d.key) })),
+      address: p.host_address || '',
+      letter: buildHostLetter({ placement: p, program, aupair: ap, family: fam, address: p.host_address,
+        countryName: regionName(lang, p.country), nationalityName: nat ? regionName(lang, nat) : '' }),
+      family_name: fam.name,
+    };
+  };
+  api.get('/placements/:id/documents', requireAuth, wrap((req) => documentsView(loadAgreementPlacement(req), req.user, reqLang(req))));
+  api.put('/placements/:id/documents', requireRole('family'), wrap((req) => {
+    const p = loadAgreementPlacement(req);
+    if (p.family_id !== req.user.id || !['confirmed', 'active'].includes(p.status)) throw bad('These documents can no longer be changed.');
+    const b = req.body || {};
+    if (b.address !== undefined) db.prepare('UPDATE placements SET host_address = ? WHERE id = ?').run(str(b.address, 300) || null, p.id);
+    if (b.doc !== undefined) {
+      const keys = familyDocuments(getProgram(p.country), getProfile(getUser(p.aupair_id))?.nationality).map((d) => d.key);
+      if (!keys.includes(b.doc)) throw bad('Choose a document from the list.');
+      if (b.done) db.prepare('INSERT INTO placement_documents (placement_id, doc_key) VALUES (?, ?) ON CONFLICT DO NOTHING').run(p.id, b.doc);
+      else db.prepare('DELETE FROM placement_documents WHERE placement_id = ? AND doc_key = ?').run(p.id, b.doc);
+    }
+    return documentsView(db.prepare('SELECT * FROM placements WHERE id = ?').get(p.id), req.user, reqLang(req));
+  }));
+
   api.get('/placements', requireAuth, wrap((req) => {
     const rows = req.user.role === 'admin'
       ? db.prepare('SELECT * FROM placements ORDER BY created_at DESC').all()
@@ -1731,6 +1820,11 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (next === 'cancelled') claimRematch(p, p.status);
     // The stay has started: whoever an ambassador brought in, on either side, earns them the placement reward.
     if (next === 'active') for (const uid of [p.aupair_id, p.family_id]) addReward(uid, 'placement', AMBASSADOR_REWARDS.placement, `Placement ${p.id}`);
+    // So does a partner agency referral of either side, for the agency's referral fee.
+    if (next === 'active') {
+      db.prepare(`UPDATE agency_referrals SET status = 'started', started_at = datetime('now')
+        WHERE user_id IN (?, ?) AND status IN ('referred', 'in_process') AND created_at >= datetime('now', '-12 months')`).run(p.aupair_id, p.family_id);
+    }
     if (next === 'completed') {
       for (const uid of [p.aupair_id, p.family_id]) notify(uid, 'review', 'Your placement ended. Leave a review to help the community.', {}, `#/placements/${p.id}`);
     }
