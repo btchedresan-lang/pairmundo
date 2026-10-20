@@ -1078,5 +1078,22 @@
   "Samoa": "Samoa",
   "Yemen": "Yemen",
   "Zambia": "Zambia",
-  "Zimbabwe": "Zimbabue"
+  "Zimbabwe": "Zimbabue",
+  "{agency} on PairMundo": "{agency} en PairMundo",
+  "Your agency code": "Su código de agencia",
+  "Joined this month": "Se unieron este mes",
+  "Profiles families can see": "Perfiles visibles para familias",
+  "Placements agreed": "Colocaciones acordadas",
+  "Au pairs count here when they sign up with your code or link, or add your code later in their account. A profile shows to families once it has a photo and an About me.": "Las au pairs cuentan aquí cuando se registran con su código o enlace, o añaden su código después en su cuenta. Un perfil es visible para las familias cuando tiene una foto y un \"Sobre mí\".",
+  "Account": "Cuenta",
+  "Agency name": "Nombre de la agencia",
+  "Are you an au pair agency?": "¿Son una agencia de au pairs?",
+  "Create agency account": "Crear cuenta de agencia",
+  "Create an agency account": "Crear una cuenta de agencia",
+  "For au pair agencies that work with PairMundo. Your au pairs join with your agency code, and this account shows you how they are doing. It is free.": "Para agencias de au pairs que trabajan con PairMundo. Sus au pairs se unen con su código de agencia, y esta cuenta les muestra cómo les va. Es gratis.",
+  "Thanks for joining, {name}": "Gracias por unirse, {name}",
+  "We're setting up your agency code. Once it's ready, it shows here with a link to share with your au pairs, and you can follow how many join.": "Estamos preparando su código de agencia. Cuando esté listo, aparecerá aquí con un enlace para compartir con sus au pairs, y podrán ver cuántas se unen.",
+  "Work email": "Correo de trabajo",
+  "Your au pairs": "Sus au pairs",
+  "Your au pairs type this code when they create their free account, or use your link. Families then see \"Prepared by {agency}\" on their profiles.": "Sus au pairs escriben este código al crear su cuenta gratuita, o usan su enlace. Las familias verán entonces \"Preparada por {agency}\" en sus perfiles."
 }

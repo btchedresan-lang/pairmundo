@@ -1070,6 +1070,47 @@ test('partner agencies: their code tags au pairs, shows on the profile, earns no
   assert.equal((await call(ap.token, 'GET', `/users/${fam.id}`)).body.user.agency, null);
 });
 
+test('agency accounts: own sign-up, hidden from members, linked to a code by the admin, then see their numbers', async () => {
+  const { hashPassword } = await import('../server/auth.js');
+  testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
+
+  const res = await call(null, 'POST', '/auth/register', { email: 'dtall@agency.test', password: 'password123', role: 'agency', name: 'Bright Start Agency', country: 'ZW', ref_code: 'NOT-CHECKED' });
+  assert.equal(res.status, 201, JSON.stringify(res.body));
+  const ag = { token: res.body.token, id: res.body.user.id };
+  await call(ag.token, 'POST', '/auth/verify-email', { code: lastCode('dtall@agency.test') });
+  let me = (await call(ag.token, 'GET', '/me')).body;
+  assert.equal(me.user.role, 'agency');
+  assert.equal(me.profile ?? null, null);
+  assert.deepEqual(me.profile_missing, []);
+  assert.equal(me.ambassador, null);
+  assert.equal(testDb.prepare('SELECT ref_code FROM users WHERE id = ?').get(ag.id).ref_code, null, 'an agency is nobody\'s referral');
+  // Members can't search, like or be found by an agency account.
+  assert.equal((await call(ag.token, 'GET', '/discover')).status, 403);
+  const fam = await register('agacct-fam@test.io', 'family', 'SE');
+  assert.ok(!(await call(fam.token, 'GET', '/search?q=Bright')).body.results?.some((u) => u.id === ag.id));
+  // The admin is told, and sees it waiting for a code.
+  const adminId = testDb.prepare("SELECT id FROM users WHERE email = 'admin@test.io'").get().id;
+  assert.ok(testDb.prepare("SELECT 1 FROM notifications WHERE user_id = ? AND text LIKE '%Bright Start Agency%'").get(adminId));
+  let list = (await call(admin, 'GET', '/admin/ambassadors')).body;
+  assert.ok(list.agency_accounts.some((u) => u.email === 'dtall@agency.test'));
+
+  // Linking it to the agency's code takes it off the waiting list, tells the agency, and shows its numbers.
+  const r = await call(admin, 'POST', '/admin/ambassadors', { code: 'BRIGHT', name: 'Bright Start Agency', kind: 'agency', account_email: 'DTALL@agency.test' });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  list = (await call(admin, 'GET', '/admin/ambassadors')).body;
+  assert.ok(!list.agency_accounts.some((u) => u.email === 'dtall@agency.test'));
+  assert.ok(testDb.prepare("SELECT 1 FROM notifications WHERE user_id = ? AND text LIKE '%BRIGHT%'").get(ag.id));
+  const ap = await call(null, 'POST', '/auth/register', { email: 'bright-ap@test.io', password: 'password123', role: 'aupair', name: 'Tendai Moyo', country: 'ZW', ref_code: 'bright' });
+  assert.equal(ap.status, 201);
+  me = (await call(ag.token, 'GET', '/me')).body;
+  assert.deepEqual(me.ambassador, { code: 'BRIGHT' });
+  const mine = (await call(ag.token, 'GET', '/me/ambassador')).body;
+  assert.equal(mine.kind, 'agency');
+  assert.equal(mine.rewards, undefined, 'agencies see no rewards');
+  assert.deepEqual(mine.total, { aupairs: 1, profiles: 0, verified: 0, placements: 0 });
+});
+
 test('au pairs add certificates and language levels; families can show only CPR or first aid', async () => {
   const fam = await register('certfam@test.io', 'family', 'SE', 'Familjen Cert');
   const ap = await register('certap@test.io', 'aupair', 'PL', 'Cert Aupair');

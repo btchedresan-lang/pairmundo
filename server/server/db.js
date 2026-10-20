@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY,
   email TEXT NOT NULL UNIQUE COLLATE NOCASE,
   password_hash TEXT NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('aupair','family','admin')),
+  role TEXT NOT NULL CHECK (role IN ('aupair','family','admin','agency')), -- agency: a partner agency's own account, not a member others see
   name TEXT NOT NULL,
   country TEXT,
   city TEXT,
@@ -492,6 +492,16 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
       ALTER TABLE country_programs ADD COLUMN status_note TEXT;
       ALTER TABLE country_programs ADD COLUMN eu_eea_only INTEGER NOT NULL DEFAULT 0;
       ALTER TABLE country_programs ADD COLUMN admin_edited INTEGER NOT NULL DEFAULT 0;`);
+  }
+  // Partner agencies got their own accounts. The role check only gets wider, so the rows already there still pass it,
+  // and SQLite lets the stored table definition be edited in place instead of copying the table.
+  const usersSql = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'").get().sql;
+  if (usersSql.includes("role IN ('aupair','family','admin'))")) {
+    const v = db.prepare('PRAGMA schema_version').get().schema_version;
+    db.exec('PRAGMA writable_schema = ON');
+    db.prepare("UPDATE sqlite_master SET sql = replace(sql, ?, ?) WHERE type = 'table' AND name = 'users'")
+      .run("role IN ('aupair','family','admin'))", "role IN ('aupair','family','admin','agency'))");
+    db.exec(`PRAGMA schema_version = ${v + 1}; PRAGMA writable_schema = OFF;`);
   }
   return db;
 }
