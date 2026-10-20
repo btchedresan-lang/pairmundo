@@ -1078,5 +1078,22 @@
   "Samoa": "Samoa",
   "Yemen": "Iêmen",
   "Zambia": "Zâmbia",
-  "Zimbabwe": "Zimbábue"
+  "Zimbabwe": "Zimbábue",
+  "{agency} on PairMundo": "{agency} no PairMundo",
+  "Your agency code": "Seu código de agência",
+  "Joined this month": "Entraram este mês",
+  "Profiles families can see": "Perfis visíveis para famílias",
+  "Placements agreed": "Colocações acordadas",
+  "Au pairs count here when they sign up with your code or link, or add your code later in their account. A profile shows to families once it has a photo and an About me.": "As au pairs contam aqui quando se cadastram com seu código ou link, ou adicionam seu código depois na conta. Um perfil fica visível para as famílias quando tem uma foto e um \"Sobre mim\".",
+  "Account": "Conta",
+  "Agency name": "Nome da agência",
+  "Are you an au pair agency?": "Vocês são uma agência de au pair?",
+  "Create agency account": "Criar conta de agência",
+  "Create an agency account": "Criar uma conta de agência",
+  "For au pair agencies that work with PairMundo. Your au pairs join with your agency code, and this account shows you how they are doing. It is free.": "Para agências de au pair que trabalham com o PairMundo. Suas au pairs entram com o código da agência, e esta conta mostra como elas estão indo. É grátis.",
+  "Thanks for joining, {name}": "Obrigado por se juntar a nós, {name}",
+  "We're setting up your agency code. Once it's ready, it shows here with a link to share with your au pairs, and you can follow how many join.": "Estamos preparando o código da sua agência. Quando estiver pronto, ele aparece aqui com um link para compartilhar com suas au pairs, e vocês podem acompanhar quantas entram.",
+  "Work email": "E-mail de trabalho",
+  "Your au pairs": "Suas au pairs",
+  "Your au pairs type this code when they create their free account, or use your link. Families then see \"Prepared by {agency}\" on their profiles.": "Suas au pairs digitam este código ao criar a conta gratuita, ou usam o seu link. As famílias então veem \"Preparada por {agency}\" nos perfis delas."
 }

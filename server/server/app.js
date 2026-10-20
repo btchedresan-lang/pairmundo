@@ -356,6 +356,17 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       owed_cents: db.prepare('SELECT COALESCE(SUM(amount_cents), 0) n FROM referral_rewards WHERE ambassador_id = ? AND paid_at IS NULL').get(a.id).n,
     };
   };
+  /** What a partner agency's code brought in, for one month (YYYY-MM, by when the au pair joined) or all time. */
+  const agencyStats = (a, month = null) => {
+    const when = month ? " AND strftime('%Y-%m', u.created_at) = ?" : '';
+    const r = db.prepare(`SELECT COUNT(*) aupairs,
+        SUM((json_array_length(coalesce(u.photos, '[]')) > 0 OR u.photo_url IS NOT NULL) AND trim(coalesce(p.bio, '')) <> '') profiles,
+        SUM(u.id_verified) verified,
+        SUM(EXISTS (SELECT 1 FROM placements pl WHERE pl.aupair_id = u.id AND pl.status IN ('confirmed', 'active', 'completed'))) placements
+      FROM users u LEFT JOIN aupair_profiles p ON p.user_id = u.id WHERE u.ref_code = ? AND u.role = 'aupair' AND u.id IS NOT ?${when}`)
+      .get(a.code, a.user_id, ...(month ? [month] : []));
+    return { aupairs: r.aupairs || 0, profiles: r.profiles || 0, verified: r.verified || 0, placements: r.placements || 0 };
+  };
   const adminAmbassador = (id, month = null, detail = true) => {
     const a = db.prepare('SELECT a.*, u.email account_email FROM ambassadors a LEFT JOIN users u ON u.id = a.user_id WHERE a.id = ?').get(Number(id));
     if (!a) throw notFound();
@@ -416,15 +427,16 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const email = normEmail(req.body?.email);
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw bad('Enter a valid email.');
     if (!password || String(password).length < 8) throw bad('Password must be at least 8 characters.');
-    if (!['aupair', 'family'].includes(role)) throw bad('Choose au pair or host family.');
+    // A partner agency signs up for its own account; PairMundo then links it to the agency's code.
+    if (!['aupair', 'family', 'agency'].includes(role)) throw bad('Choose au pair or host family.');
     if (!str(name)) throw bad('Name is required.');
     // An ambassador's referral code, typed in or carried over from their link.
-    let ambassador = str(req.body?.ref_code) ? ambassadorByCode(referralCode(req.body.ref_code)) : null;
-    if (str(req.body?.ref_code) && !ambassador) throw bad('That referral code is not valid. Check it, or leave it empty.');
+    let ambassador = str(req.body?.ref_code) && role !== 'agency' ? ambassadorByCode(referralCode(req.body.ref_code)) : null;
+    if (str(req.body?.ref_code) && role !== 'agency' && !ambassador) throw bad('That referral code is not valid. Check it, or leave it empty.');
     // Someone who joined the waitlist from an ambassador's link or a flyer and signs up later in the app keeps
     // that ambassador and source, so a referral made before launch still counts.
     const waited = db.prepare('SELECT source, ref_code FROM waitlist WHERE email = ?').get(email);
-    ambassador ??= ambassadorByCode(waited?.ref_code);
+    if (role !== 'agency') ambassador ??= ambassadorByCode(waited?.ref_code);
     const source = str(req.body?.source, 60)?.toLowerCase() ?? waited?.source ?? null;
     if (db.prepare('SELECT 1 FROM users WHERE lower(trim(email)) = ?').get(email)) throw new HttpError(409, 'An account with this email already exists.');
     const user = tx(db, () => {
@@ -432,9 +444,13 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
         .run(email, hashPassword(String(password)), role, str(name, 120), str(country, 2)?.toUpperCase() ?? null, str(city, 120), pickLang(req.get('accept-language')),
           source, ambassador?.code ?? null);
       const id = Number(r.lastInsertRowid);
-      db.prepare(`INSERT INTO ${role === 'aupair' ? 'aupair_profiles' : 'family_profiles'} (user_id) VALUES (?)`).run(id);
+      if (role !== 'agency') db.prepare(`INSERT INTO ${role === 'aupair' ? 'aupair_profiles' : 'family_profiles'} (user_id) VALUES (?)`).run(id);
       return getUser(id);
     });
+    // The admin links a new agency account to the agency's code.
+    if (role === 'agency') {
+      for (const a of db.prepare("SELECT id FROM users WHERE role = 'admin'").all()) notify(a.id, 'agency', 'New agency account: {name}. Link it to a code under Ambassadors.', { name: user.name }, '#/admin/ambassadors');
+    }
     // New families can get a free trial of the Family Pass (FAMILY_TRIAL_DAYS, off unless set).
     if (role === 'family' && trialDays()) grantPass(user.id, 'trial', `signup-${user.id}`, trialDays(), { quiet: true });
     // Families who sign up before launch (or kept a spot from the waitlist) get the early family bonus, while spots last.
@@ -1928,7 +1944,12 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   api.get('/me/ambassador', requireAuth, wrap((req) => {
     const a = db.prepare('SELECT * FROM ambassadors WHERE user_id = ? AND active = 1').get(req.user.id);
     if (!a) throw notFound();
-    return { code: a.code, name: a.name, link: referralLink(a), rewards: AMBASSADOR_REWARDS,
+    // A partner agency sees how its au pairs are doing, and nothing about rewards.
+    if (a.kind === 'agency') {
+      return { kind: 'agency', code: a.code, name: a.name, link: referralLink(a),
+        this_month: agencyStats(a, new Date().toISOString().slice(0, 7)), total: agencyStats(a) };
+    }
+    return { kind: 'ambassador', code: a.code, name: a.name, link: referralLink(a), rewards: AMBASSADOR_REWARDS,
       this_month: ambassadorStats(a, new Date().toISOString().slice(0, 7)), total: ambassadorStats(a) };
   }));
 
@@ -2121,9 +2142,16 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       active: 'active' in body ? (body.active ? 1 : 0) : Number(a.active ?? 1), gift_days: giftDays,
       kind: 'kind' in body ? (body.kind === 'agency' ? 'agency' : 'ambassador') : a.kind ?? 'ambassador' };
   };
+  /** Tells an agency account that its code is ready, the first time it is linked to one. */
+  const agencyLinked = (userId, code) => {
+    if (getUser(userId)?.role === 'agency') notify(userId, 'agency', 'Your agency code {code} is ready. Share it with your au pairs.', { code }, '#/agency');
+  };
   api.get('/admin/ambassadors', requireRole('admin'), wrap((req) => {
     const month = monthParam(req.query.month);
     return { month, rewards: AMBASSADOR_REWARDS,
+      // Agencies that signed up and aren't linked to a code yet: the admin links them by their account email.
+      agency_accounts: db.prepare(`SELECT id, name, email, country, created_at FROM users
+        WHERE role = 'agency' AND id NOT IN (SELECT user_id FROM ambassadors WHERE user_id IS NOT NULL) ORDER BY created_at DESC`).all(),
       ambassadors: db.prepare('SELECT id FROM ambassadors ORDER BY active DESC, created_at DESC, id DESC').all().map((a) => adminAmbassador(a.id, month, false)) };
   }));
   api.post('/admin/ambassadors', requireRole('admin'), wrap((req, res) => {
@@ -2133,6 +2161,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const f = ambassadorFields(req.body);
     const r = db.prepare('INSERT INTO ambassadors (code, name, country, contact, notes, user_id, active, gift_days, kind) VALUES (?,?,?,?,?,?,?,?,?)')
       .run(code, f.name, f.country, f.contact, f.notes, f.user_id, f.active, f.gift_days, f.kind);
+    if (f.user_id) agencyLinked(f.user_id, code);
     res.status(201);
     return adminAmbassador(r.lastInsertRowid);
   }));
@@ -2143,6 +2172,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const f = ambassadorFields(req.body || {}, a);
     db.prepare('UPDATE ambassadors SET name = ?, country = ?, contact = ?, notes = ?, user_id = ?, active = ?, gift_days = ?, kind = ? WHERE id = ?')
       .run(f.name, f.country, f.contact, f.notes, f.user_id, f.active, f.gift_days, f.kind, a.id);
+    if (f.user_id && f.user_id !== a.user_id) agencyLinked(f.user_id, a.code);
     return adminAmbassador(a.id);
   }));
   // After paying an ambassador, mark what they earned up to the end of that month (or everything) as paid.

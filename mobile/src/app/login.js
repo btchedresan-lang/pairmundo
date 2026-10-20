@@ -27,6 +27,7 @@ export default function Login() {
       await setBase(server);
       const me = await signIn('/auth/login', { email: e.trim(), password: p });
       if (me.user.role === 'admin') { await signOut(); setErr(tr('Admin tools are in the web app. Sign in there instead.')); }
+      if (me.user.role === 'agency') { await signOut(); setErr(tr('Agency accounts are on the website. Sign in at pairmundo.com.')); }
     } catch (x) { setErr(x.message); } finally { setBusy(false); }
   };
 

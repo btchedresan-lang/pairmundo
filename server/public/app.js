@@ -145,11 +145,15 @@ async function refreshMe() {
 function renderNav() {
   const route = location.hash.split('/')[1] || '';
   const link = (href, label, count, icon) => `<a href="${href}" class="${href.split('/')[1] === route || (route === '' && href === '#/discover') ? 'active' : ''}">${icon ? `<span class="nav-icon">${icon}</span>` : ''}<span class="nav-label">${label}</span>${count ? `<span class="badge">${count}</span>` : ''}</a>`;
-  document.body.classList.toggle('has-tabs', !!me && me.user.role !== 'admin');
+  document.body.classList.toggle('has-tabs', !!me && !['admin', 'agency'].includes(me.user.role));
   if (!me) { $nav.innerHTML = link('#/programs', tr('Country programs')) + link('#/login', tr('Sign in')) + `<a class="btn sm" href="#/register">${tr('Join free')}</a>`; return; }
   const c = me.counts;
   if (me.user.role === 'admin') {
     $nav.innerHTML = [link('#/admin', 'Admin'), link('#/placements', 'Placements'), link('#/programs', 'Programs'), link('#/notifications', '🔔', c.notifications), `<a href="#/logout">${tr('Sign out')}</a>`].join('');
+    return;
+  }
+  if (me.user.role === 'agency') {
+    $nav.innerHTML = [link('#/agency', tr('Your agency')), link('#/account', tr('Account')), `<a href="#/logout">${tr('Sign out')}</a>`].join('');
     return;
   }
   $nav.innerHTML = [
@@ -168,7 +172,7 @@ const views = {};
 
 views.home = async () => {
   if (!me) return landing();
-  return go(me.user.role === 'admin' ? '#/admin' : '#/discover');
+  return go({ admin: '#/admin', agency: '#/agency' }[me.user.role] || '#/discover');
 };
 
 // ---------- photos ----------
@@ -531,7 +535,8 @@ views.register = (_, query) => {
       <div class="field"><label>${tr('Password')}</label><input name="password" type="password" minlength="8" required autocomplete="new-password"></div>
       <div class="field"><label>${tr('Referral code (optional)')}</label><input name="ref_code" value="${esc(refCode() || '')}" autocapitalize="characters" autocomplete="off" placeholder="${tr('From the person or agency who invited you')}"></div>
       <div id="err"></div><button class="btn" style="width:100%">${tr('Create account')}</button>
-      <p class="muted small" style="text-align:center">${tr('By creating an account you agree to the {terms} and the {privacy}.', { terms: `<a href="/terms" target="_blank">${tr('Terms of Use')}</a>`, privacy: `<a href="/privacy" target="_blank">${tr('Privacy Policy')}</a>` })}</p></form></div>`);
+      <p class="muted small" style="text-align:center">${tr('By creating an account you agree to the {terms} and the {privacy}.', { terms: `<a href="/terms" target="_blank">${tr('Terms of Use')}</a>`, privacy: `<a href="/privacy" target="_blank">${tr('Privacy Policy')}</a>` })}</p></form>
+    <p class="small" style="text-align:center;margin-top:12px">${tr('Are you an au pair agency?')} <a href="#/agency-signup">${tr('Create an agency account')}</a></p></div>`);
   earlyOfferNote('earlyOffer');
   document.getElementById('f').onsubmit = async (e) => {
     e.preventDefault();
@@ -541,6 +546,51 @@ views.register = (_, query) => {
 };
 
 const errBox = (err) => { document.getElementById('err').innerHTML = `<div class="alert error">${esc(err.message)}</div>`; };
+
+// ---------- partner agencies ----------
+// Agencies get their own account: no profile, nobody sees it, and once PairMundo links it to the agency's code it
+// shows how the agency's au pairs are doing.
+views['agency-signup'] = () => {
+  if (me) return go('#/');
+  render(`<div class="card" style="max-width:480px;margin:32px auto"><h1>${tr('Create an agency account')}</h1>
+    <p class="muted">${tr('For au pair agencies that work with PairMundo. Your au pairs join with your agency code, and this account shows you how they are doing. It is free.')}</p>
+    <form id="f">
+      <div class="field"><label>${tr('Agency name')}</label><input name="name" required></div>
+      <div class="form-grid"><div class="field"><label>${tr('Country')}</label><select name="country" required>${options(COUNTRIES, '', tr('Choose…'))}</select></div>
+      <div class="field"><label>${tr('City')}</label><input name="city"></div></div>
+      <div class="field"><label>${tr('Work email')}</label><input name="email" type="email" required autocomplete="email"></div>
+      <div class="field"><label>${tr('Password')}</label><input name="password" type="password" minlength="8" required autocomplete="new-password"></div>
+      <div id="err"></div><button class="btn" style="width:100%">${tr('Create agency account')}</button>
+      <p class="muted small" style="text-align:center">${tr('By creating an account you agree to the {terms} and the {privacy}.', { terms: `<a href="/terms" target="_blank">${tr('Terms of Use')}</a>`, privacy: `<a href="/privacy" target="_blank">${tr('Privacy Policy')}</a>` })}</p></form></div>`);
+  document.getElementById('f').onsubmit = async (e) => {
+    e.preventDefault();
+    try { await api('/auth/register', { method: 'POST', body: { ...formData(e.target), role: 'agency' } }); await refreshMe(); toast(tr('Welcome! Check your email for your code.')); go('#/verify'); }
+    catch (err) { errBox(err); }
+  };
+};
+
+views.agency = async () => {
+  if (me.user.role !== 'agency') return go('#/');
+  const amb = me.ambassador ? await api('/me/ambassador').catch(() => null) : null;
+  if (!amb) {
+    return render(`<h1>${tr('Your agency')}</h1><div class="card"><h2>${tr('Thanks for joining, {name}', { name: esc(me.user.name) })}</h2>
+      <p>${tr("We're setting up your agency code. Once it's ready, it shows here with a link to share with your au pairs, and you can follow how many join.")}</p>
+      ${me.user.email_verified ? '' : `<p><a class="chip warn" href="#/verify">${tr('Not confirmed yet. Click to enter your code.')}</a></p>`}</div>`);
+  }
+  render(`<h1>${tr('{agency} on PairMundo', { agency: esc(amb.name) })}</h1>
+    <div class="card"><h2>${tr('Your agency code')}: <code>${esc(amb.code)}</code></h2>
+      <p>${tr('Your au pairs type this code when they create their free account, or use your link. Families then see "Prepared by {agency}" on their profiles.', { agency: esc(amb.name) })}</p>
+      <div class="row"><input id="ambLink" readonly value="${esc(amb.link)}" style="flex:1"><button class="btn sm" id="ambCopy">${tr('Copy link')}</button></div></div>
+    <div class="card"><h2>${tr('Your au pairs')}</h2>
+      <table><tr><th></th><th>${tr('Joined this month')}</th><th>${tr('All time')}</th></tr>
+      ${[[tr('Au pairs who joined'), 'aupairs'], [tr('Profiles families can see'), 'profiles'], [tr('ID verified'), 'verified'], [tr('Placements agreed'), 'placements']]
+    .map(([label, k]) => `<tr><td>${label}</td><td>${amb.this_month[k]}</td><td>${amb.total[k]}</td></tr>`).join('')}</table>
+      <p class="muted small">${tr('Au pairs count here when they sign up with your code or link, or add your code later in their account. A profile shows to families once it has a photo and an About me.')}</p></div>`);
+  document.getElementById('ambCopy').onclick = async () => {
+    try { await navigator.clipboard.writeText(amb.link); } catch { document.getElementById('ambLink').select(); document.execCommand('copy'); }
+    toast(tr('Link copied'));
+  };
+};
 
 views.forgot = () => {
   render(`<div class="card" style="max-width:420px;margin:32px auto"><h1>${tr('Forgot password')}</h1>
@@ -596,7 +646,7 @@ views.account = async () => {
       ${idc.status === 'requires_input' && idc.error ? `<div class="alert warning">${tr("Your last check didn't go through. Try again with a clear, well-lit photo of your document.")}</div>` : ''}
       <div id="idErr"></div>${idc.status !== 'processing' ? `<button class="btn" id="idCheck">🪪 ${tr('Verify my ID')}</button>` : ''}
       <p class="muted small">${tr('Stripe runs the check and keeps your document. PairMundo only learns whether it passed.')}</p>`;
-  const ambCard = amb ? `<div class="card"><h2>🌍 ${tr('PairMundo ambassador')}</h2>
+  const ambCard = amb && amb.kind !== 'agency' ? `<div class="card"><h2>🌍 ${tr('PairMundo ambassador')}</h2>
     <p>${tr('Your code')}: <strong>${esc(amb.code)}</strong></p>
     <div class="row"><input id="ambLink" readonly value="${esc(amb.link)}" style="flex:1"><button class="btn sm" id="ambCopy">${tr('Copy link')}</button></div>
     <table style="margin-top:12px"><tr><th></th><th>${tr('This month')}</th><th>${tr('All time')}</th></tr>
@@ -613,9 +663,9 @@ views.account = async () => {
       <form id="agency" class="row"><input name="code" required autocapitalize="characters" autocomplete="off" placeholder="${tr('Agency code')}" style="flex:1"><button class="btn sm">${tr('Add')}</button></form><div id="agencyErr"></div></div>` : '';
   render(`<h1>${tr('Account and safety')}</h1>${ambCard}${agencyCard}
     <div class="card"><h2>${tr('Email')}</h2><p>${esc(me.user.email)} ${me.user.email_verified ? `<span class="chip ok">✓ ${tr('Confirmed')}</span>` : `<a class="chip warn" href="#/verify">${tr('Not confirmed yet. Click to enter your code.')}</a>`}</p></div>
-    <div class="card"><h2>${tr('ID check')}</h2>${idCard}</div>
+    ${me.user.role === 'agency' ? '' : `<div class="card"><h2>${tr('ID check')}</h2>${idCard}</div>
     <div class="card"><h2>${tr('Blocked people')}</h2>${blocked.length ? blocked.map((u) => `<div class="row" style="padding:6px 0">${avatar(u, 'sm')}<strong style="flex:1">${esc(u.name)}</strong>
-      <button class="btn ghost sm" data-unblock="${u.id}">${tr('Unblock')}</button></div>`).join('') : `<p class="muted">${tr("You haven't blocked anyone.")}</p>`}</div>
+      <button class="btn ghost sm" data-unblock="${u.id}">${tr('Unblock')}</button></div>`).join('') : `<p class="muted">${tr("You haven't blocked anyone.")}</p>`}</div>`}
     <div class="card"><h2>${tr('Delete account')}</h2><p class="muted small">${tr('This permanently deletes your profile, photos, matches, messages, placements and reviews.')}</p>
       <form id="del"><div class="field"><label>${tr('Your password')}</label><input name="password" type="password" required autocomplete="current-password"></div>
       <div id="err"></div><button class="btn danger">${tr('Delete my account')}</button></form></div>`);
@@ -1734,7 +1784,7 @@ async function adminAmbassadors(head, id, qs) {
     };
     return;
   }
-  const { ambassadors, rewards } = await api(`/admin/ambassadors?month=${month}`);
+  const { ambassadors, rewards, agency_accounts: waiting } = await api(`/admin/ambassadors?month=${month}`);
   render(`${head}<div class="spread"><form id="monthPick" class="row"><label>Month</label><input type="month" name="month" value="${esc(month)}" style="width:auto"></form>
       <a class="btn sm" href="/api/admin/ambassadors.csv?month=${esc(month)}">⬇ Payout sheet for ${esc(month)} (CSV)</a></div>
     <p class="muted small">Rewards: ${usd(rewards.profile)} per completed, ID-verified au pair profile (up to ${usd(rewards.profile_monthly_cap)} a month), ${usd(rewards.pass)} for a family's first Family Pass, ${usd(rewards.placement)} per referred side when a stay starts.</p>
@@ -1742,6 +1792,10 @@ async function adminAmbassadors(head, id, qs) {
       ${ambassadors.map((a) => `<tr><td><a href="#/admin/ambassadors/${a.id}"><strong>${esc(a.name)}</strong></a> ${a.kind === 'agency' ? '<span class="chip">Agency</span>' : ''} ${a.active ? '' : '<span class="chip warn">Paused</span>'}
         <div class="muted small"><code>${esc(a.code)}</code>${a.country ? ` · ${cname(a.country)}` : ''}${a.gift_days ? ` · 🎁 ${a.gift_days} gift days` : ''}</div></td>${statCells(a.stats)}</tr>`).join('')
       || '<tr><td colspan="9" class="muted">No ambassadors yet. Add the first one below.</td></tr>'}</table></div>
+    ${waiting.length ? `<div class="card table-wrap"><h3>Agency accounts waiting for a code</h3>
+      <p class="muted small">Add a partner agency below (or open an existing one) and put this email in "Their PairMundo account email". The agency then sees its code and numbers when it signs in.</p>
+      <table><tr><th>Agency</th><th>Account email</th><th>Country</th><th>Signed up</th></tr>
+      ${waiting.map((u) => `<tr><td>${esc(u.name)}</td><td>${esc(u.email)}</td><td>${cname(u.country) || '—'}</td><td>${fmtTime(u.created_at)}</td></tr>`).join('')}</table></div>` : ''}
     <form class="card" id="ambNew"><h3>Add an ambassador or partner agency</h3>
       <div class="field"><label>Referral code (letters, numbers and dashes; it can't change later)</label><input name="code" required placeholder="ANA-CO" autocapitalize="characters"></div>
       ${fields()}<button class="btn sm">Add</button></form>`);
@@ -1903,7 +1957,7 @@ views.reference = async ([token]) => {
 };
 
 // ---------- router ----------
-const PUBLIC = new Set(['home', 'login', 'register', 'programs', 'forgot', 'reference', 'partners']);
+const PUBLIC = new Set(['home', 'login', 'register', 'agency-signup', 'programs', 'forgot', 'reference', 'partners']);
 views.messages = ((orig) => (args) => (args[0] ? orig(args) : go('#/matches')))(views.messages);
 async function route() {
   clearInterval(pollTimer);
