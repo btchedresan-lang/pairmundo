@@ -970,7 +970,8 @@ test('ambassadors: referral codes at sign-up, rewards counted once, monthly cap,
 
   // Linking the ambassador's own account lets them see their numbers in the app.
   const own = await register('ana@test.io', 'aupair', 'CO');
-  assert.equal((await call(admin, 'POST', `/admin/ambassadors/${amb}`, { account_email: 'nobody@test.io' })).status, 400);
+  assert.equal((await call(admin, 'POST', `/admin/ambassadors/${amb}`, { account_email: 'not-an-email' })).status, 400);
+  assert.equal((await call(admin, 'POST', `/admin/ambassadors/${amb}`, { account_email: 'admin@test.io' })).status, 400);
   r = await call(admin, 'POST', `/admin/ambassadors/${amb}`, { account_email: 'ANA@test.io' });
   assert.equal(r.body.account_email, 'ana@test.io', JSON.stringify(r.body));
   assert.equal(r.body.contact, '+57 300 000', 'fields not sent stay as they were');
@@ -1109,6 +1110,42 @@ test('agency accounts: own sign-up, hidden from members, linked to a code by the
   assert.equal(mine.kind, 'agency');
   assert.equal(mine.rewards, undefined, 'agencies see no rewards');
   assert.deepEqual(mine.total, { aupairs: 1, profiles: 0, verified: 0, placements: 0 });
+});
+
+test('agency invites: a code saved with an email that has no account invites them, and links once they confirm it', async () => {
+  const { hashPassword } = await import('../server/auth.js');
+  testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
+  const adminId = testDb.prepare("SELECT id FROM users WHERE email = 'admin@test.io'").get().id;
+
+  let r = await call(admin, 'POST', '/admin/ambassadors', { code: 'SUNRISE', name: 'Sunrise Au Pairs', kind: 'agency', account_email: ' Boss@Sunrise.test ' });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  const id = r.body.id;
+  assert.deepEqual([r.body.invite_email, r.body.account_email, r.body.user_id], ['boss@sunrise.test', 'boss@sunrise.test', null]);
+  const invites = () => outbox.filter((m) => m.to === 'boss@sunrise.test' && /agency account/.test(m.subject));
+  await new Promise((done) => setImmediate(done));
+  assert.equal(invites().length, 1);
+  assert.match(invites()[0].text, /SUNRISE/);
+  assert.match(invites()[0].text, /https:\/\/pairmundo\.com\/#\/agency-signup\?email=boss%40sunrise\.test/);
+  // Saving the form again doesn't send it twice; asking to resend does.
+  await call(admin, 'POST', `/admin/ambassadors/${id}`, { name: 'Sunrise Au Pairs', account_email: 'boss@sunrise.test' });
+  await call(admin, 'POST', `/admin/ambassadors/${id}?resend=1`, {});
+  await new Promise((done) => setImmediate(done));
+  assert.equal(invites().length, 2);
+
+  // Signing up doesn't link it until the email is confirmed, and the admin isn't asked to link it by hand.
+  const notes = () => testDb.prepare("SELECT COUNT(*) n FROM notifications WHERE user_id = ? AND text LIKE '%Sunrise%'").get(adminId).n;
+  const before = notes();
+  const reg = await call(null, 'POST', '/auth/register', { email: 'boss@sunrise.test', password: 'password123', role: 'agency', name: 'Sunrise Au Pairs', country: 'KE' });
+  assert.equal(reg.status, 201);
+  assert.equal(notes(), before);
+  assert.equal((await call(reg.body.token, 'GET', '/me')).body.ambassador, null);
+  await call(reg.body.token, 'POST', '/auth/verify-email', { code: lastCode('boss@sunrise.test') });
+  assert.deepEqual((await call(reg.body.token, 'GET', '/me')).body.ambassador, { code: 'SUNRISE' });
+  assert.ok(testDb.prepare("SELECT 1 FROM notifications WHERE user_id = ? AND text LIKE '%SUNRISE%'").get(reg.body.user.id));
+  r = (await call(admin, 'GET', `/admin/ambassadors/${id}`)).body;
+  assert.deepEqual([r.invite_email, r.user_id, r.account_email], [null, reg.body.user.id, 'boss@sunrise.test']);
+  assert.ok(!(await call(admin, 'GET', '/admin/ambassadors')).body.agency_accounts.some((u) => u.email === 'boss@sunrise.test'));
 });
 
 test('au pairs add certificates and language levels; families can show only CPR or first aid', async () => {
