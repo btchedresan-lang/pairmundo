@@ -936,7 +936,7 @@ test('ambassadors: referral codes at sign-up, rewards counted once, monthly cap,
   assert.equal((await call(admin, 'POST', '/admin/ambassadors', { code: 'NONAME' })).status, 400);
 
   // Anyone can check a code; only the first name shows.
-  assert.deepEqual((await call(null, 'GET', '/referral/ana-co')).body, { code: 'ANA-CO', name: 'Ana' });
+  assert.deepEqual((await call(null, 'GET', '/referral/ana-co')).body, { code: 'ANA-CO', name: 'Ana', kind: 'ambassador' });
   assert.equal((await call(null, 'GET', '/referral/NOPE-1')).status, 404);
 
   // A wrong code stops sign-up, so a typo gets fixed; a right one is saved in any case and spacing.
@@ -1027,6 +1027,47 @@ test('ambassadors: referral codes at sign-up, rewards counted once, monthly cap,
   assert.equal(testDb.prepare("SELECT ref_code FROM users WHERE email = 'refwait5@test.io'").get().ref_code, null);
   assert.equal((await call(null, 'GET', '/referral/ANA-CO')).status, 404);
   assert.equal((await call(own.token, 'GET', '/me')).body.ambassador, null);
+});
+
+test('partner agencies: their code tags au pairs, shows on the profile, earns nothing, and can be added later', async () => {
+  const { hashPassword } = await import('../server/auth.js');
+  testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
+  const r = await call(admin, 'POST', '/admin/ambassadors', { code: 'alpha-zw', name: 'Alpha Academy', country: 'zw', kind: 'agency' });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.equal(r.body.kind, 'agency');
+  const agencyId = r.body.id;
+  // Its full name shows to people who follow its link.
+  assert.deepEqual((await call(null, 'GET', '/referral/ALPHA-ZW')).body, { code: 'ALPHA-ZW', name: 'Alpha Academy', kind: 'agency' });
+
+  const res = await call(null, 'POST', '/auth/register', { email: 'agap@test.io', password: 'password123', role: 'aupair', name: 'Rudo Moyo', country: 'ZW', ref_code: 'alpha-zw' });
+  assert.equal(res.status, 201, JSON.stringify(res.body));
+  const ap = { token: res.body.token, id: res.body.user.id };
+  await call(ap.token, 'POST', '/auth/verify-email', { code: lastCode('agap@test.io') });
+  const fam = await register('agfam@test.io', 'family', 'SE');
+  assert.equal((await call(fam.token, 'GET', `/users/${ap.id}`)).body.user.agency, 'Alpha Academy');
+  assert.equal((await call(ap.token, 'GET', '/me')).body.user.agency, 'Alpha Academy');
+
+  // A complete, ID-verified profile earns an agency nothing.
+  const png = `data:image/png;base64,${Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex').toString('base64')}`;
+  await call(ap.token, 'POST', '/me/photos', { data_url: png });
+  await call(ap.token, 'PUT', '/me', { profile: { bio: 'Hi', nationality: 'ZW', birth_date: '2003-01-01', languages: [{ code: 'en', level: 'C2' }], available_from: '2027-01-01' } });
+  await call(admin, 'POST', `/admin/users/${ap.id}`, { id_verified: true });
+  const st = (await call(admin, 'GET', `/admin/ambassadors/${agencyId}`)).body;
+  assert.deepEqual([st.stats.aupairs, st.stats.profiles, st.stats.earned_cents], [1, 0, 0]);
+  assert.equal(st.referrals.length, 1);
+
+  // An au pair who signed up without the code adds it from their account, once, and only an agency's code.
+  const late = await register('aglate@test.io', 'aupair', 'ZW');
+  assert.equal((await call(late.token, 'GET', `/users/${late.id}`)).body.user.agency, null);
+  assert.equal((await call(late.token, 'POST', '/me/agency', { code: 'NOPE' })).status, 400);
+  assert.equal((await call(late.token, 'POST', '/me/agency', { code: 'ANA-CO' })).status, 400, "an ambassador's code is not an agency");
+  assert.deepEqual((await call(late.token, 'POST', '/me/agency', { code: ' alpha-zw ' })).body, { agency: 'Alpha Academy' });
+  assert.equal((await call(fam.token, 'GET', `/users/${late.id}`)).body.user.agency, 'Alpha Academy');
+  assert.equal((await call(late.token, 'POST', '/me/agency', { code: 'ALPHA-ZW' })).status, 400, 'already linked');
+  assert.equal((await call(fam.token, 'POST', '/me/agency', { code: 'ALPHA-ZW' })).status, 403, 'au pairs only');
+  // Families are never shown as an agency's.
+  assert.equal((await call(ap.token, 'GET', `/users/${fam.id}`)).body.user.agency, null);
 });
 
 test('au pairs add certificates and language levels; families can show only CPR or first aid', async () => {

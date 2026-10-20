@@ -87,7 +87,8 @@ const firstName = (name) => { const w = String(name || '').split(' '); return /^
 const avatar = (u, size = '') => (u?.photo_url
   ? `<img class="avatar ${size}" src="${esc(u.photos?.[0] || u.photo_url)}" alt="" onerror="this.outerHTML='<span class=&quot;avatar ${size}&quot;>${initials(u.name)}</span>'">`
   : `<span class="avatar ${size}">${initials(u?.name)}</span>`);
-const verifyBadges = (v) => [v?.id && `✔ ${tr('ID verified')}`, v?.references && `✔ ${tr('References')}`, v?.background && `✔ ${tr('Background check')}`]
+const verifyBadges = (v, agency) => [v?.id && `✔ ${tr('ID verified')}`, v?.references && `✔ ${tr('References')}`, v?.background && `✔ ${tr('Background check')}`,
+  agency && `🎓 ${tr('Prepared by {agency}', { agency: esc(agency) })}`]
   .filter(Boolean).map((t) => `<span class="verify">${t}</span>`).join(' ');
 const scoreBadge = (s) => `<span class="score ${s >= 75 ? 'high' : s < 50 ? 'low' : ''}" title="${tr('Match score')}">${s}%</span>`;
 /** <option>s for a { value: 'English label' } map, translated and sorted by label. */
@@ -509,7 +510,7 @@ views.register = (_, query) => {
       <div class="field"><label>${tr('City')}</label><input name="city"></div></div>
       <div class="field"><label>${tr('Email')}</label><input name="email" type="email" required autocomplete="email" value="${esc(query.get('email') || '')}"></div>
       <div class="field"><label>${tr('Password')}</label><input name="password" type="password" minlength="8" required autocomplete="new-password"></div>
-      <div class="field"><label>${tr('Referral code (optional)')}</label><input name="ref_code" value="${esc(refCode() || '')}" autocapitalize="characters" autocomplete="off" placeholder="${tr('From the person who invited you')}"></div>
+      <div class="field"><label>${tr('Referral code (optional)')}</label><input name="ref_code" value="${esc(refCode() || '')}" autocapitalize="characters" autocomplete="off" placeholder="${tr('From the person or agency who invited you')}"></div>
       <div id="err"></div><button class="btn" style="width:100%">${tr('Create account')}</button>
       <p class="muted small" style="text-align:center">${tr('By creating an account you agree to the {terms} and the {privacy}.', { terms: `<a href="/terms" target="_blank">${tr('Terms of Use')}</a>`, privacy: `<a href="/privacy" target="_blank">${tr('Privacy Policy')}</a>` })}</p></form></div>`);
   earlyOfferNote('earlyOffer');
@@ -586,7 +587,12 @@ views.account = async () => {
       <tr><td><strong>${tr('Earned')}</strong></td><td><strong>${usd(amb.this_month.earned_cents)}</strong></td><td><strong>${usd(amb.total.earned_cents)}</strong></td></tr></table>
     <p>${tr('Not paid out yet')}: <strong>${usd(amb.total.owed_cents)}</strong></p>
     <p class="muted small">${tr('You earn {profile} for each au pair who completes their profile and verifies their ID, {pass} when a family buys their first Family Pass, and {placement} when a stay starts. Only people who join with your link or code count.', { profile: usd(amb.rewards.profile), pass: usd(amb.rewards.pass), placement: usd(amb.rewards.placement) })}</p></div>` : '';
-  render(`<h1>${tr('Account and safety')}</h1>${ambCard}
+  // An au pair whose agency gave them a code after they signed up can link their account to it here.
+  const agencyCard = me.user.role !== 'aupair' ? ''
+    : me.user.agency ? `<div class="card"><h2>🎓 ${tr('Your agency')}</h2><p>${tr('Your profile is linked to {agency}. Families see it on your profile.', { agency: `<strong>${esc(me.user.agency)}</strong>` })}</p></div>`
+    : !me.has_code ? `<div class="card"><h2>🎓 ${tr('Your agency')}</h2><p class="muted small">${tr('Did an au pair agency prepare you? Enter the code they gave you, and families will see the agency on your profile.')}</p>
+      <form id="agency" class="row"><input name="code" required autocapitalize="characters" autocomplete="off" placeholder="${tr('Agency code')}" style="flex:1"><button class="btn sm">${tr('Add')}</button></form><div id="agencyErr"></div></div>` : '';
+  render(`<h1>${tr('Account and safety')}</h1>${ambCard}${agencyCard}
     <div class="card"><h2>${tr('Email')}</h2><p>${esc(me.user.email)} ${me.user.email_verified ? `<span class="chip ok">✓ ${tr('Confirmed')}</span>` : `<a class="chip warn" href="#/verify">${tr('Not confirmed yet. Click to enter your code.')}</a>`}</p></div>
     <div class="card"><h2>${tr('ID check')}</h2>${idCard}</div>
     <div class="card"><h2>${tr('Blocked people')}</h2>${blocked.length ? blocked.map((u) => `<div class="row" style="padding:6px 0">${avatar(u, 'sm')}<strong style="flex:1">${esc(u.name)}</strong>
@@ -598,6 +604,12 @@ views.account = async () => {
   if ($copy) $copy.onclick = async () => {
     try { await navigator.clipboard.writeText(amb.link); } catch { document.getElementById('ambLink').select(); document.execCommand('copy'); }
     toast(tr('Link copied'));
+  };
+  const $agency = document.getElementById('agency');
+  if ($agency) $agency.onsubmit = async (e) => {
+    e.preventDefault();
+    try { await api('/me/agency', { method: 'POST', body: formData(e.target) }); toast(tr('Saved')); views.account(); }
+    catch (err) { document.getElementById('agencyErr').innerHTML = `<div class="alert error">${esc(err.message)}</div>`; }
   };
   const $id = document.getElementById('idCheck');
   if ($id) $id.onclick = async () => {
@@ -651,7 +663,7 @@ function resultCard(r) {
       ${u.role === 'family' && p.start_date ? `<span class="chip">${tr('Starts {date}', { date: fmtDate(p.start_date) })}</span>` : ''}</div>
     ${r.match?.reasons?.length ? `<div class="small" style="margin-top:8px;color:var(--ok)">✓ ${esc(r.match.reasons.slice(0, 2).join(' · '))}</div>` : ''}
     ${r.match?.warnings?.length ? `<div class="small" style="color:var(--warn)">⚠ ${esc(r.match.warnings[0])}</div>` : ''}
-    <div class="small" style="margin-top:6px">${verifyBadges(u.verification)}</div></a>`;
+    <div class="small" style="margin-top:6px">${verifyBadges(u.verification, u.agency)}</div></a>`;
 }
 
 views.search = async (_, query) => {
@@ -772,7 +784,7 @@ views.u = async ([id]) => {
         ${d.match.reasons.map((r) => `<div class="small" style="color:var(--ok)">✓ ${esc(r)}</div>`).join('')}
         ${d.match.warnings.map((r) => `<div class="small" style="color:var(--warn)">⚠ ${esc(r)}</div>`).join('')}</div>` : ''}
       ${visaCard(d.visa)}
-      ${ap ? `${verifyBadges(u.verification) ? `<div style="margin-bottom:10px">${verifyBadges(u.verification)}</div>` : ''}${posterBody(u, p, d.references)}` : `<div class="card"><h3>${tr('About us')}</h3><p style="white-space:pre-wrap;margin-top:0">${esc(p.bio) || `<span class="muted">${tr('No description yet.')}</span>`}</p>
+      ${ap ? `${verifyBadges(u.verification, u.agency) ? `<div style="margin-bottom:10px">${verifyBadges(u.verification, u.agency)}</div>` : ''}${posterBody(u, p, d.references)}` : `<div class="card"><h3>${tr('About us')}</h3><p style="white-space:pre-wrap;margin-top:0">${esc(p.bio) || `<span class="muted">${tr('No description yet.')}</span>`}</p>
         <div>${verifyBadges(u.verification) || `<span class="muted small">${tr('Not yet verified')}</span>`}</div></div>
       <div class="card"><h3>${tr('Basics')}</h3><div class="facts">${facts.filter(([, , v]) => v != null && v !== '').map(([i, k, v]) => `<div class="fact"><span>${i}</span><div><div class="muted small">${k}</div>${esc(v)}</div></div>`).join('')}</div></div>
       <div class="card"><h3>${tr('Languages at home')}</h3><div class="chips">${(p.languages || []).map((l) => `<span class="chip">${esc(langName(l))}</span>`).join('')}</div>
@@ -1662,7 +1674,10 @@ async function adminAmbassadors(head, id, qs) {
   const kinds = { profile: 'Au pair profile complete', pass: 'First Family Pass', placement: 'Stay started' };
   const statCells = (s) => `<td>${s.waitlist}</td><td>${s.aupairs}</td><td>${s.families}</td><td>${s.profiles}</td><td>${s.passes}</td><td>${s.placements}</td><td>${usd(s.earned_cents)}</td><td><strong>${usd(s.owed_cents)}</strong></td>`;
   const statHead = '<th>Waitlist</th><th>Au pairs</th><th>Families</th><th>Profiles done</th><th>Passes</th><th>Stays</th><th>Earned</th><th>Owed now</th>';
-  const fields = (a = {}) => `<div class="form-grid"><div class="field"><label>Name</label><input name="name" required value="${esc(a.name)}"></div>
+  const fields = (a = {}) => `<div class="field"><label>Type</label><select name="kind">
+      <option value="ambassador" ${a.kind !== 'agency' ? 'selected' : ''}>Ambassador: earns rewards for the people they bring</option>
+      <option value="agency" ${a.kind === 'agency' ? 'selected' : ''}>Partner agency: tags its au pairs and shows on their profiles, earns nothing</option></select></div>
+    <div class="form-grid"><div class="field"><label>Name</label><input name="name" required value="${esc(a.name)}"></div>
       <div class="field"><label>Country</label><select name="country">${options(COUNTRIES, a.country || '', '—')}</select></div></div>
     <div class="form-grid"><div class="field"><label>Phone or email (only you see this)</label><input name="contact" value="${esc(a.contact)}"></div>
       <div class="field"><label>Their PairMundo account email (lets them see their numbers)</label><input name="account_email" type="email" value="${esc(a.account_email)}"></div></div>
@@ -1671,7 +1686,7 @@ async function adminAmbassadors(head, id, qs) {
   if (id) {
     const a = await api(`/admin/ambassadors/${id}?month=${month}`);
     render(`${head}<p><a href="#/admin/ambassadors">← All ambassadors</a></p>
-      <div class="spread"><h2>${esc(a.name)} · <code>${esc(a.code)}</code> ${a.active ? '' : '<span class="chip warn">Paused</span>'}</h2></div>
+      <div class="spread"><h2>${esc(a.name)} · <code>${esc(a.code)}</code> ${a.kind === 'agency' ? '<span class="chip">Agency</span>' : ''} ${a.active ? '' : '<span class="chip warn">Paused</span>'}</h2></div>
       <div class="card"><p>Link: <a href="${esc(a.link)}" target="_blank">${esc(a.link)}</a></p>
         ${a.gift_days ? `<p>🎁 Families who sign up with this code get ${a.gift_days} free days, unless they have the early family bonus: <strong>${a.gifts.saved}</strong> saved, <strong>${a.gifts.redeemed}</strong> used.</p>` : ''}
         <div class="table-wrap"><table><tr><th>${esc(month)}</th>${statHead}</tr><tr><td></td>${statCells(a.stats)}</tr></table></div>
@@ -1705,12 +1720,12 @@ async function adminAmbassadors(head, id, qs) {
       <a class="btn sm" href="/api/admin/ambassadors.csv?month=${esc(month)}">⬇ Payout sheet for ${esc(month)} (CSV)</a></div>
     <p class="muted small">Rewards: ${usd(rewards.profile)} per completed, ID-verified au pair profile (up to ${usd(rewards.profile_monthly_cap)} a month), ${usd(rewards.pass)} for a family's first Family Pass, ${usd(rewards.placement)} per referred side when a stay starts.</p>
     <div class="card table-wrap"><table><tr><th>Ambassador</th>${statHead}</tr>
-      ${ambassadors.map((a) => `<tr><td><a href="#/admin/ambassadors/${a.id}"><strong>${esc(a.name)}</strong></a> ${a.active ? '' : '<span class="chip warn">Paused</span>'}
+      ${ambassadors.map((a) => `<tr><td><a href="#/admin/ambassadors/${a.id}"><strong>${esc(a.name)}</strong></a> ${a.kind === 'agency' ? '<span class="chip">Agency</span>' : ''} ${a.active ? '' : '<span class="chip warn">Paused</span>'}
         <div class="muted small"><code>${esc(a.code)}</code>${a.country ? ` · ${cname(a.country)}` : ''}${a.gift_days ? ` · 🎁 ${a.gift_days} gift days` : ''}</div></td>${statCells(a.stats)}</tr>`).join('')
       || '<tr><td colspan="9" class="muted">No ambassadors yet. Add the first one below.</td></tr>'}</table></div>
-    <form class="card" id="ambNew"><h3>Add an ambassador</h3>
+    <form class="card" id="ambNew"><h3>Add an ambassador or partner agency</h3>
       <div class="field"><label>Referral code (letters, numbers and dashes; it can't change later)</label><input name="code" required placeholder="ANA-CO" autocapitalize="characters"></div>
-      ${fields()}<button class="btn sm">Add ambassador</button></form>`);
+      ${fields()}<button class="btn sm">Add</button></form>`);
   document.querySelector('#monthPick input').onchange = (e) => go(`#/admin/ambassadors?month=${e.target.value}`);
   document.getElementById('ambNew').onsubmit = async (e) => {
     e.preventDefault();

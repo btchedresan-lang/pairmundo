@@ -646,7 +646,7 @@
   "Earned": "Ganho",
   "Families who bought a Family Pass": "Famílias que compraram um Family Pass",
   "Families who joined": "Famílias que entraram",
-  "From the person who invited you": "Da pessoa que convidou você",
+  "From the person or agency who invited you": "Da pessoa ou agência que te convidou",
   "Link copied": "Link copiado",
   "No PairMundo account uses that email.": "Nenhuma conta PairMundo usa esse e-mail.",
   "Not paid out yet": "Ainda não pago",
@@ -922,5 +922,13 @@
   "{country}'s au pair visas are currently stalled": "Os vistos de au pair de {country} estão parados no momento",
   "{done} of {total} ready": "{done} de {total} prontos",
   "{name} will get your name, email and country so they can help you with the visa. Share your details?": "{name} vai receber seu nome, email e país para ajudar com o visto. Compartilhar seus dados?",
-  "That date has passed, so this start date may be too soon.": "Essa data já passou, então esta data de início pode ser cedo demais."
+  "That date has passed, so this start date may be too soon.": "Essa data já passou, então esta data de início pode ser cedo demais.",
+  "Add": "Adicionar",
+  "Agency code": "Código da agência",
+  "Did an au pair agency prepare you? Enter the code they gave you, and families will see the agency on your profile.": "Uma agência de au pair preparou você? Digite o código que ela te deu, e as famílias verão a agência no seu perfil.",
+  "Prepared by {agency}": "Preparada por {agency}",
+  "That agency code is not valid. Check it with your agency.": "Esse código de agência não é válido. Confirme com a sua agência.",
+  "Your account is already linked to a code.": "Sua conta já está vinculada a um código.",
+  "Your agency": "Sua agência",
+  "Your profile is linked to {agency}. Families see it on your profile.": "Seu perfil está vinculado a {agency}. As famílias veem isso no seu perfil."
 }

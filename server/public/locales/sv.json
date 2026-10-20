@@ -646,7 +646,7 @@
   "Earned": "Intjänat",
   "Families who bought a Family Pass": "Familjer som köpte ett Family Pass",
   "Families who joined": "Familjer som gick med",
-  "From the person who invited you": "Från personen som bjöd in dig",
+  "From the person or agency who invited you": "Från personen eller byrån som bjöd in dig",
   "Link copied": "Länken kopierad",
   "No PairMundo account uses that email.": "Inget PairMundo-konto använder den e-postadressen.",
   "Not paid out yet": "Inte utbetalt än",
@@ -922,5 +922,13 @@
   "{country}'s au pair visas are currently stalled": "Au pair-visum till {country} står just nu still",
   "{done} of {total} ready": "{done} av {total} klara",
   "{name} will get your name, email and country so they can help you with the visa. Share your details?": "{name} får ditt namn, din mejladress och ditt land så att de kan hjälpa dig med visumet. Dela dina uppgifter?",
-  "That date has passed, so this start date may be too soon.": "Det datumet har passerat, så startdatumet kan vara för tidigt."
+  "That date has passed, so this start date may be too soon.": "Det datumet har passerat, så startdatumet kan vara för tidigt.",
+  "Add": "Lägg till",
+  "Agency code": "Byråkod",
+  "Did an au pair agency prepare you? Enter the code they gave you, and families will see the agency on your profile.": "Har en au pair-byrå förberett dig? Skriv koden du fick av dem, så ser familjer byrån på din profil.",
+  "Prepared by {agency}": "Förberedd av {agency}",
+  "That agency code is not valid. Check it with your agency.": "Byråkoden är inte giltig. Kontrollera den med din byrå.",
+  "Your account is already linked to a code.": "Ditt konto är redan kopplat till en kod.",
+  "Your agency": "Din byrå",
+  "Your profile is linked to {agency}. Families see it on your profile.": "Din profil är kopplad till {agency}. Familjer ser det på din profil."
 }
