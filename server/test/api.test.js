@@ -1094,13 +1094,13 @@ test('agency accounts: own sign-up, hidden from members, linked to a code by the
   const adminId = testDb.prepare("SELECT id FROM users WHERE email = 'admin@test.io'").get().id;
   assert.ok(testDb.prepare("SELECT 1 FROM notifications WHERE user_id = ? AND text LIKE '%Bright Start Agency%'").get(adminId));
   let list = (await call(admin, 'GET', '/admin/ambassadors')).body;
-  assert.ok(list.agency_accounts.some((u) => u.email === 'dtall@agency.test'));
+  assert.ok(list.partner_accounts.some((u) => u.email === 'dtall@agency.test'));
 
   // Linking it to the agency's code takes it off the waiting list, tells the agency, and shows its numbers.
   const r = await call(admin, 'POST', '/admin/ambassadors', { code: 'BRIGHT', name: 'Bright Start Agency', kind: 'agency', account_email: 'DTALL@agency.test' });
   assert.equal(r.status, 201, JSON.stringify(r.body));
   list = (await call(admin, 'GET', '/admin/ambassadors')).body;
-  assert.ok(!list.agency_accounts.some((u) => u.email === 'dtall@agency.test'));
+  assert.ok(!list.partner_accounts.some((u) => u.email === 'dtall@agency.test'));
   assert.ok(testDb.prepare("SELECT 1 FROM notifications WHERE user_id = ? AND text LIKE '%BRIGHT%'").get(ag.id));
   const ap = await call(null, 'POST', '/auth/register', { email: 'bright-ap@test.io', password: 'password123', role: 'aupair', name: 'Tendai Moyo', country: 'ZW', ref_code: 'bright' });
   assert.equal(ap.status, 201);
@@ -1110,6 +1110,58 @@ test('agency accounts: own sign-up, hidden from members, linked to a code by the
   assert.equal(mine.kind, 'agency');
   assert.equal(mine.rewards, undefined, 'agencies see no rewards');
   assert.deepEqual(mine.total, { aupairs: 1, profiles: 0, verified: 0, placements: 0 });
+});
+
+test('ambassador accounts: anyone can sign up without being an au pair or family, and earns once linked to a code', async () => {
+  const { hashPassword } = await import('../server/auth.js');
+  testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
+  const adminId = testDb.prepare("SELECT id FROM users WHERE email = 'admin@test.io'").get().id;
+
+  const res = await call(null, 'POST', '/auth/register', { email: 'coach@school.test', password: 'password123', role: 'ambassador', name: 'Lena Berg', country: 'SE', ref_code: 'NOT-CHECKED' });
+  assert.equal(res.status, 201, JSON.stringify(res.body));
+  const amb = { token: res.body.token, id: res.body.user.id };
+  await call(amb.token, 'POST', '/auth/verify-email', { code: lastCode('coach@school.test') });
+  let me = (await call(amb.token, 'GET', '/me')).body;
+  assert.equal(me.user.role, 'ambassador');
+  assert.equal(me.profile ?? null, null);
+  assert.deepEqual(me.profile_missing, []);
+  assert.equal(me.ambassador, null);
+  assert.equal(testDb.prepare('SELECT ref_code FROM users WHERE id = ?').get(amb.id).ref_code, null);
+  assert.equal((await call(amb.token, 'GET', '/discover')).status, 403);
+  const fam = await register('ambacct-fam@test.io', 'family', 'SE');
+  assert.ok(!(await call(fam.token, 'GET', '/search?q=Lena')).body.results?.some((u) => u.id === amb.id));
+  assert.ok(testDb.prepare("SELECT 1 FROM notifications WHERE user_id = ? AND text LIKE 'New ambassador account: Lena Berg%'").get(adminId));
+  let list = (await call(admin, 'GET', '/admin/ambassadors')).body;
+  assert.equal(list.partner_accounts.find((u) => u.email === 'coach@school.test')?.role, 'ambassador');
+
+  // Linking it to a code tells them, and families who join with it earn them a reward like any ambassador.
+  const r = await call(admin, 'POST', '/admin/ambassadors', { code: 'LENA-SE', name: 'Lena Berg', account_email: 'coach@school.test' });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  list = (await call(admin, 'GET', '/admin/ambassadors')).body;
+  assert.ok(!list.partner_accounts.some((u) => u.email === 'coach@school.test'));
+  assert.ok(testDb.prepare("SELECT 1 FROM notifications WHERE user_id = ? AND text LIKE '%ambassador code LENA-SE%'").get(amb.id));
+  const joined = await call(null, 'POST', '/auth/register', { email: 'lena-fam@test.io', password: 'password123', role: 'family', name: 'Familjen Ek', country: 'SE', ref_code: 'lena-se' });
+  assert.equal(joined.status, 201);
+  me = (await call(amb.token, 'GET', '/me')).body;
+  assert.deepEqual(me.ambassador, { code: 'LENA-SE' });
+  const mine = (await call(amb.token, 'GET', '/me/ambassador')).body;
+  assert.equal(mine.kind, 'ambassador');
+  assert.ok(mine.rewards.pass > 0);
+  assert.equal(mine.total.families, 1);
+});
+
+test('ambassador accounts: a database from before them gets the wider role check', async () => {
+  const { DatabaseSync } = await import('node:sqlite');
+  const file = (await import('node:fs')).mkdtempSync((await import('node:os')).tmpdir() + '/aupair-mig-') + '/old.db';
+  const old = new DatabaseSync(file);
+  old.exec(`CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL UNIQUE COLLATE NOCASE, password_hash TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('aupair','family','admin','agency')), name TEXT NOT NULL)`);
+  old.close();
+  const db = openDb(file);
+  db.prepare("INSERT INTO users (email, password_hash, role, name) VALUES ('m@test.io', 'x', 'ambassador', 'M')").run();
+  assert.throws(() => db.prepare("INSERT INTO users (email, password_hash, role, name) VALUES ('n@test.io', 'x', 'nobody', 'N')").run());
+  db.close();
 });
 
 test('agency invites: a code saved with an email that has no account invites them, and links once they confirm it', async () => {
@@ -1145,7 +1197,7 @@ test('agency invites: a code saved with an email that has no account invites the
   assert.ok(testDb.prepare("SELECT 1 FROM notifications WHERE user_id = ? AND text LIKE '%SUNRISE%'").get(reg.body.user.id));
   r = (await call(admin, 'GET', `/admin/ambassadors/${id}`)).body;
   assert.deepEqual([r.invite_email, r.user_id, r.account_email], [null, reg.body.user.id, 'boss@sunrise.test']);
-  assert.ok(!(await call(admin, 'GET', '/admin/ambassadors')).body.agency_accounts.some((u) => u.email === 'boss@sunrise.test'));
+  assert.ok(!(await call(admin, 'GET', '/admin/ambassadors')).body.partner_accounts.some((u) => u.email === 'boss@sunrise.test'));
 });
 
 test('au pairs add certificates and language levels; families can show only CPR or first aid', async () => {

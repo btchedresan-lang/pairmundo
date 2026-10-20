@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY,
   email TEXT NOT NULL UNIQUE COLLATE NOCASE,
   password_hash TEXT NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('aupair','family','admin','agency')), -- agency: a partner agency's own account, not a member others see
+  role TEXT NOT NULL CHECK (role IN ('aupair','family','admin','agency','ambassador')), -- agency, ambassador: a partner's own account, not a member others see
   name TEXT NOT NULL,
   country TEXT,
   city TEXT,
@@ -504,6 +504,15 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
     db.exec('PRAGMA writable_schema = ON');
     db.prepare("UPDATE sqlite_master SET sql = replace(sql, ?, ?) WHERE type = 'table' AND name = 'users'")
       .run("role IN ('aupair','family','admin'))", "role IN ('aupair','family','admin','agency'))");
+    db.exec(`PRAGMA schema_version = ${v + 1}; PRAGMA writable_schema = OFF;`);
+  }
+  // Ambassadors who are neither au pairs nor families got their own accounts too, the same way.
+  const usersSql2 = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'").get().sql;
+  if (usersSql2.includes("role IN ('aupair','family','admin','agency'))")) {
+    const v = db.prepare('PRAGMA schema_version').get().schema_version;
+    db.exec('PRAGMA writable_schema = ON');
+    db.prepare("UPDATE sqlite_master SET sql = replace(sql, ?, ?) WHERE type = 'table' AND name = 'users'")
+      .run("role IN ('aupair','family','admin','agency'))", "role IN ('aupair','family','admin','agency','ambassador'))");
     db.exec(`PRAGMA schema_version = ${v + 1}; PRAGMA writable_schema = OFF;`);
   }
   return db;
