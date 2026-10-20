@@ -796,10 +796,10 @@ test('Family Pass in-app purchase: checked with RevenueCat, counted once, refund
     const end2 = (await call2(fam.token, 'GET', '/family-pass')).body.ends_at;
     assert.ok(new Date(end2.replace(' ', 'T') + 'Z') - new Date(end1.replace(' ', 'T') + 'Z') > 89 * 86400000);
 
-    // The 1-month product adds 30 days.
-    const end3 = await (async () => { await hook({ ...ev, product_id: 'family_pass_30', transaction_id: '1000003' }); return (await call2(fam.token, 'GET', '/family-pass')).body.ends_at; })();
+    // The 1-month product adds 30 days (bought on the App Store, where its ID is family_pass_1m).
+    const end3 = await (async () => { await hook({ ...ev, product_id: 'family_pass_1m', transaction_id: '1000003' }); return (await call2(fam.token, 'GET', '/family-pass')).body.ends_at; })();
     assert.equal(Math.round((new Date(end3.replace(' ', 'T') + 'Z') - new Date(end2.replace(' ', 'T') + 'Z')) / 86400000), 30);
-    await hook({ ...ev, type: 'CANCELLATION', product_id: 'family_pass_30', transaction_id: '1000003' });
+    await hook({ ...ev, type: 'CANCELLATION', product_id: 'family_pass_1m', transaction_id: '1000003' });
 
     // Refunding both ends the pass.
     await hook({ ...ev, type: 'CANCELLATION' });
