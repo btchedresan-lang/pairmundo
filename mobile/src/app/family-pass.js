@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { Platform, Pressable, View } from 'react-native';
 import { HEADING_BOLD, Text } from '../components/Text';
 import { router, useFocusEffect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -29,7 +29,9 @@ export default function FamilyPass() {
   const load = useCallback(() => api('/family-pass').then(setPass).catch((e) => setMsg({ level: 'error', text: e.message })), []);
   useFocusEffect(useCallback(() => { load(); }, [load]));
   // Older servers send one pass; newer ones a 1-month, a 3-month and a 6-month plan.
-  const plans = pass ? (pass.plans?.length ? pass.plans : [{ id: 'quarter', days: pass.days, price: pass.price, product_id: pass.product_id }]) : [];
+  // A plan can have its own product ID on the App Store (ios_product_id).
+  const plans = pass ? (pass.plans?.length ? pass.plans : [{ id: 'quarter', days: pass.days, price: pass.price, product_id: pass.product_id }])
+    .map((p) => (Platform.OS === 'ios' && p.ios_product_id ? { ...p, product_id: p.ios_product_id } : p)) : [];
   const plan = plans.find((p) => p.id === planId) || plans[plans.length - 1];
   // Apple and Google show the price in the person's own currency.
   const productIds = plans.map((p) => p.product_id).join(','); const userId = me?.user?.id;

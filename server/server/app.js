@@ -48,13 +48,15 @@ const CODE_MAX_ATTEMPTS = 5;
 // amount/currency are the website price (Stripe). product_id is the one-off (consumable) in-app product set up in
 // App Store Connect, Google Play and RevenueCat; the stores charge their own listed price.
 export const PASS_PLANS = [
-  { id: 'month', days: 30, price: '€39', amount: 3900, currency: 'eur', product_id: 'family_pass_30', name: 'PairMundo Family Pass (1 month)' },
+  { id: 'month', days: 30, price: '€39', amount: 3900, currency: 'eur', product_id: 'family_pass_30', ios_product_id: 'family_pass_1m', name: 'PairMundo Family Pass (1 month)' },
   { id: 'quarter', days: 90, price: '€79', amount: 7900, currency: 'eur', product_id: 'family_pass_90', name: 'PairMundo Family Pass (3 months)' },
   { id: 'half', days: 180, price: '€119', amount: 11900, currency: 'eur', product_id: 'family_pass_180', name: 'PairMundo Family Pass (6 months)' },
 ];
 // The 3-month pass is the default, and what app versions from before the 1-month pass show.
 export const FAMILY_PASS = PASS_PLANS[1];
 const passPlan = (key, value) => PASS_PLANS.find((p) => p[key] === value);
+// Apple never lets a deleted product ID be reused, so a plan can have a different ID on the App Store.
+const planFor = (product) => PASS_PLANS.find((p) => p.product_id === product || p.ios_product_id === product);
 /** The Rematch Guarantee: paid once, it covers one placement. If the placement is cancelled before the stay starts or
  *  within cover_days of the start date, the family gets pass_days of the Family Pass free to find the next au pair. */
 export const REMATCH = { id: 'rematch', price: '€29', amount: 2900, currency: 'eur', product_id: 'rematch_guarantee', name: 'PairMundo Rematch Guarantee', cover_days: 183, pass_days: 90 };
@@ -927,7 +929,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   const passView = (u) => {
     const p = activePass(u.id);
     return { required: passRequired() && u.role === 'family', active: !!p, trial: p?.source === 'trial', early: p?.source === 'early', early_bonus: earlyView(u), gift_active: p?.source === 'gift', gift: giftView(u), ends_at: p?.ends_at ?? null, days: FAMILY_PASS.days, price: FAMILY_PASS.price, web_checkout: !!checkout, product_id: FAMILY_PASS.product_id,
-      plans: PASS_PLANS.map(({ id, days, price, product_id }) => ({ id, days, price, product_id })), rematch: u.role === 'family' ? rematchView(u.id) : null };
+      plans: PASS_PLANS.map(({ id, days, price, product_id, ios_product_id }) => ({ id, days, price, product_id, ios_product_id })), rematch: u.role === 'family' ? rematchView(u.id) : null };
   };
   // ---------- Rematch Guarantee ----------
   const openPlacementSql = "family_id = ? AND (status = 'confirmed' OR (status = 'active' AND date('now') < date(start_date, ?)))";
@@ -1210,7 +1212,6 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   }));
   // Apple and Google purchases, checked with RevenueCat. The app calls this after buying and for "Restore purchases";
   // RevenueCat's webhook below does the same thing in the background.
-  const planFor = (product) => passPlan('product_id', product);
   api.post('/family-pass/sync', requireAuth, wrap(async (req) => {
     if (!revenuecat) throw new HttpError(503, 'Payments are coming soon.');
     if (req.user.role !== 'family') throw forbidden('Only families need the Family Pass.');

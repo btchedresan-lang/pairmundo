@@ -76,7 +76,7 @@ Families pay once for messaging and seeing who liked them: €39 for 1 month (30
 - Payment on the website uses the same `STRIPE_SECRET_KEY` as the ID check. Add the event `checkout.session.completed` to the same Stripe webhook so a pass starts even if someone closes the page after paying.
 
 - In the iPhone and Android apps, families pay with Apple or Google through RevenueCat (free until $2,500 a month in sales):
-  1. In App Store Connect and Google Play Console, create four one-off (consumable) in-app products with the IDs `family_pass_30` (1 month, €39), `family_pass_90` (3 months, €79), `family_pass_180` (6 months, €119) and `rematch_guarantee` (Rematch Guarantee, €29).
+  1. In App Store Connect and Google Play Console, create four one-off (consumable) in-app products with the IDs `family_pass_30` (1 month, €39; on the App Store it is `family_pass_1m`, because Apple never reuses a deleted ID), `family_pass_90` (3 months, €79), `family_pass_180` (6 months, €119) and `rematch_guarantee` (Rematch Guarantee, €29).
   2. In RevenueCat, add both apps and all four products. Copy the public SDK keys (`appl_...` and `goog_...`) into `mobile/brand.json` as `revenuecatIos` and `revenuecatAndroid`.
   3. In Render, set `REVENUECAT_SECRET_KEY` (RevenueCat → API keys, a secret key starting `sk_`).
   4. In RevenueCat → Integrations → Webhooks, add `https://pairmundo.com/api/revenuecat/webhook` and type any long password as the Authorization header; put the same password in Render as `REVENUECAT_WEBHOOK_AUTH`. Refunds then end the pass too.
