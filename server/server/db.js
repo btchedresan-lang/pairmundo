@@ -427,7 +427,7 @@ CREATE TABLE IF NOT EXISTS ambassadors (
   active INTEGER NOT NULL DEFAULT 1,
   notes TEXT,
   gift_days INTEGER NOT NULL DEFAULT 0,           -- free days of the pass for families who sign up with the code; 0 = none
-  kind TEXT NOT NULL DEFAULT 'ambassador',        -- ambassador (earns rewards) | agency (a partner agency: tags its au pairs, earns nothing)
+  kind TEXT NOT NULL DEFAULT 'ambassador',        -- ambassador (earns rewards) | agency (a partner agency: tags its au pairs, earns nothing) | distributor (delivers flyers, paid per flyer in kr)
   invite_email TEXT,                              -- invited to create their own account; linked when they sign up and confirm this email
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -445,6 +445,36 @@ CREATE TABLE IF NOT EXISTS referral_rewards (
   UNIQUE (ambassador_id, user_id, kind)
 );
 CREATE INDEX IF NOT EXISTS referral_rewards_amb ON referral_rewards(ambassador_id, created_at);
+
+-- Flyer distributors are paid in Swedish kronor (amounts in öre): a rate per flyer for each delivery session the admin
+-- logs, and a bonus for each family who joins through one of their areas' flyers (users.source or waitlist.source)
+-- within a few weeks of a session there. The rate and bonus are copied onto each row, so changing them later leaves
+-- what was already earned alone.
+CREATE TABLE IF NOT EXISTS flyer_sessions (
+  id INTEGER PRIMARY KEY,
+  ambassador_id INTEGER NOT NULL REFERENCES ambassadors(id) ON DELETE CASCADE,
+  area TEXT NOT NULL,                             -- the flyer's source, like door-nacka
+  flyers INTEGER NOT NULL,
+  rate_ore INTEGER NOT NULL,
+  amount_ore INTEGER NOT NULL,
+  delivered_on TEXT NOT NULL,                     -- YYYY-MM-DD
+  note TEXT,
+  paid_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS flyer_sessions_amb ON flyer_sessions(ambassador_id, delivered_on);
+-- One bonus per family email, ever: a family on the waitlist who later signs up counts once, for one distributor.
+CREATE TABLE IF NOT EXISTS flyer_bonuses (
+  id INTEGER PRIMARY KEY,
+  ambassador_id INTEGER NOT NULL REFERENCES ambassadors(id) ON DELETE CASCADE,
+  session_id INTEGER REFERENCES flyer_sessions(id) ON DELETE SET NULL,
+  email TEXT NOT NULL UNIQUE,
+  area TEXT NOT NULL,
+  amount_ore INTEGER NOT NULL,
+  joined_at TEXT NOT NULL,
+  paid_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 
 CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_reviews_reviewee ON reviews(reviewee_id);
@@ -485,6 +515,14 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
   if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'kind')) db.exec("ALTER TABLE ambassadors ADD COLUMN kind TEXT NOT NULL DEFAULT 'ambassador'");
   // Someone invited to create the account that sees a code's numbers, before they have one.
   if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'invite_email')) db.exec('ALTER TABLE ambassadors ADD COLUMN invite_email TEXT');
+  // Flyer distributors' pay, in öre: per flyer, per family, how long after a session a family still counts, and the
+  // flyer sources (door-nacka, …) that are theirs.
+  if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'flyer_rate')) {
+    db.exec(`ALTER TABLE ambassadors ADD COLUMN flyer_rate INTEGER NOT NULL DEFAULT 100;
+      ALTER TABLE ambassadors ADD COLUMN family_bonus INTEGER NOT NULL DEFAULT 5000;
+      ALTER TABLE ambassadors ADD COLUMN bonus_days INTEGER NOT NULL DEFAULT 28;
+      ALTER TABLE ambassadors ADD COLUMN areas TEXT NOT NULL DEFAULT '[]'`);
+  }
   // An agency's email for referrals: offers with one get a "Get help" button that sends the person's details there.
   if (!db.prepare('PRAGMA table_info(partner_offers)').all().some((c) => c.name === 'lead_email')) db.exec('ALTER TABLE partner_offers ADD COLUMN lead_email TEXT');
   // The family's street address, for the visa invitation letter.

@@ -975,7 +975,7 @@ test('ambassadors: referral codes at sign-up, rewards counted once, monthly cap,
   r = await call(admin, 'POST', `/admin/ambassadors/${amb}`, { account_email: 'ANA@test.io' });
   assert.equal(r.body.account_email, 'ana@test.io', JSON.stringify(r.body));
   assert.equal(r.body.contact, '+57 300 000', 'fields not sent stay as they were');
-  assert.deepEqual((await call(own.token, 'GET', '/me')).body.ambassador, { code: 'ANA-CO' });
+  assert.deepEqual((await call(own.token, 'GET', '/me')).body.ambassador, { code: 'ANA-CO', kind: 'ambassador' });
   const mine = (await call(own.token, 'GET', '/me/ambassador')).body;
   assert.equal(mine.link, 'https://pairmundo.com/?ref=ANA-CO');
   assert.deepEqual([mine.this_month.aupairs, mine.this_month.profiles, mine.total.earned_cents], [1, 1, 200]);
@@ -1071,6 +1071,84 @@ test('partner agencies: their code tags au pairs, shows on the profile, earns no
   assert.equal((await call(ap.token, 'GET', `/users/${fam.id}`)).body.user.agency, null);
 });
 
+test('flyer distributors: sessions the admin logs, family bonuses counted once from their areas, their own page, payouts', async () => {
+  const { hashPassword } = await import('../server/auth.js');
+  testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
+  assert.equal((await call(admin, 'POST', '/admin/ambassadors', { code: 'BAD-AREA', name: 'X', kind: 'distributor', areas: 'door nacka!' })).status, 400);
+  let r = await call(admin, 'POST', '/admin/ambassadors', { code: 'nils-d', name: 'Nils Svensson', country: 'se', kind: 'distributor', flyer_rate: '1', family_bonus: '50', areas: 'door-nacka, DOOR-BROMMA', bonus_days: 28 });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  const id = r.body.id;
+  assert.deepEqual([r.body.kind, r.body.flyer_rate, r.body.family_bonus, r.body.areas], ['distributor', 100, 5000, ['door-nacka', 'door-bromma']]);
+
+  // Sessions: only in their areas, a whole number of flyers, on a day that has happened.
+  const day = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+  assert.equal((await call(admin, 'POST', `/admin/ambassadors/${id}/sessions`, { area: 'door-taby', flyers: 500, delivered_on: day(-3) })).status, 400);
+  assert.equal((await call(admin, 'POST', `/admin/ambassadors/${id}/sessions`, { area: 'door-nacka', flyers: 0, delivered_on: day(-3) })).status, 400);
+  assert.equal((await call(admin, 'POST', `/admin/ambassadors/${id}/sessions`, { area: 'door-nacka', flyers: 500, delivered_on: day(2) })).status, 400);
+  r = await call(admin, 'POST', `/admin/ambassadors/${id}/sessions`, { area: 'door-nacka', flyers: 500, delivered_on: day(-3), note: 'Spot-checked' });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.deepEqual([r.body.stats.flyers, r.body.stats.flyers_ore, r.body.stats.families], [500, 50000, 0]);
+  // Only distributors have sessions.
+  const amb = testDb.prepare("SELECT id FROM ambassadors WHERE kind = 'ambassador' LIMIT 1").get().id;
+  assert.equal((await call(admin, 'POST', `/admin/ambassadors/${amb}/sessions`, { area: 'door-nacka', flyers: 5, delivered_on: day(-1) })).status, 400);
+
+  // Families who come in through a Nacka flyer count, once each, whether on the waitlist, signed up, or both.
+  await call(null, 'POST', '/waitlist', { email: 'nacka1@test.io', role: 'family', source: 'door-nacka' });
+  await call(null, 'POST', '/waitlist', { email: 'nacka1@test.io', role: 'family', source: 'door-nacka' });
+  await call(null, 'POST', '/auth/register', { email: 'NACKA1@test.io', password: 'password123', role: 'family', name: 'Familjen Ett', country: 'SE' });
+  await call(null, 'POST', '/auth/register', { email: 'nacka2@test.io', password: 'password123', role: 'family', name: 'Familjen Två', country: 'SE', source: 'door-nacka' });
+  // Au pairs, other areas, and families who joined before the session or after the bonus period don't.
+  await call(null, 'POST', '/waitlist', { email: 'nacka-ap@test.io', role: 'aupair', source: 'door-nacka' });
+  await call(null, 'POST', '/waitlist', { email: 'taby1@test.io', role: 'family', source: 'door-taby' });
+  await call(null, 'POST', '/waitlist', { email: 'early@test.io', role: 'family', source: 'door-nacka' });
+  testDb.prepare("UPDATE waitlist SET created_at = datetime('now', '-10 days') WHERE email = 'early@test.io'").run();
+  await call(null, 'POST', '/waitlist', { email: 'bromma-late@test.io', role: 'family', source: 'door-bromma' });
+  r = await call(admin, 'POST', `/admin/ambassadors/${id}/sessions`, { area: 'door-bromma', flyers: 300, delivered_on: day(-40) });
+  let a = (await call(admin, 'GET', `/admin/ambassadors/${id}`)).body;
+  assert.deepEqual(a.bonuses.map((b) => b.email).sort(), ['nacka1@test.io', 'nacka2@test.io']);
+  assert.equal(a.bonuses.find((b) => b.email === 'nacka2@test.io').user_name, 'Familjen Två');
+  assert.deepEqual([a.stats.sessions, a.stats.flyers, a.stats.families, a.stats.earned_ore, a.stats.owed_ore], [2, 800, 2, 90000, 90000]);
+  assert.equal(a.sessions.find((s) => s.area === 'door-nacka').families, 2);
+
+  // A distributor's code earns no ambassador rewards, and they're left off the dollar payout sheet.
+  const ref = await call(null, 'POST', '/auth/register', { email: 'nilsref@test.io', password: 'password123', role: 'family', name: 'Ref', country: 'SE', ref_code: 'NILS-D' });
+  assert.equal(ref.status, 201);
+  assert.equal(testDb.prepare('SELECT COUNT(*) n FROM referral_rewards WHERE ambassador_id = ?').get(id).n, 0);
+  const csv = await (await fetch(`${base}/admin/ambassadors.csv`, { headers: { Authorization: `Bearer ${admin}` } })).text();
+  assert.ok(!csv.includes('NILS-D'));
+
+  // Nils sees his own page: sessions and pay, not who the families are.
+  const nils = await register('nils@test.io', 'ambassador', 'SE', 'Nils Svensson', { complete: false });
+  await call(admin, 'POST', `/admin/ambassadors/${id}`, { account_email: 'nils@test.io' });
+  assert.deepEqual((await call(nils.token, 'GET', '/me')).body.ambassador, { code: 'NILS-D', kind: 'distributor' });
+  const mine = (await call(nils.token, 'GET', '/me/ambassador')).body;
+  assert.equal(mine.kind, 'distributor');
+  assert.deepEqual(mine.rates, { flyer_ore: 100, family_ore: 5000, bonus_days: 28 });
+  assert.deepEqual([mine.total.flyers, mine.total.families, mine.total.earned_ore], [800, 2, 90000]);
+  assert.equal(mine.sessions.length, 2);
+  assert.ok(!JSON.stringify(mine).includes('nacka1@test.io'));
+  assert.ok(testDb.prepare("SELECT 1 FROM notifications WHERE user_id = ? AND text LIKE '%flyer delivery page%'").get(nils.id));
+
+  // A new rate applies to new sessions only. Paying marks sessions and bonuses paid; paid sessions can't be removed.
+  await call(admin, 'POST', `/admin/ambassadors/${id}`, { flyer_rate: '1,50' });
+  r = await call(admin, 'POST', `/admin/ambassadors/${id}/paid`, {});
+  assert.equal(r.body.marked, 4);
+  assert.equal(r.body.stats.owed_ore, 0);
+  // A new Bromma session at 1.50 kr a flyer also covers the family who joined Bromma's waitlist today, and the next one.
+  r = await call(admin, 'POST', `/admin/ambassadors/${id}/sessions`, { area: 'door-bromma', flyers: 100, delivered_on: day(0) });
+  assert.equal(r.body.stats.owed_ore, 15000 + 5000);
+  const paidSession = r.body.sessions.find((s) => s.paid_at).id;
+  assert.equal((await call(admin, 'DELETE', `/admin/ambassadors/${id}/sessions/${paidSession}`)).status, 400);
+  await call(null, 'POST', '/waitlist', { email: 'bromma2@test.io', role: 'family', source: 'door-bromma' });
+  a = (await call(admin, 'GET', `/admin/ambassadors/${id}`)).body;
+  assert.equal(a.stats.owed_ore, 15000 + 5000 + 5000);
+  r = await call(admin, 'DELETE', `/admin/ambassadors/${id}/sessions/${a.sessions[0].id}`);
+  assert.equal(r.status, 200);
+  assert.equal(r.body.stats.owed_ore, 0);
+  assert.equal((await call(nils.token, 'POST', `/admin/ambassadors/${id}/sessions`, { area: 'door-nacka', flyers: 5, delivered_on: day(0) })).status, 403);
+});
+
 test('agency accounts: own sign-up, hidden from members, linked to a code by the admin, then see their numbers', async () => {
   const { hashPassword } = await import('../server/auth.js');
   testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
@@ -1105,7 +1183,7 @@ test('agency accounts: own sign-up, hidden from members, linked to a code by the
   const ap = await call(null, 'POST', '/auth/register', { email: 'bright-ap@test.io', password: 'password123', role: 'aupair', name: 'Tendai Moyo', country: 'ZW', ref_code: 'bright' });
   assert.equal(ap.status, 201);
   me = (await call(ag.token, 'GET', '/me')).body;
-  assert.deepEqual(me.ambassador, { code: 'BRIGHT' });
+  assert.deepEqual(me.ambassador, { code: 'BRIGHT', kind: 'agency' });
   const mine = (await call(ag.token, 'GET', '/me/ambassador')).body;
   assert.equal(mine.kind, 'agency');
   assert.equal(mine.rewards, undefined, 'agencies see no rewards');
@@ -1144,7 +1222,7 @@ test('ambassador accounts: anyone can sign up without being an au pair or family
   const joined = await call(null, 'POST', '/auth/register', { email: 'lena-fam@test.io', password: 'password123', role: 'family', name: 'Familjen Ek', country: 'SE', ref_code: 'lena-se' });
   assert.equal(joined.status, 201);
   me = (await call(amb.token, 'GET', '/me')).body;
-  assert.deepEqual(me.ambassador, { code: 'LENA-SE' });
+  assert.deepEqual(me.ambassador, { code: 'LENA-SE', kind: 'ambassador' });
   const mine = (await call(amb.token, 'GET', '/me/ambassador')).body;
   assert.equal(mine.kind, 'ambassador');
   assert.ok(mine.rewards.pass > 0);
@@ -1193,7 +1271,7 @@ test('agency invites: a code saved with an email that has no account invites the
   assert.equal(notes(), before);
   assert.equal((await call(reg.body.token, 'GET', '/me')).body.ambassador, null);
   await call(reg.body.token, 'POST', '/auth/verify-email', { code: lastCode('boss@sunrise.test') });
-  assert.deepEqual((await call(reg.body.token, 'GET', '/me')).body.ambassador, { code: 'SUNRISE' });
+  assert.deepEqual((await call(reg.body.token, 'GET', '/me')).body.ambassador, { code: 'SUNRISE', kind: 'agency' });
   assert.ok(testDb.prepare("SELECT 1 FROM notifications WHERE user_id = ? AND text LIKE '%SUNRISE%'").get(reg.body.user.id));
   r = (await call(admin, 'GET', `/admin/ambassadors/${id}`)).body;
   assert.deepEqual([r.invite_email, r.user_id, r.account_email], [null, reg.body.user.id, 'boss@sunrise.test']);

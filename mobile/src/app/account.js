@@ -71,7 +71,7 @@ export default function Account() {
 
   return (
     <Screen>
-      {amb && amb.kind !== 'agency' ? <AmbassadorCard amb={amb} /> : null}
+      {amb?.kind === 'ambassador' ? <AmbassadorCard amb={amb} /> : null}
       {me.user.role === 'aupair' && (me.user.agency || !me.has_code) ? (
         <Card>
           <T h2>🎓 {tr('Your agency')}</T>

@@ -326,8 +326,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   const addReward = (userId, kind, amount, note = null) => {
     const u = getUser(userId);
     const a = u?.ref_code ? db.prepare('SELECT * FROM ambassadors WHERE code = ?').get(u.ref_code) : null;
-    // Partner agencies tag their au pairs but earn nothing.
-    if (!a?.active || a.kind === 'agency' || a.user_id === u.id || u.suspended) return;
+    // Partner agencies tag their au pairs but earn nothing; flyer distributors are paid per flyer instead.
+    if (!a?.active || a.kind !== 'ambassador' || a.user_id === u.id || u.suspended) return;
     if (kind === 'profile') {
       const used = db.prepare("SELECT COALESCE(SUM(amount_cents), 0) n FROM referral_rewards WHERE ambassador_id = ? AND kind = 'profile' AND created_at >= datetime('now', 'start of month')").get(a.id).n;
       amount = Math.max(0, Math.min(amount, AMBASSADOR_REWARDS.profile_monthly_cap - used));
@@ -369,15 +369,55 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       .get(a.code, a.user_id, ...(month ? [month] : []));
     return { aupairs: r.aupairs || 0, profiles: r.profiles || 0, verified: r.verified || 0, placements: r.placements || 0 };
   };
+  // ---------- flyer distributors ----------
+  // Someone who delivers flyers to mailboxes, under the ambassador umbrella but paid differently: the admin logs each
+  // delivery session (area, flyers, date), which earns flyer_rate per flyer, and every family who joins through one of
+  // that distributor's areas within bonus_days of a session there earns family_bonus on its own. Amounts are in öre.
+  const areasOf = (a) => (Array.isArray(a.areas) ? a.areas : json.parse(a.areas, []));
+  /** Records the family bonuses a distributor's sessions have brought in so far. Safe to run any time: each family's
+   *  email counts once, the first time it shows up on the waitlist or as a family account. */
+  const syncFlyerBonuses = (a) => {
+    if (a.kind !== 'distributor' || !a.active) return;
+    const families = db.prepare(`INSERT OR IGNORE INTO flyer_bonuses (ambassador_id, session_id, email, area, amount_ore, joined_at)
+      SELECT ?, ?, email, ?, ?, MIN(created_at) FROM (
+        SELECT lower(trim(email)) email, source, created_at FROM waitlist WHERE coalesce(role, '') <> 'aupair'
+        UNION ALL SELECT lower(trim(email)), source, created_at FROM users WHERE role = 'family' AND NOT suspended)
+      WHERE source = ? AND created_at >= ? AND created_at < datetime(?, ?) GROUP BY email`);
+    const areas = areasOf(a);
+    for (const s of db.prepare('SELECT * FROM flyer_sessions WHERE ambassador_id = ? ORDER BY delivered_on, id').all(a.id)) {
+      if (areas.includes(s.area)) families.run(a.id, s.id, s.area, a.family_bonus, s.area, s.delivered_on, s.delivered_on, `+${a.bonus_days} days`);
+    }
+  };
+  /** A distributor's sessions, flyers, families and pay, for one month (YYYY-MM) or all time. owed_ore is everything not paid yet. */
+  const distributorStats = (a, month = null) => {
+    syncFlyerBonuses(a);
+    const s = db.prepare(`SELECT COUNT(*) sessions, COALESCE(SUM(flyers), 0) flyers, COALESCE(SUM(amount_ore), 0) n FROM flyer_sessions
+      WHERE ambassador_id = ?${month ? " AND substr(delivered_on, 1, 7) = ?" : ''}`).get(a.id, ...(month ? [month] : []));
+    const b = db.prepare(`SELECT COUNT(*) families, COALESCE(SUM(amount_ore), 0) n FROM flyer_bonuses
+      WHERE ambassador_id = ?${month ? " AND strftime('%Y-%m', joined_at) = ?" : ''}`).get(a.id, ...(month ? [month] : []));
+    const owed = (t) => db.prepare(`SELECT COALESCE(SUM(amount_ore), 0) n FROM ${t} WHERE ambassador_id = ? AND paid_at IS NULL`).get(a.id).n;
+    return { sessions: s.sessions, flyers: s.flyers, families: b.families, flyers_ore: s.n, bonus_ore: b.n, earned_ore: s.n + b.n,
+      owed_ore: owed('flyer_sessions') + owed('flyer_bonuses') };
+  };
+  /** A distributor's sessions, newest first, each with how many families it brought in. */
+  const flyerSessions = (a) => db.prepare(`SELECT s.*, (SELECT COUNT(*) FROM flyer_bonuses b WHERE b.session_id = s.id) families
+    FROM flyer_sessions s WHERE s.ambassador_id = ? ORDER BY s.delivered_on DESC, s.id DESC LIMIT 500`).all(a.id);
+  const statsOf = (a, month) => (a.kind === 'distributor' ? distributorStats(a, month) : ambassadorStats(a, month));
+
   const adminAmbassador = (id, month = null, detail = true) => {
     const a = db.prepare('SELECT a.*, COALESCE(u.email, a.invite_email) account_email FROM ambassadors a LEFT JOIN users u ON u.id = a.user_id WHERE a.id = ?').get(Number(id));
     if (!a) throw notFound();
     return {
-      ...a, active: !!a.active, link: referralLink(a), stats: ambassadorStats(a, month),
+      ...a, active: !!a.active, link: referralLink(a), areas: areasOf(a), stats: statsOf(a, month),
       gifts: db.prepare('SELECT COUNT(*) saved, COUNT(redeemed_at) redeemed FROM ref_gifts WHERE ambassador_id = ?').get(a.id),
       ...(detail ? {
         referrals: db.prepare('SELECT id, name, role, country, created_at, suspended FROM users WHERE ref_code = ? ORDER BY created_at DESC, id DESC LIMIT 500').all(a.code),
         rewards: db.prepare('SELECT r.*, u.name user_name FROM referral_rewards r LEFT JOIN users u ON u.id = r.user_id WHERE r.ambassador_id = ? ORDER BY r.created_at DESC, r.id DESC LIMIT 500').all(a.id),
+        ...(a.kind === 'distributor' ? {
+          sessions: flyerSessions(a),
+          bonuses: db.prepare(`SELECT b.*, u.id user_id, u.name user_name FROM flyer_bonuses b LEFT JOIN users u ON lower(trim(u.email)) = b.email
+            WHERE b.ambassador_id = ? ORDER BY b.joined_at DESC, b.id DESC LIMIT 500`).all(a.id),
+        } : {}),
       } : {}),
     };
   };
@@ -534,7 +574,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       profile_missing: profileGaps(u),
       pass: passView(u),
       rating: ratingSummary(u.id),
-      ambassador: db.prepare('SELECT code FROM ambassadors WHERE user_id = ? AND active = 1').get(u.id) ?? null,
+      ambassador: db.prepare('SELECT code, kind FROM ambassadors WHERE user_id = ? AND active = 1').get(u.id) ?? null,
       // Whether they joined with a referral or agency code (an au pair without one can still add their agency's).
       has_code: !!u.ref_code,
       counts: {
@@ -1955,6 +1995,13 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       return { kind: 'agency', code: a.code, name: a.name, link: referralLink(a),
         this_month: agencyStats(a, new Date().toISOString().slice(0, 7)), total: agencyStats(a) };
     }
+    // A flyer distributor sees their sessions and pay. Which families joined stays with the admin.
+    if (a.kind === 'distributor') {
+      return { kind: 'distributor', code: a.code, name: a.name, areas: areasOf(a),
+        rates: { flyer_ore: a.flyer_rate, family_ore: a.family_bonus, bonus_days: a.bonus_days },
+        this_month: distributorStats(a, new Date().toISOString().slice(0, 7)), total: distributorStats(a),
+        sessions: flyerSessions(a).map(({ id, area, flyers, amount_ore, delivered_on, families, paid_at }) => ({ id, area, flyers, amount_ore, delivered_on, families, paid: !!paid_at })) };
+    }
     return { kind: 'ambassador', code: a.code, name: a.name, link: referralLink(a), rewards: AMBASSADOR_REWARDS,
       this_month: ambassadorStats(a, new Date().toISOString().slice(0, 7)), total: ambassadorStats(a) };
   }));
@@ -2149,9 +2196,24 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     // Free days of the pass for families who sign up with the code. Families already signed up keep what they got.
     const giftDays = 'gift_days' in body ? Number(body.gift_days || 0) : Number(a.gift_days ?? 0);
     if (!Number.isInteger(giftDays) || giftDays < 0 || giftDays > 365) throw bad('Gift days are a whole number from 0 to 365.');
+    // A distributor's pay is entered in kronor and kept in öre.
+    const kr = (k, label) => {
+      if (!(k in body)) return Number(a[k] ?? (k === 'flyer_rate' ? 100 : 5000));
+      const n = Math.round(Number(String(body[k]).replace(',', '.')) * 100);
+      if (!Number.isFinite(n) || n < 0 || n > 1000000) throw bad(`${label} is an amount in kronor, like 1 or 0.50.`);
+      return n;
+    };
+    const bonusDays = 'bonus_days' in body ? Number(body.bonus_days) : Number(a.bonus_days ?? 28);
+    if (!Number.isInteger(bonusDays) || bonusDays < 0 || bonusDays > 365) throw bad('The bonus period is a whole number of days, from 0 to 365.');
+    let areas = a.areas ?? [];
+    if ('areas' in body) {
+      areas = [...new Set((Array.isArray(body.areas) ? body.areas : String(body.areas ?? '').split(/[\s,]+/)).map((x) => String(x).trim().toLowerCase()).filter(Boolean))];
+      if (areas.some((x) => !/^[a-z0-9][a-z0-9-]{0,39}$/.test(x))) throw bad('Areas are flyer sources like door-nacka, separated by commas.');
+    }
+    const kind = 'kind' in body ? (['agency', 'distributor'].includes(body.kind) ? body.kind : 'ambassador') : a.kind ?? 'ambassador';
     return { name, country: text('country', 2)?.toUpperCase() ?? null, contact: text('contact', 200), notes: text('notes', 2000), user_id: userId,
-      active: 'active' in body ? (body.active ? 1 : 0) : Number(a.active ?? 1), gift_days: giftDays,
-      kind: 'kind' in body ? (body.kind === 'agency' ? 'agency' : 'ambassador') : a.kind ?? 'ambassador', invite_email: inviteEmail };
+      active: 'active' in body ? (body.active ? 1 : 0) : Number(a.active ?? 1), gift_days: giftDays, kind, invite_email: inviteEmail,
+      flyer_rate: kr('flyer_rate', 'Pay per flyer'), family_bonus: kr('family_bonus', 'Pay per family'), bonus_days: bonusDays, areas: JSON.stringify(areas) };
   };
   /** Emails someone without an account an invite to create one, so they can see their code's numbers. */
   const sendAmbassadorInvite = (a) => {
@@ -2170,7 +2232,9 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   const partnerLinked = (userId, code) => {
     const role = getUser(userId)?.role;
     if (role === 'agency') notify(userId, 'agency', 'Your agency code {code} is ready. Share it with your au pairs.', { code }, '#/agency');
-    if (role === 'ambassador') notify(userId, 'ambassador', 'Your ambassador code {code} is ready. Share it to start earning.', { code }, '#/ambassador');
+    const kind = db.prepare('SELECT kind FROM ambassadors WHERE code = ?').get(code)?.kind;
+    if (role === 'ambassador' && kind === 'distributor') notify(userId, 'ambassador', 'Your flyer delivery page is ready. Your sessions and pay show there.', {}, '#/ambassador');
+    else if (role === 'ambassador') notify(userId, 'ambassador', 'Your ambassador code {code} is ready. Share it to start earning.', { code }, '#/ambassador');
   };
   api.get('/admin/ambassadors', requireRole('admin'), wrap((req) => {
     const month = monthParam(req.query.month);
@@ -2185,8 +2249,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (!code) throw bad('A code is 3 to 24 letters, numbers or dashes, like ANACO.');
     if (db.prepare('SELECT 1 FROM ambassadors WHERE code = ?').get(code)) throw new HttpError(409, 'That code is already taken.');
     const f = ambassadorFields(req.body);
-    const r = db.prepare('INSERT INTO ambassadors (code, name, country, contact, notes, user_id, active, gift_days, kind, invite_email) VALUES (?,?,?,?,?,?,?,?,?,?)')
-      .run(code, f.name, f.country, f.contact, f.notes, f.user_id, f.active, f.gift_days, f.kind, f.invite_email);
+    const r = db.prepare('INSERT INTO ambassadors (code, name, country, contact, notes, user_id, active, gift_days, kind, invite_email, flyer_rate, family_bonus, bonus_days, areas) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+      .run(code, f.name, f.country, f.contact, f.notes, f.user_id, f.active, f.gift_days, f.kind, f.invite_email, f.flyer_rate, f.family_bonus, f.bonus_days, f.areas);
     if (f.user_id) partnerLinked(f.user_id, code);
     if (f.invite_email) sendAmbassadorInvite({ ...f, code });
     res.status(201);
@@ -2197,8 +2261,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   api.post('/admin/ambassadors/:id', requireRole('admin'), wrap((req) => {
     const a = adminAmbassador(req.params.id, null, false);
     const f = ambassadorFields(req.body || {}, a);
-    db.prepare('UPDATE ambassadors SET name = ?, country = ?, contact = ?, notes = ?, user_id = ?, active = ?, gift_days = ?, kind = ?, invite_email = ? WHERE id = ?')
-      .run(f.name, f.country, f.contact, f.notes, f.user_id, f.active, f.gift_days, f.kind, f.invite_email, a.id);
+    db.prepare('UPDATE ambassadors SET name = ?, country = ?, contact = ?, notes = ?, user_id = ?, active = ?, gift_days = ?, kind = ?, invite_email = ?, flyer_rate = ?, family_bonus = ?, bonus_days = ?, areas = ? WHERE id = ?')
+      .run(f.name, f.country, f.contact, f.notes, f.user_id, f.active, f.gift_days, f.kind, f.invite_email, f.flyer_rate, f.family_bonus, f.bonus_days, f.areas, a.id);
     if (f.user_id && f.user_id !== a.user_id) partnerLinked(f.user_id, a.code);
     // Saving the form again doesn't re-send; a new email (or ?resend=1) does.
     if (f.invite_email && (f.invite_email !== a.invite_email || req.query.resend)) sendAmbassadorInvite({ ...f, code: a.code });
@@ -2208,15 +2272,45 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   api.post('/admin/ambassadors/:id/paid', requireRole('admin'), wrap((req) => {
     const a = adminAmbassador(req.params.id, null, false);
     const month = monthParam(req.body?.month);
-    const r = db.prepare(`UPDATE referral_rewards SET paid_at = datetime('now') WHERE ambassador_id = ? AND paid_at IS NULL${month ? " AND strftime('%Y-%m', created_at) <= ?" : ''}`)
-      .run(a.id, ...(month ? [month] : []));
-    return { marked: r.changes, ...adminAmbassador(a.id) };
+    const m = month ? [month] : [];
+    const mark = (table, when) => db.prepare(`UPDATE ${table} SET paid_at = datetime('now') WHERE ambassador_id = ? AND paid_at IS NULL${month ? ` AND ${when} <= ?` : ''}`).run(a.id, ...m).changes;
+    if (a.kind === 'distributor') syncFlyerBonuses(a);
+    const marked = mark('referral_rewards', "strftime('%Y-%m', created_at)") + mark('flyer_sessions', 'substr(delivered_on, 1, 7)') + mark('flyer_bonuses', "strftime('%Y-%m', joined_at)");
+    return { marked, ...adminAmbassador(a.id) };
+  }));
+  // A flyer distributor's delivery session: the admin logs it after spot-checking a few streets, and it earns the
+  // distributor's current rate per flyer.
+  api.post('/admin/ambassadors/:id/sessions', requireRole('admin'), wrap((req, res) => {
+    const a = adminAmbassador(req.params.id, null, false);
+    if (a.kind !== 'distributor') throw bad('Only flyer distributors have delivery sessions.');
+    const area = String(req.body?.area ?? '').trim().toLowerCase();
+    if (!a.areas.includes(area)) throw bad('Choose one of their areas.');
+    const flyers = Number(req.body?.flyers);
+    if (!Number.isInteger(flyers) || flyers < 1 || flyers > 100000) throw bad('Flyers is a whole number, like 500.');
+    const day = String(req.body?.delivered_on ?? '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || Number.isNaN(Date.parse(day)) || day > new Date().toISOString().slice(0, 10)) throw bad('Enter the day they delivered, not in the future.');
+    db.prepare('INSERT INTO flyer_sessions (ambassador_id, area, flyers, rate_ore, amount_ore, delivered_on, note) VALUES (?,?,?,?,?,?,?)')
+      .run(a.id, area, flyers, a.flyer_rate, flyers * a.flyer_rate, day, str(req.body?.note, 300) || null);
+    res.status(201);
+    return adminAmbassador(a.id);
+  }));
+  // A session logged by mistake can go, until it's paid. Families it brought in move to another session in the same
+  // area if there is one, or drop out.
+  api.delete('/admin/ambassadors/:id/sessions/:sid', requireRole('admin'), wrap((req) => {
+    const a = adminAmbassador(req.params.id, null, false);
+    const s = db.prepare('SELECT * FROM flyer_sessions WHERE id = ? AND ambassador_id = ?').get(Number(req.params.sid), a.id);
+    if (!s) throw notFound();
+    if (s.paid_at) throw bad('That session is already paid.');
+    db.prepare('DELETE FROM flyer_bonuses WHERE session_id = ? AND paid_at IS NULL').run(s.id);
+    db.prepare('DELETE FROM flyer_sessions WHERE id = ?').run(s.id);
+    return adminAmbassador(a.id);
   }));
   // The monthly payout sheet: one row per ambassador.
   api.get('/admin/ambassadors.csv', requireRole('admin'), (req, res) => {
     const month = monthParam(req.query.month);
     const usd = (c) => (c / 100).toFixed(2);
-    const rows = db.prepare('SELECT * FROM ambassadors ORDER BY code').all().map((a) => {
+    // Flyer distributors are paid in kronor, from their own page.
+    const rows = db.prepare("SELECT * FROM ambassadors WHERE kind <> 'distributor' ORDER BY code").all().map((a) => {
       const s = ambassadorStats(a, month);
       return [a.code, a.name, a.country, a.contact, a.active ? 'yes' : 'no', s.waitlist, s.aupairs, s.families, s.profiles, s.passes, s.placements, usd(s.earned_cents), usd(s.owed_cents)];
     });

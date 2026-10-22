@@ -157,7 +157,7 @@ function renderNav() {
     return;
   }
   if (me.user.role === 'ambassador') {
-    $nav.innerHTML = [link('#/ambassador', tr('Your code')), link('#/account', tr('Account')), `<a href="#/logout">${tr('Sign out')}</a>`].join('');
+    $nav.innerHTML = [link('#/ambassador', me.ambassador?.kind === 'distributor' ? tr('Your pay') : tr('Your code')), link('#/account', tr('Account')), `<a href="#/logout">${tr('Sign out')}</a>`].join('');
     return;
   }
   $nav.innerHTML = [
@@ -630,9 +630,33 @@ views.ambassador = async () => {
       <p>${tr("We're setting up your ambassador code. Once it's ready, it shows here with a link to share, and you can follow who joins and what you earn.")}</p>
       ${me.user.email_verified ? '' : `<p><a class="chip warn" href="#/verify">${tr('Not confirmed yet. Click to enter your code.')}</a></p>`}</div>`);
   }
+  if (amb.kind === 'distributor') return render(`<h1>${tr('Your flyer deliveries')}</h1>${distributorCard(amb)}`);
   render(`<h1>${tr('Your ambassador code')}</h1>${ambassadorCard(amb)}`);
   wireCopy(amb.link);
 };
+
+// Flyer distributors are paid in Swedish kronor; amounts come in öre.
+const kr = (ore) => `${(ore / 100).toFixed(2).replace(/\.00$/, '')} kr`;
+// door-nacka → Nacka
+const areaName = (src) => ({ taby: 'Täby' })[src.replace(/^door-/, '')] || src.replace(/^door-/, '').replace(/^./, (c) => c.toUpperCase());
+
+/** A flyer distributor's delivery sessions, the families their flyers brought in, and their pay. */
+function distributorCard(d) {
+  const r = d.rates;
+  return `<div class="card"><h2>📬 ${tr('Thanks for delivering, {name}', { name: esc(d.name.split(/\s+/)[0]) })}</h2>
+    ${d.areas.length ? `<p>${tr('Your areas')}: <strong>${d.areas.map(areaName).map(esc).join(', ')}</strong></p>` : ''}
+    <table><tr><th></th><th>${tr('This month')}</th><th>${tr('All time')}</th></tr>
+      ${[[tr('Delivery sessions'), 'sessions'], [tr('Flyers delivered'), 'flyers'], [tr('Families who joined from your flyers'), 'families']]
+    .map(([label, k]) => `<tr><td>${label}</td><td>${d.this_month[k]}</td><td>${d.total[k]}</td></tr>`).join('')}
+      <tr><td>${tr('For flyers')}</td><td>${kr(d.this_month.flyers_ore)}</td><td>${kr(d.total.flyers_ore)}</td></tr>
+      <tr><td>${tr('Family bonuses')}</td><td>${kr(d.this_month.bonus_ore)}</td><td>${kr(d.total.bonus_ore)}</td></tr>
+      <tr><td><strong>${tr('Earned')}</strong></td><td><strong>${kr(d.this_month.earned_ore)}</strong></td><td><strong>${kr(d.total.earned_ore)}</strong></td></tr></table>
+    <p>${tr('Not paid out yet')}: <strong>${kr(d.total.owed_ore)}</strong></p>
+    <p class="muted small">${tr('You earn {flyer} for each flyer you deliver, and {family} for each family who joins through your flyers within {days} days of a delivery in that area. Your manager adds each delivery after checking it, so it can take a day or two to show here.', { flyer: kr(r.flyer_ore), family: kr(r.family_ore), days: r.bonus_days })}</p></div>
+  <div class="card table-wrap"><h3>${tr('Your deliveries')}</h3><table><tr><th>${tr('Day')}</th><th>${tr('Area')}</th><th>${tr('Flyers')}</th><th>${tr('Families')}</th><th>${tr('Pay')}</th><th>${tr('Paid')}</th></tr>
+    ${d.sessions.map((s) => `<tr><td>${fmtDate(s.delivered_on)}</td><td>${esc(areaName(s.area))}</td><td>${s.flyers}</td><td>${s.families}</td><td>${kr(s.amount_ore)}</td><td>${s.paid ? '✓' : `<span class="muted">${tr('not yet')}</span>`}</td></tr>`).join('')
+    || `<tr><td colspan="6" class="muted">${tr('No deliveries yet. They show here once your manager adds them.')}</td></tr>`}</table></div>`;
+}
 
 /** An ambassador's code, link and what it has brought in. */
 function ambassadorCard(amb) {
@@ -712,7 +736,7 @@ views.account = async () => {
       <div id="idErr"></div>${idc.status !== 'processing' ? `<button class="btn" id="idCheck">🪪 ${tr('Verify my ID')}</button>` : ''}
       <p class="muted small">${tr('Stripe runs the check and keeps your document. PairMundo only learns whether it passed.')}</p>`;
   // An ambassador account has its code on its own page.
-  const ambCard = amb && amb.kind !== 'agency' && me.user.role !== 'ambassador' ? ambassadorCard(amb) : '';
+  const ambCard = amb?.kind === 'ambassador' && me.user.role !== 'ambassador' ? ambassadorCard(amb) : '';
   // An au pair whose agency gave them a code after they signed up can link their account to it here.
   const agencyCard = me.user.role !== 'aupair' ? ''
     : me.user.agency ? `<div class="card"><h2>🎓 ${tr('Your agency')}</h2><p>${tr('Your profile is linked to {agency}. Families see it on your profile.', { agency: `<strong>${esc(me.user.agency)}</strong>` })}</p></div>`
@@ -1790,15 +1814,29 @@ views.admin = async ([tab = 'overview', id], qs) => {
   }
 };
 
+const kindChip = (a) => ({ agency: '<span class="chip">Agency</span>', distributor: '<span class="chip">Flyer distributor</span>' })[a.kind] || '';
+/** Shows the flyer pay fields only when the type is flyer distributor. */
+function wireKind(form) {
+  const sync = () => { form.querySelector('.distOnly').hidden = form.kind.value !== 'distributor'; };
+  form.kind.onchange = sync;
+}
 async function adminAmbassadors(head, id, qs) {
   const month = qs?.get('month') || new Date().toISOString().slice(0, 7);
   const role = (r) => (r === 'aupair' ? 'Au pair' : 'Family');
   const kinds = { profile: 'Au pair profile complete', pass: 'First Family Pass', placement: 'Stay started' };
-  const statCells = (s) => `<td>${s.waitlist}</td><td>${s.aupairs}</td><td>${s.families}</td><td>${s.profiles}</td><td>${s.passes}</td><td>${s.placements}</td><td>${usd(s.earned_cents)}</td><td><strong>${usd(s.owed_cents)}</strong></td>`;
+  const statCells = (s, a) => (a?.kind === 'distributor'
+    ? `<td colspan="6">📬 ${s.flyers} flyers in ${s.sessions} session${s.sessions === 1 ? '' : 's'} · ${s.families} famil${s.families === 1 ? 'y' : 'ies'}</td><td>${kr(s.earned_ore)}</td><td><strong>${kr(s.owed_ore)}</strong></td>`
+    : `<td>${s.waitlist}</td><td>${s.aupairs}</td><td>${s.families}</td><td>${s.profiles}</td><td>${s.passes}</td><td>${s.placements}</td><td>${usd(s.earned_cents)}</td><td><strong>${usd(s.owed_cents)}</strong></td>`);
   const statHead = '<th>Waitlist</th><th>Au pairs</th><th>Families</th><th>Profiles done</th><th>Passes</th><th>Stays</th><th>Earned</th><th>Owed now</th>';
   const fields = (a = {}) => `<div class="field"><label>Type</label><select name="kind">
       <option value="ambassador" ${a.kind !== 'agency' ? 'selected' : ''}>Ambassador: earns rewards for the people they bring</option>
-      <option value="agency" ${a.kind === 'agency' ? 'selected' : ''}>Partner agency: tags its au pairs and shows on their profiles, earns nothing</option></select></div>
+      <option value="agency" ${a.kind === 'agency' ? 'selected' : ''}>Partner agency: tags its au pairs and shows on their profiles, earns nothing</option>
+      <option value="distributor" ${a.kind === 'distributor' ? 'selected' : ''}>Flyer distributor: paid per flyer you log, plus a bonus per family from their areas</option></select></div>
+    <fieldset class="distOnly" ${a.kind === 'distributor' ? '' : 'hidden'}><legend>Flyer distributor pay (in kronor)</legend>
+      <div class="form-grid"><div class="field"><label>Per flyer delivered</label><input name="flyer_rate" inputmode="decimal" value="${(Number(a.flyer_rate ?? 100) / 100)}"></div>
+        <div class="field"><label>Per family who joins from their flyers</label><input name="family_bonus" inputmode="decimal" value="${(Number(a.family_bonus ?? 5000) / 100)}"></div></div>
+      <div class="form-grid"><div class="field"><label>Their areas: the flyer sources, separated by commas (see Waitlist, sign-ups by source)</label><input name="areas" placeholder="door-nacka, door-bromma" value="${esc((a.areas || []).join(', '))}"></div>
+        <div class="field"><label>A family counts if they join within this many days of a delivery in that area</label><input name="bonus_days" type="number" min="0" max="365" step="1" value="${Number(a.bonus_days ?? 28)}"></div></div></fieldset>
     <div class="form-grid"><div class="field"><label>Name</label><input name="name" required value="${esc(a.name)}"></div>
       <div class="field"><label>Country</label><select name="country">${options(COUNTRIES, a.country || '', '—')}</select></div></div>
     <div class="form-grid"><div class="field"><label>Phone or email (only you see this)</label><input name="contact" value="${esc(a.contact)}"></div>
@@ -1809,18 +1847,32 @@ async function adminAmbassadors(head, id, qs) {
   if (id) {
     const a = await api(`/admin/ambassadors/${id}?month=${month}`);
     render(`${head}<p><a href="#/admin/ambassadors">← All ambassadors</a></p>
-      <div class="spread"><h2>${esc(a.name)} · <code>${esc(a.code)}</code> ${a.kind === 'agency' ? '<span class="chip">Agency</span>' : ''} ${a.active ? '' : '<span class="chip warn">Paused</span>'}</h2></div>
+      <div class="spread"><h2>${esc(a.name)} · <code>${esc(a.code)}</code> ${kindChip(a)} ${a.active ? '' : '<span class="chip warn">Paused</span>'}</h2></div>
       <div class="card"><p>Link: <a href="${esc(a.link)}" target="_blank">${esc(a.link)}</a></p>
         ${a.gift_days ? `<p>🎁 Families who sign up with this code get ${a.gift_days} free days, unless they have the early family bonus: <strong>${a.gifts.saved}</strong> saved, <strong>${a.gifts.redeemed}</strong> used.</p>` : ''}
-        <div class="table-wrap"><table><tr><th>${esc(month)}</th>${statHead}</tr><tr><td></td>${statCells(a.stats)}</tr></table></div>
+        <div class="table-wrap"><table><tr><th>${esc(month)}</th>${statHead}</tr><tr><td></td>${statCells(a.stats, a)}</tr></table></div>
         <form id="paid" class="row" style="margin-top:12px"><span>Paid them? Mark everything earned up to the end of</span><input type="month" name="month" value="${esc(month)}" style="width:auto"><button class="btn sm">Mark as paid</button></form></div>
       <form class="card" id="ambEdit"><h3>Details</h3>${fields(a)}
         <label class="check"><input type="checkbox" name="active" ${a.active ? 'checked' : ''}> Active (the code works and earns rewards)</label>
         <button class="btn sm" style="margin-top:10px">Save</button></form>
-      <div class="card table-wrap"><h3>Rewards</h3><table><tr><th>When</th><th>For</th><th>Person</th><th>Amount</th><th>Paid</th></tr>
+      ${a.kind === 'distributor' ? `<form class="card" id="sessNew"><h3>Log a delivery session</h3>
+        ${a.areas.length ? `<div class="form-grid"><div class="field"><label>Area</label><select name="area">${a.areas.map((x) => `<option value="${esc(x)}">${esc(areaName(x))} (${esc(x)})</option>`).join('')}</select></div>
+          <div class="field"><label>Flyers delivered</label><input name="flyers" type="number" min="1" step="1" required></div></div>
+        <div class="form-grid"><div class="field"><label>Day delivered</label><input name="delivered_on" type="date" required value="${new Date().toISOString().slice(0, 10)}"></div>
+          <div class="field"><label>Note (only you see this)</label><input name="note" placeholder="Spot-checked Storängsvägen"></div></div>
+        <button class="btn sm">Add session (${kr(a.flyer_rate)} per flyer)</button>` : '<p class="muted">Add their areas under Details first.</p>'}</form>
+      <div class="card table-wrap"><h3>Delivery sessions</h3><table><tr><th>Day</th><th>Area</th><th>Flyers</th><th>Families</th><th>Pay</th><th>Paid</th><th></th></tr>
+        ${a.sessions.map((s) => `<tr><td>${fmtDate(s.delivered_on)}</td><td>${esc(areaName(s.area))}${s.note ? ` <span class="muted small">${esc(s.note)}</span>` : ''}</td><td>${s.flyers}</td><td>${s.families}</td><td>${kr(s.amount_ore)}</td>
+          <td>${s.paid_at ? fmtDate(s.paid_at) : '<span class="muted">not yet</span>'}</td><td>${s.paid_at ? '' : `<button class="btn ghost sm" data-del-session="${s.id}">Remove</button>`}</td></tr>`).join('')
+        || '<tr><td colspan="7" class="muted">No sessions yet.</td></tr>'}</table></div>
+      <div class="card table-wrap"><h3>Family bonuses</h3><p class="muted small">Counted automatically: each family who joins the waitlist or signs up through one of their areas' flyers within ${a.bonus_days} days of a session there, once per email.</p>
+        <table><tr><th>Joined</th><th>Family</th><th>Area</th><th>Bonus</th><th>Paid</th></tr>
+        ${a.bonuses.map((b) => `<tr><td>${fmtTime(b.joined_at)}</td><td>${b.user_id ? `<a href="#/u/${b.user_id}">${esc(b.user_name)}</a>` : `<span class="muted">${esc(b.email)} (waitlist)</span>`}</td><td>${esc(areaName(b.area))}</td><td>${kr(b.amount_ore)}</td>
+          <td>${b.paid_at ? fmtDate(b.paid_at) : '<span class="muted">not yet</span>'}</td></tr>`).join('')
+        || '<tr><td colspan="5" class="muted">No families yet.</td></tr>'}</table></div>` : `<div class="card table-wrap"><h3>Rewards</h3><table><tr><th>When</th><th>For</th><th>Person</th><th>Amount</th><th>Paid</th></tr>
         ${a.rewards.map((r) => `<tr><td>${fmtTime(r.created_at)}</td><td>${esc(kinds[r.kind])}${r.note && r.kind === 'pass' ? ` <span class="muted small">${esc(r.note)}</span>` : ''}</td>
           <td>${r.user_id ? `<a href="#/u/${r.user_id}">${esc(r.user_name)}</a>` : '<span class="muted">—</span>'}</td><td>${usd(r.amount_cents)}</td><td>${r.paid_at ? fmtDate(r.paid_at) : '<span class="muted">not yet</span>'}</td></tr>`).join('')
-        || '<tr><td colspan="5" class="muted">Nothing earned yet.</td></tr>'}</table></div>
+        || '<tr><td colspan="5" class="muted">Nothing earned yet.</td></tr>'}</table></div>`}
       <div class="card table-wrap"><h3>People who joined with this code</h3><table><tr><th>Member</th><th>Role</th><th>Country</th><th>Joined</th></tr>
         ${a.referrals.map((u) => `<tr><td><a href="#/u/${u.id}">${esc(u.name)}</a>${u.suspended ? ' <span class="chip warn">suspended</span>' : ''}</td><td>${role(u.role)}</td><td>${cname(u.country) || '—'}</td><td>${fmtTime(u.created_at)}</td></tr>`).join('')
         || '<tr><td colspan="4" class="muted">Nobody yet.</td></tr>'}</table></div>`);
@@ -1828,9 +1880,21 @@ async function adminAmbassadors(head, id, qs) {
       e.preventDefault();
       const m = formData(e.target).month;
       if (!confirm(`Mark everything ${a.name} earned up to the end of ${m} as paid?`)) return;
-      try { const r = await api(`/admin/ambassadors/${a.id}/paid`, { method: 'POST', body: { month: m } }); toast(`${r.marked} rewards marked as paid`); views.admin(['ambassadors', a.id], qs); }
+      try { const r = await api(`/admin/ambassadors/${a.id}/paid`, { method: 'POST', body: { month: m } }); toast(`${r.marked} ${a.kind === 'distributor' ? 'sessions and bonuses' : 'rewards'} marked as paid`); views.admin(['ambassadors', a.id], qs); }
       catch (err) { toast(err.message); }
     };
+    const $sess = document.getElementById('sessNew');
+    if ($sess) $sess.onsubmit = async (e) => {
+      e.preventDefault();
+      try { await api(`/admin/ambassadors/${a.id}/sessions`, { method: 'POST', body: formData(e.target) }); toast('Session added'); views.admin(['ambassadors', a.id], qs); }
+      catch (err) { toast(err.message); }
+    };
+    document.querySelectorAll('[data-del-session]').forEach((b) => { b.onclick = async () => {
+      if (!confirm('Remove this session? The families it brought in stop counting, unless another session in that area covers them.')) return;
+      try { await api(`/admin/ambassadors/${a.id}/sessions/${b.dataset.delSession}`, { method: 'DELETE' }); toast('Removed'); views.admin(['ambassadors', a.id], qs); }
+      catch (err) { toast(err.message); }
+    }; });
+    wireKind(document.getElementById('ambEdit'));
     document.getElementById('ambEdit').onsubmit = async (e) => {
       e.preventDefault();
       try {
@@ -1850,16 +1914,17 @@ async function adminAmbassadors(head, id, qs) {
       <a class="btn sm" href="/api/admin/ambassadors.csv?month=${esc(month)}">⬇ Payout sheet for ${esc(month)} (CSV)</a></div>
     <p class="muted small">Rewards: ${usd(rewards.profile)} per completed, ID-verified au pair profile (up to ${usd(rewards.profile_monthly_cap)} a month), ${usd(rewards.pass)} for a family's first Family Pass, ${usd(rewards.placement)} per referred side when a stay starts.</p>
     <div class="card table-wrap"><table><tr><th>Ambassador</th>${statHead}</tr>
-      ${ambassadors.map((a) => `<tr><td><a href="#/admin/ambassadors/${a.id}"><strong>${esc(a.name)}</strong></a> ${a.kind === 'agency' ? '<span class="chip">Agency</span>' : ''} ${a.active ? '' : '<span class="chip warn">Paused</span>'}
-        <div class="muted small"><code>${esc(a.code)}</code>${a.country ? ` · ${cname(a.country)}` : ''}${a.gift_days ? ` · 🎁 ${a.gift_days} gift days` : ''}</div></td>${statCells(a.stats)}</tr>`).join('')
+      ${ambassadors.map((a) => `<tr><td><a href="#/admin/ambassadors/${a.id}"><strong>${esc(a.name)}</strong></a> ${kindChip(a)} ${a.active ? '' : '<span class="chip warn">Paused</span>'}
+        <div class="muted small"><code>${esc(a.code)}</code>${a.country ? ` · ${cname(a.country)}` : ''}${a.gift_days ? ` · 🎁 ${a.gift_days} gift days` : ''}</div></td>${statCells(a.stats, a)}</tr>`).join('')
       || '<tr><td colspan="9" class="muted">No ambassadors yet. Add the first one below.</td></tr>'}</table></div>
     ${waiting.length ? `<div class="card table-wrap"><h3>Agency and ambassador accounts waiting for a code</h3>
       <p class="muted small">Add the agency or ambassador below (or open an existing one) and put this email in "Their PairMundo account email". They then see their code and numbers when they sign in. Ambassadors earn from the code once it is linked, so have them sign the ambassador agreement first.</p>
       <table><tr><th>Name</th><th>Account email</th><th>Country</th><th>Signed up</th></tr>
       ${waiting.map((u) => `<tr><td>${esc(u.name)} <span class="chip">${u.role === 'agency' ? 'Agency' : 'Ambassador'}</span></td><td>${esc(u.email)}</td><td>${cname(u.country) || '—'}</td><td>${fmtTime(u.created_at)}</td></tr>`).join('')}</table></div>` : ''}
-    <form class="card" id="ambNew"><h3>Add an ambassador or partner agency</h3>
+    <form class="card" id="ambNew"><h3>Add an ambassador, partner agency or flyer distributor</h3>
       <div class="field"><label>Referral code (letters, numbers and dashes; it can't change later)</label><input name="code" required placeholder="ANA-CO" autocapitalize="characters"></div>
       ${fields()}<button class="btn sm">Add</button></form>`);
+  wireKind(document.getElementById('ambNew'));
   document.querySelector('#monthPick input').onchange = (e) => go(`#/admin/ambassadors?month=${e.target.value}`);
   document.getElementById('ambNew').onsubmit = async (e) => {
     e.preventDefault();
