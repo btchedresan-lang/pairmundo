@@ -554,7 +554,6 @@
   "Earned": "Gagné",
   "Families who bought a Family Pass": "Familles ayant acheté un Family Pass",
   "Families who joined": "Familles inscrites",
-  "From the person who invited you": "De la personne qui vous a invité",
   "Join PairMundo with my link: {link}": "Rejoignez PairMundo avec mon lien : {link}",
   "No PairMundo account uses that email.": "Aucun compte PairMundo n'utilise cet e-mail.",
   "Not paid out yet": "Pas encore versé",
@@ -963,5 +962,13 @@
   "That agency code is not valid. Check it with your agency.": "Ce code d'agence n'est pas valide. Vérifie-le auprès de ton agence.",
   "Your account is already linked to a code.": "Ton compte est déjà lié à un code.",
   "Agency accounts are on the website. Sign in at pairmundo.com.": "Les comptes agence sont sur le site web. Connecte-toi sur pairmundo.com.",
-  "Ambassador accounts are on the website. Sign in at pairmundo.com.": "Les comptes ambassadeur sont sur le site web. Connecte-toi sur pairmundo.com."
+  "Ambassador accounts are on the website. Sign in at pairmundo.com.": "Les comptes ambassadeur sont sur le site web. Connecte-toi sur pairmundo.com.",
+  "Prepared by {agency}": "Préparé par {agency}",
+  "Your agency": "Ton agence",
+  "Your profile is linked to {agency}. Families see it on your profile.": "Ton profil est lié à {agency}. Les familles le voient sur ton profil.",
+  "Did an au pair agency prepare you? Enter the code they gave you, and families will see the agency on your profile.": "Une agence au pair t'a préparé ? Saisis le code qu'elle t'a donné, et les familles verront l'agence sur ton profil.",
+  "Agency code": "Code de l'agence",
+  "Add": "Ajouter",
+  "From the person or agency who invited you": "De la personne ou de l'agence qui t'a invité",
+  "That email belongs to an admin account.": "Cette adresse appartient à un compte administrateur."
 }

@@ -138,10 +138,11 @@ export default function UserProfile() {
         <VisaCard visa={d.visa} />
 
         {u.role === 'aupair' ? <>
-          {u.verification.id || u.verification.references || u.verification.background ? <Chips>
+          {u.verification.id || u.verification.references || u.verification.background || u.agency ? <Chips>
             {u.verification.id ? <Chip tone="ok" label={`✔ ${tr('ID verified')}`} /> : null}
             {u.verification.references ? <Chip tone="ok" label={`✔ ${tr('References')}`} /> : null}
             {u.verification.background ? <Chip tone="ok" label={`✔ ${tr('Background check')}`} /> : null}
+            {u.agency ? <Chip tone="ok" label={`🎓 ${tr('Prepared by {agency}', { agency: u.agency })}`} /> : null}
           </Chips> : null}
           <View style={{ marginHorizontal: -16 }}><PosterBody u={u} p={p} refs={d.references} /></View>
         </> : <>
