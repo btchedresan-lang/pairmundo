@@ -12,7 +12,6 @@
   "{name} left you a review. It appears once you review them too, or {days} days after the placement ends.": "{name} har lämnat ett omdöme om dig. Det visas när du också har lämnat ett omdöme, eller {days} dagar efter att vistelsen har avslutats.",
   "Your profile has a new verification badge.": "Din profil har fått ett nytt verifieringsmärke.",
   "You're on the {app} list": "Du står på väntelistan för {app}",
-  "Thanks for your interest in {app}!\n\nWe'll email you when the iPhone and Android apps are ready. Until then you can already sign up and start matching at https://pairmundo.com.\n\nTo leave the list, open this link: {link}": "Tack för ditt intresse för {app}!\n\nVi mejlar dig när apparna för iPhone och Android är klara. Fram till dess kan du redan registrera dig och börja matcha på https://pairmundo.com.\n\nOm du vill lämna listan öppnar du den här länken: {link}",
   "You're off the list. We won't email you about the launch.": "Du har tagits bort från listan. Vi kommer inte att mejla dig om lanseringen.",
   "This link was already used, or the address is not on the list.": "Den här länken har redan använts, eller så finns adressen inte på listan.",
   "Your {app} code: {code}": "Din kod för {app}: {code}",
@@ -82,7 +81,6 @@
   "Your Rematch Guarantee gave you {days} free days of the Family Pass to find your next au pair.": "Er rematchgaranti gav er {days} gratisdagar av Family Pass, så att ni kan hitta er nästa au pair.",
   "Your family profile on {app} is open": "Nu kan ni skapa er familjeprofil på {app}",
   "Hi!\n\nThanks for joining the {app} list. You don't have to wait for the apps: your family can make its profile on the website today, and au pairs are joining now.": "Hej!\n\nTack för att ni skrev upp er på {app}-listan. Ni behöver inte vänta på apparna: er familj kan skapa sin profil på webbplatsen redan i dag, och au pairer ansluter just nu.",
-  "It takes about 5 minutes:\n1. Sign up with this email address ({email}): {link}\n2. Add a photo of your family.\n3. Write a few lines about your family and the help you're looking for.": "Det tar ungefär 5 minuter:\n1. Registrera er med den här mejladressen ({email}): {link}\n2. Lägg till en bild på er familj.\n3. Skriv några rader om er familj och vilken hjälp ni söker.",
   "Au pairs can only like families who have a photo and a few words, so the sooner your profile is there, the sooner they can find you.": "Au pairer kan bara gilla familjer som har en bild och några ord, så ju förr er profil finns där, desto förr kan de hitta er.",
   "Your {days} extra free days of the Family Pass are already saved to this email address. Use them whenever it suits you.": "Era {days} extra gratisdagar av Family Pass är redan sparade på den här mejladressen. Använd dem när det passar er.",
   "See you on {app},\nThe {app} team": "Vi ses på {app},\n{app}-teamet",
@@ -94,5 +92,7 @@
   "Finish your profile here: {link}": "Gör klart din profil här: {link}",
   "Your agency code {code} is ready. Share it with your au pairs.": "Er byråkod {code} är klar. Dela den med era au pairer.",
   "Your ambassador code {code} is ready. Share it to start earning.": "Din ambassadörskod {code} är klar. Dela den för att börja tjäna pengar.",
-  "Your flyer delivery page is ready. Your sessions and pay show there.": "Din sida för flygbladsutdelning är klar. Där ser du dina pass och din ersättning."
+  "Your flyer delivery page is ready. Your sessions and pay show there.": "Din sida för flygbladsutdelning är klar. Där ser du dina pass och din ersättning.",
+  "It takes about 5 minutes:\n1. Open this link. It opens the sign-up page with your email ({email}) filled in: {link}\n2. Choose a password and create your account.\n3. Enter the 6-digit code we email you, to confirm your email.\n4. Add a photo of your family and a few lines about the help you're looking for.": "Det tar ungefär 5 minuter:\n1. Öppna den här länken. Den öppnar registreringen med er mejladress ({email}) redan ifylld: {link}\n2. Välj ett lösenord och skapa ert konto.\n3. Skriv in den 6-siffriga koden vi mejlar er, för att bekräfta mejladressen.\n4. Lägg till en bild på er familj och några rader om vilken hjälp ni söker.",
+  "Thanks for your interest in {app}!\n\nWe'll email you when the iPhone and Android apps are ready. Until then you can already sign up and start matching on the website. This link opens the sign-up page with your email filled in: {signup}\n\nTo leave the list, open this link: {link}": "Tack för ditt intresse för {app}!\n\nVi mejlar dig när apparna för iPhone och Android är klara. Tills dess kan du redan registrera dig och börja matcha på webbplatsen. Den här länken öppnar registreringen med din mejladress redan ifylld: {signup}\n\nFör att lämna listan, öppna den här länken: {link}"
 }

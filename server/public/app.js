@@ -521,7 +521,7 @@ views.login = () => {
     <p class="muted small">${tr('New here?')} <a href="#/register">${tr('Create an account')}</a>${['localhost', '127.0.0.1'].includes(location.hostname) ? '<br>Demo: maria@aupair.test, millers@aupair.test or admin@aupair.test, password <code>password123</code>.' : ''}</p></div>`);
   document.getElementById('f').onsubmit = async (e) => {
     e.preventDefault();
-    try { await api('/auth/login', { method: 'POST', body: formData(e.target) }); await refreshMe(); go('#/'); }
+    try { await api('/auth/login', { method: 'POST', body: formData(e.target) }); await refreshMe(); afterLogin(); }
     catch (err) { document.getElementById('err').innerHTML = `<div class="alert error">${esc(err.message)}</div>`; }
   };
 };
@@ -2086,6 +2086,17 @@ views.reference = async ([token]) => {
 };
 
 // ---------- router ----------
+// A link from an email or a notification (#/family-pass, #/profile…) opened while signed out lands on that page
+// once they sign in, instead of on the home page.
+function toLogin() {
+  try { sessionStorage.setItem('next', location.hash); } catch { /* private mode */ }
+  go('#/login');
+}
+function afterLogin() {
+  let next = null;
+  try { next = sessionStorage.getItem('next'); sessionStorage.removeItem('next'); } catch { /* private mode */ }
+  go(next && next !== '#/login' ? next : '#/');
+}
 const PUBLIC = new Set(['home', 'login', 'register', 'agency-signup', 'ambassador-signup', 'programs', 'forgot', 'reference', 'partners']);
 views.messages = ((orig) => (args) => (args[0] ? orig(args) : go('#/matches')))(views.messages);
 async function route() {
@@ -2096,10 +2107,10 @@ async function route() {
   const view = views[name || 'home'];
   renderNav();
   if (!view) return render(`<div class="empty">${tr('Page not found.')} <a href="#/">${tr('Go home')}</a></div>`);
-  if (!me && !PUBLIC.has(name || 'home')) return go('#/login');
+  if (!me && !PUBLIC.has(name || 'home')) return toLogin();
   try { await view(args, new URLSearchParams(qs || '')); }
   catch (e) {
-    if (e.status === 401) { me = null; return go('#/login'); }
+    if (e.status === 401) { me = null; return toLogin(); }
     render(`<div class="alert error">${esc(e.message)}</div>`);
   }
 }

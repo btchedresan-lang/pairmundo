@@ -893,6 +893,8 @@ test('waitlist: join once, email in their language, leave by link, admin sees it
   const mail = outbox.at(-1);
   assert.equal(mail.to, 'wait@test.io');
   assert.match(mail.subject, /Liste/);
+  // Its link opens the family sign-up page with their email filled in.
+  assert.ok(mail.text.includes('https://pairmundo.com/#/register?role=family&email=wait%40test.io'));
   // Joining again looks the same and sends nothing.
   assert.equal((await join({ email: 'wait@test.io', role: 'aupair' })).status, 200);
   assert.equal(outbox.length, before + 1);

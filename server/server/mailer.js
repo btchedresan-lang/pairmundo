@@ -25,9 +25,9 @@ export function createMailer() {
 }
 
 /** The "you're on the list" email, with a link to leave the list. */
-export const waitlistEmail = (lang, leaveUrl, earlyDays = 0) => {
-  const v = { app: APP_NAME, link: leaveUrl, days: earlyDays };
-  const body = t(lang, "Thanks for your interest in {app}!\n\nWe'll email you when the iPhone and Android apps are ready. Until then you can already sign up and start matching at https://pairmundo.com.\n\nTo leave the list, open this link: {link}", v);
+export const waitlistEmail = (lang, leaveUrl, earlyDays = 0, signupUrl = 'https://pairmundo.com') => {
+  const v = { app: APP_NAME, link: leaveUrl, days: earlyDays, signup: signupUrl };
+  const body = t(lang, "Thanks for your interest in {app}!\n\nWe'll email you when the iPhone and Android apps are ready. Until then you can already sign up and start matching on the website. This link opens the sign-up page with your email filled in: {signup}\n\nTo leave the list, open this link: {link}", v);
   // A family who got an early family bonus spot hears about it just before the leave link.
   const at = body.lastIndexOf('\n\n');
   const early = t(lang, 'Your family is one of the first to join, so you get {days} extra free days of the Family Pass on top of the free trial. Sign up with this email address and use them whenever it suits you.', v);
@@ -44,7 +44,7 @@ export const profileInviteEmail = (lang, { kind, email, signupUrl, leaveUrl, ear
     ? [t(lang, 'Hi!\n\nA quick reminder: your family can already make its {app} profile on the website. Sign up with this email address ({email}) here: {link}', v),
       t(lang, 'Add a photo and a few lines about your family, and au pairs can start liking you.', v)]
     : [t(lang, "Hi!\n\nThanks for joining the {app} list. You don't have to wait for the apps: your family can make its profile on the website today, and au pairs are joining now.", v),
-      t(lang, "It takes about 5 minutes:\n1. Sign up with this email address ({email}): {link}\n2. Add a photo of your family.\n3. Write a few lines about your family and the help you're looking for.", v),
+      t(lang, "It takes about 5 minutes:\n1. Open this link. It opens the sign-up page with your email ({email}) filled in: {link}\n2. Choose a password and create your account.\n3. Enter the 6-digit code we email you, to confirm your email.\n4. Add a photo of your family and a few lines about the help you're looking for.", v),
       t(lang, 'Au pairs can only like families who have a photo and a few words, so the sooner your profile is there, the sooner they can find you.', v)];
   if (earlyDays) parts.push(t(lang, 'Your {days} extra free days of the Family Pass are already saved to this email address. Use them whenever it suits you.', v));
   parts.push(t(lang, 'See you on {app},\nThe {app} team', v));
