@@ -604,15 +604,18 @@ views.agency = async () => {
 // profile that nobody sees, and once PairMundo links it to their code it shows their link and what they've earned.
 views['ambassador-signup'] = (_, query) => {
   if (me) return go('#/');
-  render(`<div class="card" style="max-width:480px;margin:32px auto"><h1>${tr('Create an ambassador account')}</h1>
-    <p class="muted">${tr("You don't need to be an au pair or a host family. Share your code with families and au pairs you know, and earn a reward when an au pair you bring completes their profile, when a family buys their first Family Pass, and when a stay starts. It is free.")}</p>
+  // Flyer distributors are invited here too (?for=flyers): same account, their own page once it's linked.
+  const flyers = query.get('for') === 'flyers';
+  render(`<div class="card" style="max-width:480px;margin:32px auto"><h1>${flyers ? tr('Create your flyer delivery account') : tr('Create an ambassador account')}</h1>
+    <p class="muted">${flyers ? tr('Use the email address your invite was sent to. Once you confirm it, your page shows your deliveries, the families who joined through your flyers and your pay.')
+    : tr("You don't need to be an au pair or a host family. Share your code with families and au pairs you know, and earn a reward when an au pair you bring completes their profile, when a family buys their first Family Pass, and when a stay starts. It is free.")}</p>
     <form id="f">
       <div class="field"><label>${tr('Your name')}</label><input name="name" required autocomplete="name"></div>
       <div class="form-grid"><div class="field"><label>${tr('Country you live in')}</label><select name="country" required>${options(COUNTRIES, '', tr('Choose…'))}</select></div>
       <div class="field"><label>${tr('City')}</label><input name="city"></div></div>
       <div class="field"><label>${tr('Email')}</label><input name="email" type="email" required autocomplete="email" value="${esc(query.get('email') || '')}"></div>
       <div class="field"><label>${tr('Password')}</label><input name="password" type="password" minlength="8" required autocomplete="new-password"></div>
-      <div id="err"></div><button class="btn" style="width:100%">${tr('Create ambassador account')}</button>
+      <div id="err"></div><button class="btn" style="width:100%">${flyers ? tr('Create account') : tr('Create ambassador account')}</button>
       <p class="muted small" style="text-align:center">${tr('By creating an account you agree to the {terms} and the {privacy}.', { terms: `<a href="/terms" target="_blank">${tr('Terms of Use')}</a>`, privacy: `<a href="/privacy" target="_blank">${tr('Privacy Policy')}</a>` })}</p></form>
     <p class="small" style="text-align:center;margin-top:12px">${tr('Are you an au pair or a host family?')} <a href="#/register">${tr('Create your account')}</a></p></div>`);
   document.getElementById('f').onsubmit = async (e) => {

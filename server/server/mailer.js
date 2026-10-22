@@ -103,7 +103,14 @@ export const agencyLeadEmail = (l) => ({
 });
 
 /** Invites a partner agency or an ambassador to create the account that shows their code's numbers. In English, like agencyLeadEmail. */
-export const ambassadorInviteEmail = ({ kind, name, code, link, signup, email }) => ({
+export const ambassadorInviteEmail = ({ kind, name, code, link, signup, email }) => (kind === 'distributor' ? {
+  subject: `Your ${APP_NAME} flyer delivery page`,
+  text: [`Hello ${name},`, '',
+    `Thanks for delivering ${APP_NAME} flyers. You have your own page where you can see each delivery, the families who joined through your flyers, what you've earned and what is still to be paid.`, '',
+    'Create your account here to see it:', signup, '',
+    `Sign up with this email address (${email}), then enter the 6-digit code we email you. Your page appears under "Your pay" as soon as the email is confirmed.`, '',
+    `The ${APP_NAME} team`].join('\n'),
+} : {
   subject: kind === 'agency' ? `Your ${APP_NAME} agency account (code ${code})` : `Your ${APP_NAME} ambassador code: ${code}`,
   text: [`Hello ${name},`, '',
     kind === 'agency'

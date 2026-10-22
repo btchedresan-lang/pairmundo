@@ -2217,7 +2217,9 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   };
   /** Emails someone without an account an invite to create one, so they can see their code's numbers. */
   const sendAmbassadorInvite = (a) => {
-    const signup = `${publicBase()}/#/${a.kind === 'agency' ? 'agency-signup' : 'register'}?email=${encodeURIComponent(a.invite_email)}`;
+    // Agencies and ambassadors have their own sign-up pages; the au pair and family one would make the wrong account.
+    const page = a.kind === 'agency' ? 'agency-signup' : `ambassador-signup${a.kind === 'distributor' ? '?for=flyers&' : '?'}`;
+    const signup = `${publicBase()}/#/${page}${a.kind === 'agency' ? '?' : ''}email=${encodeURIComponent(a.invite_email)}`;
     Promise.resolve(mailer({ to: a.invite_email, ...ambassadorInviteEmail({ ...a, link: referralLink(a), signup, email: a.invite_email }) }))
       .catch((e) => console.error('Email failed:', e.message));
   };
