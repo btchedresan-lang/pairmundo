@@ -893,6 +893,8 @@ test('waitlist: join once, email in their language, leave by link, admin sees it
   const mail = outbox.at(-1);
   assert.equal(mail.to, 'wait@test.io');
   assert.match(mail.subject, /Liste/);
+  // Its link opens the family sign-up page with their email filled in.
+  assert.ok(mail.text.includes('https://pairmundo.com/#/register?role=family&email=wait%40test.io'));
   // Joining again looks the same and sends nothing.
   assert.equal((await join({ email: 'wait@test.io', role: 'aupair' })).status, 200);
   assert.equal(outbox.length, before + 1);
@@ -1118,9 +1120,13 @@ test('flyer distributors: sessions the admin logs, family bonuses counted once f
   const csv = await (await fetch(`${base}/admin/ambassadors.csv`, { headers: { Authorization: `Bearer ${admin}` } })).text();
   assert.ok(!csv.includes('NILS-D'));
 
+  // Invited before he has an account: the email sends him to the ambassador sign-up page, worded for flyers.
+  await call(admin, 'POST', `/admin/ambassadors/${id}`, { account_email: 'nils@test.io' });
+  const invite = outbox.findLast((m) => m.to === 'nils@test.io');
+  assert.match(invite.subject, /flyer delivery page/);
+  assert.match(invite.text, /#\/ambassador-signup\?for=flyers&email=nils%40test\.io/);
   // Nils sees his own page: sessions and pay, not who the families are.
   const nils = await register('nils@test.io', 'ambassador', 'SE', 'Nils Svensson', { complete: false });
-  await call(admin, 'POST', `/admin/ambassadors/${id}`, { account_email: 'nils@test.io' });
   assert.deepEqual((await call(nils.token, 'GET', '/me')).body.ambassador, { code: 'NILS-D', kind: 'distributor' });
   const mine = (await call(nils.token, 'GET', '/me/ambassador')).body;
   assert.equal(mine.kind, 'distributor');

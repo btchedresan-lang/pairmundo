@@ -521,7 +521,7 @@ views.login = () => {
     <p class="muted small">${tr('New here?')} <a href="#/register">${tr('Create an account')}</a>${['localhost', '127.0.0.1'].includes(location.hostname) ? '<br>Demo: maria@aupair.test, millers@aupair.test or admin@aupair.test, password <code>password123</code>.' : ''}</p></div>`);
   document.getElementById('f').onsubmit = async (e) => {
     e.preventDefault();
-    try { await api('/auth/login', { method: 'POST', body: formData(e.target) }); await refreshMe(); go('#/'); }
+    try { await api('/auth/login', { method: 'POST', body: formData(e.target) }); await refreshMe(); afterLogin(); }
     catch (err) { document.getElementById('err').innerHTML = `<div class="alert error">${esc(err.message)}</div>`; }
   };
 };
@@ -604,15 +604,18 @@ views.agency = async () => {
 // profile that nobody sees, and once PairMundo links it to their code it shows their link and what they've earned.
 views['ambassador-signup'] = (_, query) => {
   if (me) return go('#/');
-  render(`<div class="card" style="max-width:480px;margin:32px auto"><h1>${tr('Create an ambassador account')}</h1>
-    <p class="muted">${tr("You don't need to be an au pair or a host family. Share your code with families and au pairs you know, and earn a reward when an au pair you bring completes their profile, when a family buys their first Family Pass, and when a stay starts. It is free.")}</p>
+  // Flyer distributors are invited here too (?for=flyers): same account, their own page once it's linked.
+  const flyers = query.get('for') === 'flyers';
+  render(`<div class="card" style="max-width:480px;margin:32px auto"><h1>${flyers ? tr('Create your flyer delivery account') : tr('Create an ambassador account')}</h1>
+    <p class="muted">${flyers ? tr('Use the email address your invite was sent to. Once you confirm it, your page shows your deliveries, the families who joined through your flyers and your pay.')
+    : tr("You don't need to be an au pair or a host family. Share your code with families and au pairs you know, and earn a reward when an au pair you bring completes their profile, when a family buys their first Family Pass, and when a stay starts. It is free.")}</p>
     <form id="f">
       <div class="field"><label>${tr('Your name')}</label><input name="name" required autocomplete="name"></div>
       <div class="form-grid"><div class="field"><label>${tr('Country you live in')}</label><select name="country" required>${options(COUNTRIES, '', tr('Choose…'))}</select></div>
       <div class="field"><label>${tr('City')}</label><input name="city"></div></div>
       <div class="field"><label>${tr('Email')}</label><input name="email" type="email" required autocomplete="email" value="${esc(query.get('email') || '')}"></div>
       <div class="field"><label>${tr('Password')}</label><input name="password" type="password" minlength="8" required autocomplete="new-password"></div>
-      <div id="err"></div><button class="btn" style="width:100%">${tr('Create ambassador account')}</button>
+      <div id="err"></div><button class="btn" style="width:100%">${flyers ? tr('Create account') : tr('Create ambassador account')}</button>
       <p class="muted small" style="text-align:center">${tr('By creating an account you agree to the {terms} and the {privacy}.', { terms: `<a href="/terms" target="_blank">${tr('Terms of Use')}</a>`, privacy: `<a href="/privacy" target="_blank">${tr('Privacy Policy')}</a>` })}</p></form>
     <p class="small" style="text-align:center;margin-top:12px">${tr('Are you an au pair or a host family?')} <a href="#/register">${tr('Create your account')}</a></p></div>`);
   document.getElementById('f').onsubmit = async (e) => {
@@ -2083,6 +2086,17 @@ views.reference = async ([token]) => {
 };
 
 // ---------- router ----------
+// A link from an email or a notification (#/family-pass, #/profile…) opened while signed out lands on that page
+// once they sign in, instead of on the home page.
+function toLogin() {
+  try { sessionStorage.setItem('next', location.hash); } catch { /* private mode */ }
+  go('#/login');
+}
+function afterLogin() {
+  let next = null;
+  try { next = sessionStorage.getItem('next'); sessionStorage.removeItem('next'); } catch { /* private mode */ }
+  go(next && next !== '#/login' ? next : '#/');
+}
 const PUBLIC = new Set(['home', 'login', 'register', 'agency-signup', 'ambassador-signup', 'programs', 'forgot', 'reference', 'partners']);
 views.messages = ((orig) => (args) => (args[0] ? orig(args) : go('#/matches')))(views.messages);
 async function route() {
@@ -2093,10 +2107,10 @@ async function route() {
   const view = views[name || 'home'];
   renderNav();
   if (!view) return render(`<div class="empty">${tr('Page not found.')} <a href="#/">${tr('Go home')}</a></div>`);
-  if (!me && !PUBLIC.has(name || 'home')) return go('#/login');
+  if (!me && !PUBLIC.has(name || 'home')) return toLogin();
   try { await view(args, new URLSearchParams(qs || '')); }
   catch (e) {
-    if (e.status === 401) { me = null; return go('#/login'); }
+    if (e.status === 401) { me = null; return toLogin(); }
     render(`<div class="alert error">${esc(e.message)}</div>`);
   }
 }

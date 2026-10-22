@@ -449,7 +449,9 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     // A family on the waitlist before launch keeps an early family bonus spot for when they sign up.
     const early = added && role === 'family' && claimEarlyBonus(email);
     if (added) {
-      const { subject, text } = waitlistEmail(lang, `${publicBase()}/api/waitlist/leave?t=${token}`, early ? earlyDays() : 0);
+      // The sign-up page for their role (au pair or family), with their email filled in.
+      const signup = `${publicBase()}/#/register?${role ? `role=${role}&` : ''}email=${encodeURIComponent(email)}`;
+      const { subject, text } = waitlistEmail(lang, `${publicBase()}/api/waitlist/leave?t=${token}`, early ? earlyDays() : 0, signup);
       try { await mailer({ to: email, subject, text }); } catch (e) { console.error('Waitlist email failed:', e.message); }
     }
     return { ok: true };
@@ -2217,7 +2219,9 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   };
   /** Emails someone without an account an invite to create one, so they can see their code's numbers. */
   const sendAmbassadorInvite = (a) => {
-    const signup = `${publicBase()}/#/${a.kind === 'agency' ? 'agency-signup' : 'register'}?email=${encodeURIComponent(a.invite_email)}`;
+    // Agencies and ambassadors have their own sign-up pages; the au pair and family one would make the wrong account.
+    const page = a.kind === 'agency' ? 'agency-signup' : `ambassador-signup${a.kind === 'distributor' ? '?for=flyers&' : '?'}`;
+    const signup = `${publicBase()}/#/${page}${a.kind === 'agency' ? '?' : ''}email=${encodeURIComponent(a.invite_email)}`;
     Promise.resolve(mailer({ to: a.invite_email, ...ambassadorInviteEmail({ ...a, link: referralLink(a), signup, email: a.invite_email }) }))
       .catch((e) => console.error('Email failed:', e.message));
   };
