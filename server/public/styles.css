@@ -326,3 +326,20 @@ th { color: var(--muted); font-weight: 600; font-size: .8rem; text-transform: up
 .ref-row { padding: 8px 0; border-bottom: 1px solid var(--line); gap: 12px; }
 .ref-photo { width: 84px; height: 84px; border-radius: 50%; object-fit: cover; display: block; margin: 0 auto 12px; }
 .partner-offer { display: block; margin-top: 2px; }
+
+/* Landing hero in the Facebook cover's blue */
+body { overflow-x: clip; }
+.hero { position: relative; isolation: isolate; overflow: hidden; color: #fff;
+  margin: -24px calc(50% - 50vw) 32px; padding: 56px max(16px, calc(50vw - 544px)) 64px;
+  background: linear-gradient(160deg, #3d5cdb 0%, #4f6deb 45%, #6886f8 100%); }
+.hero::before, .hero::after { content: ""; position: absolute; z-index: -1; border-radius: 50%; background: rgba(255, 255, 255, .07); }
+.hero::before { width: 520px; height: 520px; right: -140px; top: -220px; }
+.hero::after { width: 420px; height: 420px; left: -180px; bottom: -240px; }
+.hero h1 { color: #fff; }
+.hero p { color: rgba(255, 255, 255, .86); }
+.hero a:not(.btn) { color: #fff; text-decoration: underline; text-underline-offset: 3px; }
+.hero .chip { background: rgba(255, 255, 255, .18); color: #fff; }
+.hero .btn { background: #fff; color: var(--brand); border-color: #fff; }
+.hero .btn.secondary { background: transparent; color: #fff; border-color: rgba(255, 255, 255, .7); }
+.hero .muted { color: rgba(255, 255, 255, .8) !important; }
+.hero .phone { background: #1a1d2b; box-shadow: 0 30px 60px -20px rgba(15, 25, 80, .55); }
