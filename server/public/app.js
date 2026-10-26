@@ -446,13 +446,29 @@ function earlyOfferNote(id) {
   }).catch(() => {});
 }
 
+// The hero loop is a short, silent app tour. It loads only after the page has, and not at all for people who asked
+// for less motion or less data: they keep the still poster.
+function heroMotion() {
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches || navigator.connection?.saveData;
+  const v = document.getElementById('heroLoop');
+  if (v && !still) {
+    const start = () => { v.src = '/media/hero-loop.mp4'; v.play().catch(() => {}); };
+    if (document.readyState === 'complete') start(); else addEventListener('load', start, { once: true });
+  }
+  if (still || !('IntersectionObserver' in window)) return;
+  const io = new IntersectionObserver((seen) => seen.forEach((e) => {
+    if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+  }), { rootMargin: '0px 0px -40px 0px' });
+  document.querySelectorAll('#app .feature').forEach((el, i) => { el.classList.add('reveal'); el.style.transitionDelay = `${(i % 4) * 60}ms`; io.observe(el); });
+}
+
 function landing() {
   const waitForm = (id) => `<form class="waitlist" id="${id}">
       <input name="email" type="email" required autocomplete="email" placeholder="${tr('Your email')}" aria-label="${tr('Your email')}">
       <select name="role" aria-label="${tr('I am')}"><option value="family">${tr('A host family')}</option><option value="aupair">${tr('An au pair')}</option></select>
       <button class="btn">${tr('Notify me')}</button></form>`;
   render(`
-    <section class="hero">
+    <section class="hero"><div class="hero-text">
       <span class="chip">📱 ${tr('iPhone and Android apps coming soon')}</span>
       <h1>${tr('Swipe. Match. Welcome your au pair.')}</h1>
       <p>${tr("Photo-first profiles from families and au pairs worldwide. Swipe right on the ones you like; when it's mutual, you're matched and can chat. Program rules, verification and two-way reviews are built in.")}</p>
@@ -460,7 +476,8 @@ function landing() {
       <a class="btn secondary" href="#/register?role=aupair">${tr('I want to be an au pair')}</a>
       <a class="btn secondary" href="#/agency-signup">${tr("I'm an au pair agency")}</a></div>
       <p class="small muted" style="margin-top:12px">${tr('Free for au pairs. Swiping and matching are free for everyone.')}</p>
-      <p class="small" style="margin-top:4px">${tr('Know families or au pairs?')} <a href="#/ambassador-signup">${tr('Become an ambassador and earn for each person you bring')}</a></p>
+      <p class="small" style="margin-top:4px">${tr('Know families or au pairs?')} <a href="#/ambassador-signup">${tr('Become an ambassador and earn for each person you bring')}</a></p></div>
+      <div class="phone" aria-hidden="true"><video id="heroLoop" muted loop playsinline preload="none" poster="/media/hero-loop-poster.webp" width="540" height="1170"></video></div>
     </section>
     <section class="card wait-card"><div id="invited"></div><h2>${tr('Be the first to get the app')}</h2>
       <p class="muted">${tr("Leave your email and we'll tell you the day PairMundo arrives on the App Store and Google Play. No spam, and you can leave the list anytime.")}</p>
@@ -484,6 +501,7 @@ function landing() {
     </div>
     <section class="card wait-card" style="margin-top:32px"><h2>${tr('Get the app at launch')}</h2>${waitForm('wait2')}<div id="waitMsg2"></div></section>`);
   earlyOfferNote('earlyOffer');
+  heroMotion();
   // Someone an ambassador invited sees who, so they know they're in the right place. Not when they scanned a flyer
   // or a salon card (?src=…): they've never met the ambassador, so a stranger's name would only confuse them.
   const ref = refCode();
