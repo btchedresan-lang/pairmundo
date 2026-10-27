@@ -1057,8 +1057,17 @@ test('partner agencies: their code tags au pairs, shows on the profile, earns no
   await call(ap.token, 'PUT', '/me', { profile: { bio: 'Hi', nationality: 'ZW', birth_date: '2003-01-01', languages: [{ code: 'en', level: 'C2' }], available_from: '2027-01-01' } });
   await call(admin, 'POST', `/admin/users/${ap.id}`, { id_verified: true });
   const st = (await call(admin, 'GET', `/admin/ambassadors/${agencyId}`)).body;
-  assert.deepEqual([st.stats.aupairs, st.stats.profiles, st.stats.earned_cents], [1, 0, 0]);
+  // Its done profiles still count, from the profiles themselves.
+  assert.deepEqual([st.stats.aupairs, st.stats.profiles, st.stats.earned_cents], [1, 1, 0]);
   assert.equal(st.referrals.length, 1);
+
+  // An au pair account is never the agency's own account, so it still counts as one of its au pairs.
+  assert.equal((await call(admin, 'POST', `/admin/ambassadors/${agencyId}`, { account_email: 'agap@test.io' })).status, 400);
+  await call(admin, 'POST', `/admin/ambassadors/${agencyId}`, { account_email: 'alpha-staff@test.io' });
+  const staffAp = await call(null, 'POST', '/auth/register', { email: 'alpha-staff@test.io', password: 'password123', role: 'aupair', name: 'Staff Signup', country: 'ZW', ref_code: 'alpha-zw' });
+  await call(staffAp.body.token, 'POST', '/auth/verify-email', { code: lastCode('alpha-staff@test.io') });
+  const still = (await call(admin, 'GET', `/admin/ambassadors/${agencyId}`)).body;
+  assert.deepEqual([still.user_id, still.account_email, still.stats.aupairs], [null, 'alpha-staff@test.io', 2]);
 
   // An au pair who signed up without the code adds it from their account, once, and only an agency's code.
   const late = await register('aglate@test.io', 'aupair', 'ZW');
