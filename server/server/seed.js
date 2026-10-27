@@ -73,7 +73,7 @@ const families = [
   ['devries@aupair.test', 'Familie de Vries', 'NL', 'Utrecht', [{ age: 2 }, { age: 5 }, { age: 8 }], ['nl', 'en'], ['en'], '2026-11-10', 12, 30, 340, 0, 1, 'Busy, bike-loving family of five. Lots of cycling, a cat, and plenty of fun.', {}],
   ['garcia@aupair.test', 'Familia García', 'ES', 'Valencia', [{ age: 4 }, { age: 6 }], ['es'], ['en'], '2026-10-25', 9, 30, 320, 1, 0, 'Beach-side family who would love English or Italian at home.', { id: 1 }],
   ['nguyen-smith@aupair.test', 'The Nguyen-Smith Family', 'US', 'Seattle, WA', [{ age: 0 }, { age: 2 }], ['en', 'vi'], ['en'], '2027-01-01', 12, 45, 860, 1, 0, 'Two little ones under three. Infant experience a must; extra pay for a confident driver.', { id: 1, refs: 1, bg: 1 }],
-  ['hansen@aupair.test', 'Familien Hansen', 'DK', 'Aarhus', [{ age: 5 }, { age: 10 }], ['da', 'en'], ['en'], '2026-11-01', 12, 30, 4950, 1, 1, 'Danish family near the forest. Kids love football and building Lego.', { id: 1 }],
+  ['hansen@aupair.test', 'Familien Hansen', 'DK', 'Aarhus', [{ age: 5 }, { age: 10 }], ['da', 'en'], ['en'], '2026-11-01', 12, 30, 5250, 1, 1, 'Danish family near the forest. Kids love football and building Lego.', { id: 1 }],
 ];
 const famIds = families.map(([email, name, country, city, kids, langs, req, start, dur, hours, money, driver, pets, bio, ver]) => {
   const slug = email.split('@')[0];
