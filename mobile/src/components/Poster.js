@@ -132,18 +132,18 @@ export function PosterBody({ u, p, refs = [] }) {
       ) : null}
 
       {refs.length ? (
-        <Section tint="peach" icon="💌" title={tr('References')} tilt={0.3}>
+        <Section tint="peach" icon="💌" title={tr('Reviews from past families')} tilt={0.3}>
           {refs.map((r) => (
             <View key={r.id} style={{ gap: 3 }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                <Text style={{ color: t.ink, fontWeight: '700', flex: 1 }}>{r.name}{r.relation ? <Text style={{ fontWeight: '400', color: t.muted }}> · {r.relation}</Text> : null}</Text>
+                <Text style={{ color: t.ink, fontWeight: '700', flex: 1 }}>{r.name}{r.verified ? <Text style={{ color: C.ok, fontSize: 12 }}>  ✔ {tr('Verified family')}</Text> : null}{r.relation ? <Text style={{ fontWeight: '400', color: t.muted }}> · {r.relation}</Text> : null}</Text>
                 <Stars value={r.rating} size={13} />
               </View>
               <Text style={{ color: t.muted, fontSize: 13 }}>{[trn(r.months, '{n} month', '{n} months'), ...(r.age_groups || []).map((g) => (AGE_GROUPS[g] ? tr(AGE_GROUPS[g]) : g)), r.recommend ? `👍 ${tr('Recommends {name}', { name: firstName(u.name) })}` : ''].filter(Boolean).join(' · ')}</Text>
               {r.comment ? <Para>“{r.comment}”</Para> : null}
             </View>
           ))}
-          <Text style={{ color: t.muted, fontSize: 13 }}>{tr('PairMundo emailed these people and they answered themselves.')}</Text>
+          <Text style={{ color: t.muted, fontSize: 13 }}>{tr('PairMundo emailed these families and they answered themselves. Reviews from placements made on PairMundo are under Reviews.')}</Text>
         </Section>
       ) : null}
 

@@ -325,6 +325,7 @@ th { color: var(--muted); font-weight: 600; font-size: .8rem; text-transform: up
 .ref-item + .ref-item { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
 .ref-row { padding: 8px 0; border-bottom: 1px solid var(--line); gap: 12px; }
 .ref-photo { width: 84px; height: 84px; border-radius: 50%; object-fit: cover; display: block; margin: 0 auto 12px; }
+.ref-verified { display: inline-block; font-size: .72rem; font-weight: 600; color: var(--ok); background: var(--ok-soft); border-radius: 999px; padding: 1px 8px; margin-left: 4px; vertical-align: middle; }
 .partner-offer { display: block; margin-top: 2px; }
 
 /* Landing hero in the Facebook cover's blue */
