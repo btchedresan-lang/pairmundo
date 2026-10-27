@@ -402,7 +402,9 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   /** A distributor's sessions, newest first, each with how many families it brought in. */
   const flyerSessions = (a) => db.prepare(`SELECT s.*, (SELECT COUNT(*) FROM flyer_bonuses b WHERE b.session_id = s.id) families
     FROM flyer_sessions s WHERE s.ambassador_id = ? ORDER BY s.delivered_on DESC, s.id DESC LIMIT 500`).all(a.id);
-  const statsOf = (a, month) => (a.kind === 'distributor' ? distributorStats(a, month) : ambassadorStats(a, month));
+  // An agency earns no rewards, so its done profiles are counted from the profiles themselves.
+  const statsOf = (a, month) => (a.kind === 'distributor' ? distributorStats(a, month)
+    : a.kind === 'agency' ? { ...ambassadorStats(a, month), profiles: agencyStats(a, month).profiles } : ambassadorStats(a, month));
 
   const adminAmbassador = (id, month = null, detail = true) => {
     const a = db.prepare('SELECT a.*, COALESCE(u.email, a.invite_email) account_email FROM ambassadors a LEFT JOIN users u ON u.id = a.user_id WHERE a.id = ?').get(Number(id));
@@ -2259,6 +2261,9 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       if (areas.some((x) => !/^[a-z0-9][a-z0-9-]{0,39}$/.test(x))) throw bad('Areas are flyer sources like door-nacka, separated by commas.');
     }
     const kind = 'kind' in body ? (['agency', 'distributor'].includes(body.kind) ? body.kind : 'ambassador') : a.kind ?? 'ambassador';
+    if (kind === 'agency' && userId && db.prepare('SELECT role FROM users WHERE id = ?').get(userId)?.role !== 'agency') {
+      throw bad('That email belongs to an au pair or family account. The agency needs its own agency account with another email.');
+    }
     return { name, country: text('country', 2)?.toUpperCase() ?? null, contact: text('contact', 200), notes: text('notes', 2000), user_id: userId,
       active: 'active' in body ? (body.active ? 1 : 0) : Number(a.active ?? 1), gift_days: giftDays, kind, invite_email: inviteEmail,
       flyer_rate: kr('flyer_rate', 'Pay per flyer'), family_bonus: kr('family_bonus', 'Pay per family'), bonus_days: bonusDays, areas: JSON.stringify(areas) };
@@ -2273,8 +2278,9 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   };
   /** Links an account to the code it was invited to, once its email is confirmed. */
   const claimInvite = (user) => {
-    const a = db.prepare('SELECT id, code FROM ambassadors WHERE user_id IS NULL AND invite_email = ?').get(normEmail(user.email));
-    if (!a) return;
+    const a = db.prepare('SELECT id, code, kind FROM ambassadors WHERE user_id IS NULL AND invite_email = ?').get(normEmail(user.email));
+    // An au pair or family who signed up with the agency's email is not the agency's account.
+    if (!a || (a.kind === 'agency' && user.role !== 'agency')) return;
     db.prepare('UPDATE ambassadors SET user_id = ?, invite_email = NULL WHERE id = ?').run(user.id, a.id);
     partnerLinked(user.id, a.code);
   };
