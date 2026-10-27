@@ -324,7 +324,7 @@ CREATE TABLE IF NOT EXISTS certificate_proofs (
   reviewed_at TEXT,
   PRIMARY KEY (user_id, kind)
 );
--- References an au pair asks for: PairMundo emails the person a link, and they answer a short form.
+-- References an au pair asks for: PairMundo emails a past family a link, and they answer a short form from an account.
 CREATE TABLE IF NOT EXISTS reference_checks (
   id INTEGER PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -334,6 +334,7 @@ CREATE TABLE IF NOT EXISTS reference_checks (
   token TEXT NOT NULL UNIQUE,
   status TEXT NOT NULL DEFAULT 'sent',             -- sent | confirmed | declined
   answers TEXT,                                    -- JSON {months, age_groups, recommend, rating, comment}
+  reviewer_id INTEGER REFERENCES users(id) ON DELETE SET NULL, -- the account that answered (on the invited email)
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   responded_at TEXT
 );
@@ -527,6 +528,8 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
   if (!db.prepare('PRAGMA table_info(partner_offers)').all().some((c) => c.name === 'lead_email')) db.exec('ALTER TABLE partner_offers ADD COLUMN lead_email TEXT');
   // The family's street address, for the visa invitation letter.
   if (!db.prepare('PRAGMA table_info(placements)').all().some((c) => c.name === 'host_address')) db.exec('ALTER TABLE placements ADD COLUMN host_address TEXT');
+  // Past-family references are answered from an account now; this is the account that answered.
+  if (!db.prepare('PRAGMA table_info(reference_checks)').all().some((c) => c.name === 'reviewer_id')) db.exec('ALTER TABLE reference_checks ADD COLUMN reviewer_id INTEGER REFERENCES users(id) ON DELETE SET NULL');
   const pcols = db.prepare('PRAGMA table_info(country_programs)').all().map((c) => c.name);
   if (!pcols.includes('status')) {
     db.exec(`ALTER TABLE country_programs ADD COLUMN status TEXT NOT NULL DEFAULT 'open';

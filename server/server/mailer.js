@@ -52,11 +52,11 @@ export const profileInviteEmail = (lang, { kind, email, signupUrl, leaveUrl, ear
   return { subject: t(lang, kind === 'reminder' ? 'Your family profile is waiting' : 'Your family profile on {app} is open', v), text: parts.join('\n\n') };
 };
 
-/** Asks someone an au pair named to confirm what they know about them. */
-export const referenceEmail = (lang, { aupair, referee, link }) => {
-  const v = { app: APP_NAME, aupair, referee, link };
-  return { subject: t(lang, '{aupair} asked you for a reference on {app}', v),
-    text: t(lang, "Hi {referee},\n\n{aupair} is looking for a host family on {app}, an app where au pairs and host families find each other, and named you as a reference.\n\nCould you answer five short questions about the time {aupair} looked after children for you? It takes about two minutes:\n{link}\n\nFamilies on {app} will see your answers and your first name, never your email.\n\nIf you don't know {aupair}, you can ignore this email or say so on the page.", v) };
+/** Asks a family an au pair looked after children for to review them; answering takes a free account on that email. */
+export const referenceEmail = (lang, { aupair, link }) => {
+  const v = { app: APP_NAME, aupair, link };
+  return { subject: t(lang, '{aupair} asked you to review them on {app}', v),
+    text: t(lang, "Hello,\n\n{aupair} is looking for a new host family on {app}, an app where au pairs and host families find each other, and asked you to review the time they looked after your children.\n\nIt takes about two minutes. Open this link, make your free {app} account with this email address, and answer five short questions:\n{link}\n\nThe account shows families the review really comes from you. They will see your answers and your first name, never your email.\n\nIf you don't know {aupair}, you can ignore this email or say so on the page.", v) };
 };
 
 /** The code email in the person's language (see i18n.js). */
