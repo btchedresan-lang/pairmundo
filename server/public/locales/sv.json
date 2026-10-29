@@ -1148,5 +1148,18 @@
   "{aupair} looked after your children and is looking for a new host family on PairMundo. Families will see your answers and your first name, never your email.": "{aupair} tog hand om era barn och söker en ny värdfamilj på PairMundo. Familjer ser dina svar och ditt förnamn, aldrig din e-post.",
   "Your review is on {name}'s profile now. Thank you for helping a family choose well.": "Ditt omdöme finns nu på {name}s profil. Tack för att du hjälper en familj att välja rätt.",
   "Looking for an au pair yourself? Your PairMundo account is ready.": "Söker ni själva en au pair? Ditt PairMundo-konto är klart.",
-  "Open PairMundo": "Öppna PairMundo"
+  "Open PairMundo": "Öppna PairMundo",
+  "Closed network: your families and au pairs only meet each other.": "Stängt nätverk: era familjer och au pairer möter bara varandra.",
+  "Contact details are hidden in chats until a placement is confirmed.": "Kontaktuppgifter döljs i chattar tills en placering är bekräftad.",
+  "Flagged": "Flaggat",
+  "Introduction log": "Logg över introduktioner",
+  "To change these, email PairMundo.": "Mejla PairMundo för att ändra detta.",
+  "Tried to share contact details before a confirmed placement. They were hidden.": "Försökte dela kontaktuppgifter före en bekräftad placering. De doldes.",
+  "When": "När",
+  "When one of your families and one of your au pairs first matched. Keep it as a record for your family contracts.": "När en av era familjer och en av era au pairer matchade första gången. Spara det som underlag för era familjeavtal.",
+  "Working with an au pair agency? Enter the code they gave you to join their space on PairMundo.": "Har ni en au pair-byrå? Ange koden ni fick för att gå med i byråns del av PairMundo.",
+  "Your agency space": "Er byrås del av PairMundo",
+  "Your families don't pay PairMundo for the Family Pass.": "Era familjer betalar inte PairMundo för Family Pass.",
+  "{n} families have joined with your code.": "{n} familjer har gått med med er kod.",
+  "{n} family has joined with your code.": "{n} familj har gått med med er kod."
 }
