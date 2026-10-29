@@ -1,0 +1,647 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<link rel="icon" href="/logo.svg">
+<title>PairMundo for agencies: demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Manrope:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: agency brand bar, demo note, role tabs. Family and au pair views are a phone beside a short guide; the agency console is a sub-nav over working panels. */
+:root {
+  --brand: #c2410c;
+  --brand-ink: #ffffff;
+  --bg: #f6f3f1;
+  --surface: #ffffff;
+  --ink: #241d1a;
+  --muted: #6b5f59;
+  --line: #e6ded9;
+  --soft: #f3ebe6;
+  --ok: #1f7a46; --ok-bg: #e1f2e7;
+  --warn: #93590a; --warn-bg: #fbefd9;
+  --bad: #b3261e; --bad-bg: #fbe4e1;
+  --info: #2a5bb8; --info-bg: #e5edfb;
+  --phone: #1b1513;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "Manrope", "Segoe UI", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #15110f; --surface: #1f1a17; --ink: #efe7e2; --muted: #a89a92; --line: #352c28; --soft: #2a2220;
+  --ok: #6fd39a; --ok-bg: #173323; --warn: #f0bd6a; --warn-bg: #352812; --bad: #f2928b; --bad-bg: #3a1c1a; --info: #8db2f5; --info-bg: #1b2740; --phone: #000000;
+  color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #15110f; --surface: #1f1a17; --ink: #efe7e2; --muted: #a89a92; --line: #352c28; --soft: #2a2220;
+  --ok: #6fd39a; --ok-bg: #173323; --warn: #f0bd6a; --warn-bg: #352812; --bad: #f2928b; --bad-bg: #3a1c1a; --info: #8db2f5; --info-bg: #1b2740; --phone: #000000;
+  color-scheme: dark }
+* { box-sizing: border-box }
+html, body { margin: 0 }
+[hidden] { display: none !important }
+img { max-width: 100% }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 14px; line-height: 1.5 }
+.wrap { max-width: 1180px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)) }
+h1, h2, h3, h4 { font-family: var(--display); text-wrap: balance; margin: 0; line-height: 1.15 }
+h2 { font-size: 22px } h3 { font-size: 16px } h4 { font-size: 14px }
+p { margin: 0 }
+.muted { color: var(--muted) } .small { font-size: 12.5px }
+.label { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 700 }
+button, select, input, textarea { font: inherit; color: inherit }
+button { cursor: pointer }
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px }
+
+.brandbar { background: var(--brand); color: var(--brand-ink) }
+.brandbar .wrap { display: flex; align-items: center; gap: 14px; padding-block: 14px; flex-wrap: wrap }
+.logo { width: 44px; height: 44px; border-radius: 12px; background: rgba(255,255,255,.18); display: grid; place-items: center; font-family: var(--display); font-weight: 700; font-size: 18px; border: 1px solid rgba(255,255,255,.35); overflow: hidden; flex: none }
+.logo img { width: 100%; height: 100%; object-fit: contain; background: #fff }
+.brandname { font-family: var(--display); font-size: 20px; font-weight: 700 }
+.brandtag { font-size: 12.5px; opacity: .88 }
+.powered { margin-left: auto; font-size: 11.5px; opacity: .82; text-align: right }
+.demo-note { background: var(--warn-bg); color: var(--warn); font-size: 12.5px }
+.demo-note .wrap { padding-block: 7px }
+
+.tabs { display: flex; gap: 6px; padding-block: 14px; overflow-x: auto }
+.tab { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 8px 14px; font-weight: 700; white-space: nowrap }
+.tab[aria-selected="true"] { background: var(--brand); color: var(--brand-ink); border-color: var(--brand) }
+.view { padding-bottom: 48px }
+.intro { display: flex; flex-direction: column; gap: 4px; margin-bottom: 16px; max-width: 72ch }
+
+/* phone views */
+.stage { display: grid; grid-template-columns: 380px minmax(0,1fr); gap: 28px; align-items: start }
+@media (max-width: 880px) { .stage { grid-template-columns: minmax(0,1fr) } }
+.phone { width: 100%; max-width: 380px; margin: 0 auto; background: var(--phone); border-radius: 40px; padding: 12px; box-shadow: 0 20px 40px rgba(40,20,10,.18) }
+.screen { background: var(--bg); border-radius: 30px; height: 700px; max-height: 78vh; min-height: 560px; overflow: hidden; display: flex; flex-direction: column }
+.appbar { background: var(--brand); color: var(--brand-ink); padding: 16px 16px 12px; display: flex; align-items: center; gap: 10px; flex: none }
+.appbar .logo { width: 32px; height: 32px; border-radius: 9px; font-size: 13px }
+.appbar b { font-family: var(--display); font-size: 15px; display: block; line-height: 1.1 }
+.appbar span { font-size: 11px; opacity: .85 }
+.appbody { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px }
+.appnav { flex: none; display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--line); background: var(--surface) }
+.appnav button { border: 0; background: transparent; padding: 10px 4px 12px; font-size: 11px; font-weight: 700; color: var(--muted) }
+.appnav button[aria-current="true"] { color: var(--brand) }
+.guide { display: flex; flex-direction: column; gap: 14px }
+.guide ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px }
+.guide li button { border: 0; background: none; padding: 0; color: var(--brand); font-weight: 700; text-align: left; text-decoration: underline; text-underline-offset: 3px }
+.guide li.on { font-weight: 700 }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px }
+.panel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 10px; flex-wrap: wrap }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; overflow: hidden }
+.card .top { height: 150px; display: grid; place-items: center; position: relative }
+.card .body { padding: 12px 14px; display: flex; flex-direction: column; gap: 6px }
+.av { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; color: #fff; font-family: var(--display); flex: none }
+.av.big { width: 84px; height: 84px; font-size: 30px; border: 3px solid rgba(255,255,255,.7) }
+.badge { position: absolute; left: 10px; top: 10px; background: var(--surface); color: var(--brand); font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px }
+.badge.r { left: auto; right: 10px; color: var(--ok) }
+.pill { display: inline-block; font-size: 11.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap }
+.p-ok { background: var(--ok-bg); color: var(--ok) } .p-warn { background: var(--warn-bg); color: var(--warn) }
+.p-bad { background: var(--bad-bg); color: var(--bad) } .p-info { background: var(--info-bg); color: var(--info) }
+.p-mut { background: var(--soft); color: var(--muted) } .p-brand { background: var(--soft); color: var(--brand) }
+.tags { display: flex; gap: 4px; flex-wrap: wrap }
+.btn { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 8px 14px; font-weight: 700 }
+.btn.primary { background: var(--brand); color: var(--brand-ink); border-color: var(--brand) }
+.btn.danger { color: var(--bad) }
+.btn.block { width: 100% }
+.btn:disabled { opacity: .5; cursor: default }
+.actions { display: flex; gap: 8px; flex-wrap: wrap }
+.notice { border-radius: 12px; padding: 10px 12px; font-size: 12.5px; display: flex; flex-direction: column; gap: 4px }
+.n-ok { background: var(--ok-bg); color: var(--ok) } .n-warn { background: var(--warn-bg); color: var(--warn) } .n-info { background: var(--info-bg); color: var(--info) } .n-bad { background: var(--bad-bg); color: var(--bad) }
+.notice b { color: inherit }
+.fee { display: flex; justify-content: space-between; padding: 8px 0; border-top: 1px solid var(--line) }
+.fee:first-child { border-top: 0 }
+.fee b { font-variant-numeric: tabular-nums }
+.field { display: flex; flex-direction: column; gap: 4px }
+.field label { font-weight: 600; font-size: 13px }
+.field input, .field select, .field textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg) }
+
+/* chat */
+.chat { display: flex; flex-direction: column; gap: 8px }
+.msg { max-width: 82%; padding: 8px 11px; border-radius: 14px; font-size: 13px }
+.msg.them { background: var(--surface); border: 1px solid var(--line); align-self: flex-start; border-bottom-left-radius: 4px }
+.msg.me { background: var(--brand); color: var(--brand-ink); align-self: flex-end; border-bottom-right-radius: 4px }
+.msg .hid { background: rgba(0,0,0,.14); border-radius: 6px; padding: 0 5px; font-weight: 700; font-size: 12px }
+.msg.them .hid { background: var(--warn-bg); color: var(--warn) }
+.msg.sys { align-self: center; background: var(--soft); color: var(--muted); font-size: 11.5px; border-radius: 999px; padding: 4px 10px; max-width: 100%; text-align: center }
+.composer { display: flex; gap: 6px; flex: none; padding: 10px 12px; border-top: 1px solid var(--line); background: var(--surface) }
+.composer input { flex: 1; min-width: 0; padding: 8px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg) }
+
+/* checklist */
+.checks { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--surface) }
+.check { display: grid; grid-template-columns: 22px minmax(0,1fr) auto; gap: 8px; padding: 9px 10px; border-top: 1px solid var(--line); align-items: center; font-size: 13px }
+.check:first-child { border-top: 0 }
+.ico { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 800 }
+.i-ok { background: var(--ok-bg); color: var(--ok) } .i-bad { background: var(--bad-bg); color: var(--bad) } .i-mut { background: var(--soft); color: var(--muted) } .i-warn { background: var(--warn-bg); color: var(--warn) }
+
+/* hours */
+.hours { display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); gap: 4px; text-align: center; font-size: 11px }
+.hours div { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 2px }
+.hours b { display: block; font-size: 14px; font-variant-numeric: tabular-nums }
+
+/* console */
+.subnav { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 14px; border-bottom: 1px solid var(--line) }
+.subnav button { border: 0; background: none; padding: 8px 12px; font-weight: 700; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px }
+.subnav button[aria-current="true"] { color: var(--brand); border-bottom-color: var(--brand) }
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; margin-bottom: 14px }
+@media (max-width: 760px) { .stats { grid-template-columns: repeat(2, minmax(0,1fr)) } }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px }
+.stat b { display: block; font-family: var(--display); font-size: 26px; font-variant-numeric: tabular-nums }
+.grid2 { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 14px; align-items: start }
+@media (max-width: 860px) { .grid2 { grid-template-columns: minmax(0,1fr) } }
+.list { display: flex; flex-direction: column; gap: 8px }
+.row { display: grid; grid-template-columns: 44px minmax(0,1fr) auto; gap: 12px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; text-align: left; width: 100% }
+.row.flat { background: var(--bg) }
+.row .meta { min-width: 0; display: flex; flex-direction: column; gap: 3px }
+.row .nm { font-weight: 700 }
+.row .end { display: flex; flex-direction: column; align-items: flex-end; gap: 4px }
+.board { display: grid; grid-template-columns: repeat(7, minmax(150px, 1fr)); gap: 8px; overflow-x: auto; padding-bottom: 6px }
+.col { background: var(--soft); border-radius: 12px; padding: 8px; display: flex; flex-direction: column; gap: 6px; min-height: 160px }
+.col h4 { font-size: 12.5px; display: flex; justify-content: space-between }
+.fcard { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 8px 9px; display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; text-align: left }
+.fcard b { font-size: 13px }
+.fcard .btn { padding: 4px 8px; font-size: 12px }
+.tablewrap { overflow-x: auto }
+table { border-collapse: collapse; width: 100%; font-size: 13px }
+th, td { text-align: left; padding: 8px 10px; border-top: 1px solid var(--line); vertical-align: top }
+th { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); border-top: 0 }
+td.num { font-variant-numeric: tabular-nums; white-space: nowrap }
+.toggle { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 4px 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line) }
+.toggle:first-of-type { border-top: 0 }
+.toggle .hint { grid-column: 1 / -1; font-size: 12px; color: var(--muted) }
+.switch { width: 42px; height: 24px; border-radius: 999px; border: 0; background: var(--line); position: relative; padding: 0 }
+.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: left .15s }
+.switch[aria-checked="true"] { background: var(--brand) }
+.switch[aria-checked="true"]::after { left: 21px }
+.swatches { display: flex; gap: 8px; flex-wrap: wrap }
+.sw { width: 34px; height: 34px; border-radius: 50%; border: 3px solid var(--surface); box-shadow: 0 0 0 1px var(--line) }
+.sw[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--ink) }
+.scrim { position: fixed; inset: 0; background: rgba(20,10,5,.45); z-index: 20 }
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(500px, 100%); background: var(--surface); z-index: 21; overflow-y: auto; padding: calc(18px + env(safe-area-inset-top, 0px)) max(18px, env(safe-area-inset-right, 0px)) calc(18px + env(safe-area-inset-bottom, 0px)) 18px; display: flex; flex-direction: column; gap: 14px; box-shadow: -10px 0 30px rgba(0,0,0,.2) }
+.x { margin-left: auto; border: 1px solid var(--line); background: var(--bg); border-radius: 8px; padding: 4px 10px }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(20px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-weight: 600; z-index: 30; max-width: calc(100% - 32px) }
+.bar { height: 8px; border-radius: 99px; background: var(--soft); overflow: hidden }
+.bar i { display: block; height: 100%; background: var(--brand) }
+@media (prefers-reduced-motion: no-preference) { .drawer { animation: slide .18s ease-out } @keyframes slide { from { transform: translateX(30px); opacity: .6 } } }
+</style>
+</head>
+<body>
+
+<header class="brandbar">
+  <div class="wrap">
+    <div class="logo" id="logo">YA</div>
+    <div>
+      <div class="brandname" id="brandName">Your Agency</div>
+      <div class="brandtag" id="brandTag">Au pairs and nannies for Australian families</div>
+    </div>
+    <div class="powered">Your agency's own app<br>powered by PairMundo</div>
+  </div>
+</header>
+<div class="demo-note"><div class="wrap">Click-through demo with made-up people and example fees. Nothing is real or sent anywhere. The agency-branded version is shown as it would be built. Set your own name, logo and colour under <b>Your branding</b>.</div></div>
+
+<main class="wrap">
+  <nav class="tabs" role="tablist">
+    <button class="tab" role="tab" data-v="family" aria-selected="true">Family app</button>
+    <button class="tab" role="tab" data-v="aupair" aria-selected="false">Au pair app</button>
+    <button class="tab" role="tab" data-v="agency" aria-selected="false">Agency console</button>
+    <button class="tab" role="tab" data-v="brand" aria-selected="false">Your branding</button>
+  </nav>
+  <section class="view" id="v-family"></section>
+  <section class="view" id="v-aupair" hidden></section>
+  <section class="view" id="v-agency" hidden></section>
+  <section class="view" id="v-brand" hidden></section>
+</main>
+<div id="overlay"></div>
+
+<script>
+// ---------- sample data (all made up) ----------
+const COLORS = ['#c0573e', '#3b5bdb', '#1f6f68', '#8a4fbf', '#b5761a', '#2f7d9a', '#a23b6b', '#4c7a2f'];
+// Sample Working Holiday rules for the demo. Confirm every country, cap and pause on the Home Affairs website.
+const WHV = {
+  'France': ['417', 35], 'Ireland': ['417', 35], 'Canada': ['417', 35], 'United Kingdom': ['417', 35], 'Italy': ['417', 35], 'Denmark': ['417', 35],
+  'Germany': ['417', 30], 'Sweden': ['417', 30], 'Netherlands': ['417', 30], 'Japan': ['417', 30], 'South Korea': ['417', 30], 'Belgium': ['417', 30],
+  'Spain': ['462', 35], 'Chile': ['462', 30], 'Argentina': ['462', 30], 'Portugal': ['462', 30], 'United States': ['462', 30], 'Austria': ['462', 30],
+};
+const PAUSED_462 = ['Chile']; // example only: shows how a paused yearly cap is flagged
+let seq = 0;
+const P = o => Object.assign({ id: ++seq, color: COLORS[seq % COLORS.length], log: [] }, o);
+
+const aupairs = [
+  P({ name: 'Camille Durand', nat: 'France', age: 24, from: 'Lyon', hours: 1400, english: 'C1', drives: true, firstaid: true, infant: true, swim: true, rating: 4.9, reviews: 3, inAus: true, visa: 'WHV 417 granted, in Brisbane since August', status: 'approved', about: 'Preschool assistant. Finished a 6-month placement in Sydney and wants a Brisbane family next.' }),
+  P({ name: 'Aoife Brennan', nat: 'Ireland', age: 27, from: 'Galway', hours: 2200, english: 'C2', drives: true, firstaid: true, infant: true, swim: true, rating: 5.0, reviews: 2, inAus: true, visa: 'WHV 417 granted, in Melbourne', status: 'approved', about: 'Nanny for twins for two years. Sole charge, school runs, swimming lessons.' }),
+  P({ name: 'Lena Hoffmann', nat: 'Germany', age: 22, from: 'Freiburg', hours: 650, english: 'B2', drives: true, firstaid: false, infant: false, swim: true, rating: 0, reviews: 0, inAus: false, visa: 'Applied for WHV 417 in July, waiting', status: 'interview', about: 'Kindergarten intern, coaches a kids\' football team.' }),
+  P({ name: 'Lucía Romero', nat: 'Spain', age: 29, from: 'Valencia', hours: 1800, english: 'B2', drives: true, firstaid: true, infant: true, swim: true, rating: 4.8, reviews: 4, inAus: false, visa: 'Applied for WHV 462, waiting', status: 'approved', about: 'Early-years teacher, six years. Loves outdoor play and crafts.' }),
+  P({ name: 'Emily Clarke', nat: 'United Kingdom', age: 25, from: 'Bristol', hours: 900, english: 'C2', drives: false, firstaid: true, infant: true, swim: true, rating: 4.7, reviews: 1, inAus: true, visa: 'WHV 417 granted, on the Gold Coast', status: 'new', about: 'Nursery practitioner, Level 3 childcare.' }),
+  P({ name: 'Yuki Tanaka', nat: 'Japan', age: 31, from: 'Osaka', hours: 3000, english: 'B2', drives: true, firstaid: true, infant: true, swim: true, rating: 0, reviews: 0, inAus: false, visa: 'Over the 30 age cap for Japan', status: 'new', about: 'Licensed nursery teacher, eight years.' }),
+];
+const byId = id => aupairs.find(a => a.id === id);
+
+const STAGES = ['Enquiry', 'Approved', 'Registered', 'Matching', 'Matched', 'Placed', 'Finished'];
+const families = [
+  { id: 'harper', name: 'The Harper family', place: 'Paddington, Brisbane', kids: '2 and 5', stage: 'Matching', start: '12 Jan 2027', hours: 30, verified: true, fee: true },
+  { id: 'nguyen', name: 'The Nguyen family', place: 'New Farm, Brisbane', kids: '1, 3 and 7', stage: 'Placed', start: '2 Sep 2026', hours: 35, verified: true, fee: true, placed: 1 },
+  { id: 'okoro', name: 'The Okoro family', place: 'Bulimba, Brisbane', kids: '4', stage: 'Registered', start: '1 Feb 2027', hours: 25, verified: true, fee: true },
+  { id: 'walsh', name: 'The Walsh family', place: 'Ascot, Brisbane', kids: '6 and 9', stage: 'Approved', start: '15 Jan 2027', hours: 25, verified: true, fee: false },
+  { id: 'patel', name: 'The Patel family', place: 'Indooroopilly, Brisbane', kids: '8 months', stage: 'Enquiry', start: 'March 2027', hours: 40, verified: false, fee: false },
+  { id: 'morgan', name: 'The Morgan family', place: 'Burleigh Heads, Gold Coast', kids: '3 and 6', stage: 'Matched', start: '5 Dec 2026', hours: 30, verified: true, fee: true, placed: 4 },
+  { id: 'lee', name: 'The Lee family', place: 'Toowong, Brisbane', kids: '5 and 10', stage: 'Finished', start: 'Mar 2026', hours: 25, verified: true, fee: true },
+];
+const famById = id => families.find(f => f.id === id);
+
+// The Harper family is the family whose app we show
+const me = famById('harper');
+let brand = { name: 'Your Agency', tag: 'Au pairs and nannies for Australian families', color: '#c2410c', logo: '', fee: 1950, reg: 350 };
+try { const s = JSON.parse(localStorage.getItem('demo-brand-au') || 'null'); if (s) brand = Object.assign(brand, s); } catch (e) {}
+const settings = { closed: true, invite: true, feeFirst: true, mask: true, idRequired: true, dupes: true, introLog: true };
+
+const intros = [
+  { when: '28 Oct 2026, 10:14', fam: 'harper', ap: 1, how: 'Proposed by agency' },
+  { when: '28 Oct 2026, 10:15', fam: 'harper', ap: 2, how: 'Proposed by agency' },
+  { when: '21 Oct 2026, 16:02', fam: 'morgan', ap: 4, how: 'Family liked, agency approved' },
+  { when: '3 Aug 2026, 09:30', fam: 'nguyen', ap: 1, how: 'Proposed by agency' },
+];
+const flags = [
+  { who: 'S. Nguyen (new family account)', why: 'Same ID document and card as the Nguyen family, who already have a placement', action: 'Blocked until you review', cls: 'p-bad' },
+  { who: 'Message from the Morgan family', why: 'Tried to share a phone number before the placement was confirmed', action: 'Hidden automatically', cls: 'p-warn' },
+];
+const docs = [
+  { ap: 1, doc: 'Passport', state: 'Checked', exp: 'Valid to 2031', cls: 'p-ok' },
+  { ap: 1, doc: 'Working Holiday visa grant', state: 'Checked', exp: 'Valid to Aug 2027', cls: 'p-ok' },
+  { ap: 1, doc: 'Police certificate (France)', state: 'Checked', exp: 'Issued May 2026', cls: 'p-ok' },
+  { ap: 1, doc: 'Working with Children Check (Blue Card)', state: 'Checked', exp: 'Valid to 2029', cls: 'p-ok' },
+  { ap: 1, doc: 'First aid and CPR', state: 'Expires soon', exp: 'CPR due 14 Nov 2026', cls: 'p-warn' },
+  { ap: 4, doc: 'Working Holiday visa grant', state: 'Waiting', exp: 'Applied July 2026', cls: 'p-warn' },
+  { ap: 3, doc: 'Police certificate (Germany)', state: 'Missing', exp: 'Asked for on 20 Oct', cls: 'p-bad' },
+];
+
+// ---------- helpers ----------
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const initials = n => n.replace(/^The /, '').split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
+const first = n => n.split(' ')[0];
+const aud = n => 'A$' + n.toLocaleString('en-AU');
+function toast(msg) { const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 2600); }
+function logoHtml(cls = '') { return brand.logo ? `<img src="${brand.logo}" alt="">` : esc(initials(brand.name || 'Your Agency')); }
+function route(a) {
+  const r = WHV[a.nat];
+  if (!r) return { ok: false, text: `${a.nat} has no Working Holiday agreement` };
+  if (a.age > r[1]) return { ok: false, text: `Over the ${r[1]} age cap for ${a.nat}` };
+  if (r[0] === '462' && PAUSED_462.includes(a.nat)) return { ok: false, warn: true, text: `Subclass 462: ${a.nat} paused this program year` };
+  return { ok: true, text: `Subclass ${r[0]}, age cap ${r[1]}` };
+}
+// Hide phone numbers, emails, links and social handles until the agency confirms the placement
+function mask(text) {
+  if (!settings.mask) return esc(text);
+  const tag = '<span class="hid">hidden until ' + esc(brand.name) + ' confirms</span>';
+  return esc(text)
+    .replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, tag)
+    .replace(/(\+?\d[\d\s-]{7,}\d)/g, tag)
+    .replace(/(https?:\/\/\S+|www\.\S+)/gi, tag)
+    .replace(/(^|\s)@[A-Za-z0-9_.]{3,}/g, '$1' + tag)
+    .replace(/\b(whats ?app|insta(gram)?|facebook|telegram)\b/gi, tag);
+}
+function applyBrand() {
+  document.documentElement.style.setProperty('--brand', brand.color);
+  $('#brandName').textContent = brand.name || 'Your Agency';
+  $('#brandTag').textContent = brand.tag;
+  $('#logo').innerHTML = logoHtml();
+  try { localStorage.setItem('demo-brand-au', JSON.stringify(brand)); } catch (e) {}
+}
+function appbar(sub) { return `<div class="appbar"><div class="logo">${logoHtml()}</div><div><b>${esc(brand.name)}</b><span>${esc(sub)}</span></div></div>`; }
+
+// ---------- tabs ----------
+let view = 'family';
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => show(t.dataset.v)));
+function show(v) {
+  view = v;
+  document.querySelectorAll('.tab').forEach(t => t.setAttribute('aria-selected', t.dataset.v === v));
+  for (const k of ['family', 'aupair', 'agency', 'brand']) $('#v-' + k).hidden = k !== v;
+  render();
+}
+function render() { ({ family: renderFamily, aupair: renderAupair, agency: renderAgency, brand: renderBrand })[view](); }
+
+// ---------- family app ----------
+const FSTEPS = [['invite', 'Join by invitation'], ['pay', 'Register with the agency'], ['browse', 'Meet approved au pairs'], ['profile', 'Open a profile'], ['chat', 'Chat and video interview'], ['placement', 'Placement, agreement and hours']];
+let fstep = 'invite', fprofile = 1;
+const fchat = [
+  { from: 'sys', text: 'Chat opened by your agency. Video calls are in the app.' },
+  { from: 'them', text: 'Hi Harper family! I loved reading about Mia and Leo. I finished my last family in Sydney in October.' },
+  { from: 'me', text: 'Hi Camille, lovely to meet you. Would a video call on Thursday evening suit you?' },
+  { from: 'them', text: 'Yes! Or just text me on 0412 345 678 or camille.d@mail.com' },
+];
+function renderFamily() {
+  let body = '', nav = '';
+  const navBtn = (k, l) => `<button data-fs="${k}" aria-current="${fstep === k || (k === 'browse' && fstep === 'profile')}">${l}</button>`;
+  if (fstep === 'invite') body = `
+    <div class="panel" style="display:flex;flex-direction:column;gap:10px">
+      <span class="label">Invitation</span><h3>${esc(brand.name)} has invited the Harper family</h3>
+      <p class="small muted">Only families our team has spoken to can join. Your invitation is linked to your email.</p>
+      <div class="field"><label for="f-email">Email</label><input id="f-email" value="sarah.harper@example.com"></div>
+      <div class="field"><label for="f-code">Invitation code</label><input id="f-code" value="HARPER-7Q2"></div>
+      <div class="notice n-info"><b>ID check</b>A quick photo of your driver licence and a selfie. It keeps every family and au pair real, with one account each.</div>
+      <button class="btn primary block" data-go="pay">Verify my ID and continue</button>
+    </div>`;
+  else if (fstep === 'pay') body = `
+    <div class="panel" style="display:flex;flex-direction:column;gap:10px">
+      <span class="label">Step 2 of 3</span><h3>Your ${esc(brand.name)} placement package</h3>
+      <div><div class="fee"><span>Registration, due now</span><b>${aud(brand.reg)}</b></div><div class="fee"><span>Placement fee, due when you confirm your au pair</span><b>${aud(brand.fee - brand.reg)}</b></div><div class="fee"><span>Matching, contract, visa check and orientation</span><span class="muted">Included</span></div><div class="fee"><span>Rematch if it doesn't work out</span><span class="muted">Included</span></div><div class="fee"><span>Chatting with au pairs</span><span class="muted">Free</span></div></div>
+      ${settings.feeFirst ? `<div class="notice n-warn"><b>Registration opens your matches</b>Chatting is free. Your registration is paid to ${esc(brand.name)} and counts towards the placement fee. There's no PairMundo fee.</div>` : `<div class="notice n-info">All fees are due when you confirm your au pair.</div>`}
+      <div class="field"><label for="f-card">Card</label><input id="f-card" value="•••• •••• •••• 4242"></div>
+      <button class="btn primary block" data-pay>${settings.feeFirst ? 'Pay ' + aud(brand.reg) + ' registration' : 'Continue'}</button>
+      <p class="small muted">Example fees. Your agency sets its own amounts and when they're due.</p>
+    </div>`;
+  else if (fstep === 'browse') {
+    const shown = aupairs.filter(a => a.status === 'approved');
+    body = `<div class="notice n-ok"><b>${shown.length} au pairs approved for you</b>Every profile below was interviewed and checked by ${esc(brand.name)}.</div>
+      ${shown.map(a => `<button class="card" data-prof="${a.id}" style="text-align:left;padding:0">
+        <div class="top" style="background:${a.color}"><span class="badge">✓ Checked by ${esc(brand.name)}</span>${a.inAus ? '<span class="badge r">In Australia now</span>' : ''}<span class="av big" style="background:${a.color}">${initials(a.name)}</span></div>
+        <div class="body"><h3>${esc(first(a.name))}, ${a.age}</h3><span class="small muted">${esc(a.from)}, ${esc(a.nat)} · ${esc(a.visa)}</span>
+        <div class="tags">${a.reviews ? `<span class="pill p-mut">★ ${a.rating.toFixed(1)} · ${a.reviews} reviews</span>` : ''}<span class="pill p-mut">${a.hours.toLocaleString()} h childcare</span>${a.drives ? '<span class="pill p-mut">Drives</span>' : ''}${a.infant ? '<span class="pill p-mut">Babies</span>' : ''}</div></div></button>`).join('')}`;
+  } else if (fstep === 'profile') {
+    const a = byId(fprofile), r = route(a);
+    body = `<div class="card"><div class="top" style="background:${a.color}"><span class="badge">✓ Checked by ${esc(brand.name)}</span><span class="av big" style="background:${a.color}">${initials(a.name)}</span></div>
+      <div class="body"><h3>${esc(first(a.name))}, ${a.age}</h3><span class="small muted">${esc(a.from)}, ${esc(a.nat)}</span><p class="small">${esc(a.about)}</p></div></div>
+      <div class="checks">
+        <div class="check"><span class="ico i-ok">✓</span><span>ID checked</span><span class="small muted">Passport</span></div>
+        <div class="check"><span class="ico ${r.ok ? 'i-ok' : 'i-warn'}">${r.ok ? '✓' : '!'}</span><span>Visa</span><span class="small muted">${esc(a.visa)}</span></div>
+        <div class="check"><span class="ico i-ok">✓</span><span>Police certificate</span><span class="small muted">Checked</span></div>
+        <div class="check"><span class="ico i-ok">✓</span><span>References phoned</span><span class="small muted">2 of 2</span></div>
+        <div class="check"><span class="ico ${a.firstaid ? 'i-ok' : 'i-mut'}">${a.firstaid ? '✓' : '–'}</span><span>First aid and CPR</span><span class="small muted">${a.firstaid ? 'Yes' : 'Not yet'}</span></div>
+      </div>
+      ${a.reviews ? `<div class="panel"><span class="label">Review from a past family</span><p class="small" style="margin-top:4px">"${esc(first(a.name))} was calm, reliable and the kids adored her. We'd host her again."</p><span class="small muted">★ 5 · family in Sydney, placement Apr to Oct 2026</span></div>` : ''}
+      <div class="actions"><button class="btn primary" data-go="chat">Message ${esc(first(a.name))}</button><button class="btn" data-go="browse">Back</button></div>`;
+  } else if (fstep === 'chat') {
+    body = `<div class="chat">${fchat.map(m => m.from === 'sys' ? `<div class="msg sys">${esc(m.text)}</div>` : `<div class="msg ${m.from}">${mask(m.text)}</div>`).join('')}</div>
+      ${settings.mask ? `<div class="notice n-info"><b>Contact details stay in the app</b>Phone numbers, emails and social handles are hidden until ${esc(brand.name)} confirms your placement. Try typing one below.</div>` : ''}`;
+  } else if (fstep === 'placement') {
+    body = `<div class="panel" style="display:flex;flex-direction:column;gap:8px"><span class="label">Your placement</span><h3>Camille with the Harper family</h3>
+        <span class="small muted">Starts 12 Jan 2027 · 6 months · 30 hours a week</span>
+        <div class="bar"><i style="width:40%"></i></div><span class="small muted">4 of 10 steps done</span></div>
+      <div class="checks">
+        <div class="check"><span class="ico i-ok">✓</span><span>Placement fee paid to ${esc(brand.name)}</span><span></span></div>
+        <div class="check"><span class="ico i-ok">✓</span><span>Video interview</span><span></span></div>
+        <div class="check"><span class="ico i-ok">✓</span><span>Visa and documents checked by ${esc(brand.name)}</span><span></span></div>
+        <div class="check"><span class="ico i-ok">✓</span><span>Stay agreement signed by both sides</span><span class="small muted">e-signature</span></div>
+        <div class="check"><span class="ico i-mut">5</span><span>Room and house rules confirmed</span><span></span></div>
+        <div class="check"><span class="ico i-mut">6</span><span>Arrival and orientation day</span><span class="small muted">12 Jan</span></div>
+        <div class="check"><span class="ico i-mut">7</span><span>First-month check-in with ${esc(brand.name)}</span><span class="small muted">9 Feb</span></div>
+      </div>
+      <div class="panel" style="display:flex;flex-direction:column;gap:8px"><div style="display:flex;justify-content:space-between"><span class="label">Hours this week</span><span class="small muted">Agreed: 30 h</span></div>
+        <div class="hours">${[['Mon', 6], ['Tue', 6], ['Wed', 5], ['Thu', 6], ['Fri', 6], ['Sat', 0], ['Sun', 0]].map(d => `<div>${d[0]}<b>${d[1]}</b></div>`).join('')}</div>
+        <div class="notice n-ok">29 of 30 hours. Pocket money for the week is recorded.</div></div>
+      <button class="btn" data-rematch>Something not working? Ask ${esc(brand.name)} for help</button>`;
+  }
+  const composer = fstep === 'chat' ? `<form class="composer" id="fcompose"><input id="f-msg" placeholder="Write a message" autocomplete="off" value="Great, my mobile is 0400 111 222"><button class="btn primary" type="submit">Send</button></form>` : '';
+  const locked = !me.fee && settings.feeFirst;
+  nav = `<nav class="appnav">${navBtn('browse', 'Au pairs')}${navBtn('chat', 'Messages')}${navBtn('placement', 'Placement')}${navBtn('pay', 'Account')}</nav>`;
+  $('#v-family').innerHTML = `<div class="stage">
+    <div class="phone"><div class="screen">${appbar('The Harper family · Paddington')}<div class="appbody" id="fbody">${body}</div>${composer}${['invite'].includes(fstep) ? '' : nav}</div></div>
+    <div class="guide">
+      <div class="intro"><span class="label">What a family sees</span><h2>Families meet only the au pairs you've approved, and chat for free</h2>
+        <p class="muted">Tap through the steps, or use the phone. The family never sees au pairs outside your agency, and contact details stay hidden until you confirm the placement.</p></div>
+      <ol>${FSTEPS.map(([k, l]) => `<li class="${fstep === k ? 'on' : ''}"><button data-fs="${k}">${l}</button></li>`).join('')}</ol>
+      <div class="panel small" style="display:flex;flex-direction:column;gap:6px"><b>What keeps families with your agency</b>
+        <span>• They join with your invitation and an ID check, so there's one account per family.</span>
+        <span>• Chat is free. A registration fee, paid to you, opens their matches.</span>
+        <span>• Phone numbers and emails are hidden in chat.</span>
+        <span>• Every introduction is logged with a date, as evidence for your family contract.</span></div>
+    </div></div>`;
+  $('#v-family').querySelectorAll('[data-fs]').forEach(b => b.onclick = () => { fstep = b.dataset.fs; renderFamily(); });
+  $('#v-family').querySelectorAll('[data-go]').forEach(b => b.onclick = () => { fstep = b.dataset.go; renderFamily(); });
+  $('#v-family').querySelectorAll('[data-prof]').forEach(b => b.onclick = () => { fprofile = +b.dataset.prof; fstep = 'profile'; renderFamily(); });
+  const pay = $('#v-family [data-pay]'); if (pay) pay.onclick = () => { me.fee = true; toast(`Registered with ${brand.name}. Your matches are open.`); fstep = 'browse'; renderFamily(); };
+  const rm = $('#v-family [data-rematch]'); if (rm) rm.onclick = () => toast(`${brand.name} has been told and will call you today.`);
+  const fc = $('#fcompose'); if (fc) fc.onsubmit = e => {
+    e.preventDefault(); const v = $('#f-msg').value.trim(); if (!v) return;
+    fchat.push({ from: 'me', text: v });
+    if (settings.mask && mask(v) !== esc(v)) { flags.unshift({ who: 'Message from the Harper family', why: 'Tried to share contact details before the placement was confirmed', action: 'Hidden automatically', cls: 'p-warn' }); }
+    renderFamily(); const b = $('#fbody'); b.scrollTop = b.scrollHeight;
+  };
+  const b = $('#fbody'); if (fstep === 'chat' && b) b.scrollTop = b.scrollHeight;
+}
+
+// ---------- au pair app ----------
+const ASTEPS = [['apply', 'Apply with a visa check'], ['docs', 'Upload documents'], ['offers', 'See families the agency proposes'], ['chat', 'Chat with a family'], ['stay', 'During the stay']];
+let astep = 'apply';
+const draft = { name: 'Sofia Rossi', nat: 'Italy', age: 26, hours: 900, english: 'B2' };
+function renderAupair() {
+  let body = '';
+  if (astep === 'apply') {
+    const r = route(draft);
+    body = `<div class="panel" style="display:flex;flex-direction:column;gap:10px"><span class="label">Application</span><h3>Become an au pair with ${esc(brand.name)}</h3>
+      <div class="field"><label for="a-nat">Citizenship</label><select id="a-nat">${[...Object.keys(WHV), 'Colombia', 'Philippines', 'Zimbabwe'].sort().map(n => `<option ${n === draft.nat ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
+      <div class="field"><label for="a-age">Age</label><input id="a-age" type="number" min="17" max="45" value="${draft.age}"></div>
+      <div class="field"><label for="a-in">Where are you now?</label><select id="a-in"><option>At home, applying for a visa</option><option>Already in Australia on a Working Holiday visa</option></select></div>
+      <div id="a-route" class="notice ${r.ok ? 'n-ok' : r.warn ? 'n-warn' : 'n-bad'}"><b>${r.ok ? 'You can apply for a Working Holiday visa' : 'This route may not work for you'}</b>${esc(r.text)}. ${r.ok ? 'We check your visa before any family sees you.' : 'Ask us about other options.'}</div>
+      <p class="small muted">Sample rules for the demo. Visa processing has been slow since July 2026, so we show families when you can really start.</p>
+      <button class="btn primary block" data-go="docs">Continue</button></div>`;
+  } else if (astep === 'docs') body = `<div class="panel" style="display:flex;flex-direction:column;gap:8px"><span class="label">Your documents</span><h3>Checked by ${esc(brand.name)}, kept private</h3>
+      <div class="checks">
+        <div class="check"><span class="ico i-ok">✓</span><span>Passport</span><span class="small muted">Checked</span></div>
+        <div class="check"><span class="ico i-warn">!</span><span>Working Holiday visa grant</span><span class="small muted">Upload when granted</span></div>
+        <div class="check"><span class="ico i-ok">✓</span><span>Police certificate (Italy)</span><span class="small muted">Checked</span></div>
+        <div class="check"><span class="ico i-mut">–</span><span>Blue Card (Queensland)</span><span class="small muted">We help you apply</span></div>
+        <div class="check"><span class="ico i-ok">✓</span><span>2 childcare references</span><span class="small muted">Phoned</span></div>
+        <div class="check"><span class="ico i-warn">!</span><span>First aid and CPR</span><span class="small muted">Book a course</span></div>
+      </div>
+      <p class="small muted">You'll get a reminder before anything expires.</p><button class="btn primary block" data-go="offers">Continue</button></div>`;
+  else if (astep === 'offers') body = `<div class="notice n-info"><b>Families proposed by ${esc(brand.name)}</b>Only families the agency has met and approved. Au pairs never pay.</div>
+      ${['harper', 'okoro'].map(id => { const f = famById(id); return `<div class="panel" style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;gap:10px;align-items:center"><span class="av" style="background:#2f7d9a">${initials(f.name)}</span><div><h3>${esc(f.name)}</h3><span class="small muted">${esc(f.place)} · kids ${esc(f.kids)}</span></div></div>
+        <div class="tags"><span class="pill p-ok">✓ ID checked</span><span class="pill p-mut">${f.hours} h a week</span><span class="pill p-mut">From ${esc(f.start)}</span><span class="pill p-mut">Own room</span></div>
+        <button class="btn primary" data-go="chat">Say hello</button></div>`; }).join('')}`;
+  else if (astep === 'chat') body = `<div class="chat"><div class="msg sys">Chat opened by ${esc(brand.name)}</div><div class="msg them">Hi Sofia! Would you like a video call on Thursday?</div><div class="msg me">Yes please! You can add me on ${mask('@sofia.rossi on Instagram')}</div><div class="msg sys">Contact details are shared after ${esc(brand.name)} confirms the placement.</div></div>`;
+  else if (astep === 'stay') body = `<div class="panel" style="display:flex;flex-direction:column;gap:8px"><span class="label">Your stay</span><h3>With the Harper family</h3><span class="small muted">Week 3 of 26 · 30 hours a week agreed</span><div class="bar"><i style="width:12%"></i></div></div>
+      <div class="hours">${[['Mon', 6], ['Tue', 7], ['Wed', 5], ['Thu', 8], ['Fri', 6], ['Sat', 3], ['Sun', 0]].map(d => `<div>${d[0]}<b>${d[1]}</b></div>`).join('')}</div>
+      <div class="notice n-warn"><b>35 hours logged, 5 more than agreed</b>${esc(brand.name)} has been told and will check in with you and the family.</div>
+      <div class="panel small" style="display:flex;flex-direction:column;gap:4px"><b>Coming up</b><span>First-month check-in · 9 Feb</span><span>CPR course · book before 14 Nov</span></div>
+      <button class="btn">Talk to ${esc(brand.name)} privately</button>`;
+  $('#v-aupair').innerHTML = `<div class="stage">
+    <div class="phone"><div class="screen">${appbar('Sofia · au pair')}<div class="appbody">${body}</div>
+      <nav class="appnav">${[['offers', 'Families'], ['chat', 'Messages'], ['stay', 'My stay'], ['docs', 'Documents']].map(([k, l]) => `<button data-as="${k}" aria-current="${astep === k}">${l}</button>`).join('')}</nav></div></div>
+    <div class="guide">
+      <div class="intro"><span class="label">What an au pair sees</span><h2>Au pairs apply to you, get checked once, and are looked after during the stay</h2>
+        <p class="muted">The visa check runs as they type. Try changing the citizenship or age on the phone.</p></div>
+      <ol>${ASTEPS.map(([k, l]) => `<li class="${astep === k ? 'on' : ''}"><button data-as="${k}">${l}</button></li>`).join('')}</ol>
+      <div class="panel small" style="display:flex;flex-direction:column;gap:6px"><b>Built for Australia right now</b>
+        <span>• Working Holiday route check, subclass 417 or 462, by nationality and age cap.</span>
+        <span>• Au pairs already in Australia on a current visa can apply for a new family.</span>
+        <span>• Hours are logged each week and checked against what the family agreed.</span></div>
+    </div></div>`;
+  $('#v-aupair').querySelectorAll('[data-as]').forEach(b => b.onclick = () => { astep = b.dataset.as; renderAupair(); });
+  $('#v-aupair').querySelectorAll('[data-go]').forEach(b => b.onclick = () => { astep = b.dataset.go; renderAupair(); });
+  const nat = $('#a-nat'), age = $('#a-age');
+  const upd = () => { draft.nat = nat.value; draft.age = +age.value; const r = route(draft); const el = $('#a-route'); el.className = 'notice ' + (r.ok ? 'n-ok' : r.warn ? 'n-warn' : 'n-bad'); el.innerHTML = `<b>${r.ok ? 'You can apply for a Working Holiday visa' : 'This route may not work for you'}</b>${esc(r.text)}. ${r.ok ? 'We check your visa before any family sees you.' : 'Ask us about other options.'}`; };
+  if (nat) { nat.onchange = upd; age.oninput = upd; }
+}
+
+// ---------- agency console ----------
+let sub = 'today';
+const SUBS = [['today', 'Today'], ['families', 'Families'], ['aupairs', 'Au pairs'], ['placements', 'Placements'], ['protection', 'Protection'], ['compliance', 'Compliance'], ['reports', 'Reports']];
+function renderAgency() {
+  const views = { today: cToday, families: cFamilies, aupairs: cAupairs, placements: cPlacements, protection: cProtection, compliance: cCompliance, reports: cReports };
+  $('#v-agency').innerHTML = `<nav class="subnav">${SUBS.map(([k, l]) => `<button data-sub="${k}" aria-current="${sub === k}">${l}</button>`).join('')}</nav><div id="cbody">${views[sub]()}</div>`;
+  $('#v-agency').querySelectorAll('[data-sub]').forEach(b => b.onclick = () => { sub = b.dataset.sub; renderAgency(); });
+  wireAgency();
+}
+function cToday() {
+  const count = s => families.filter(f => f.stage === s).length;
+  return `<div class="intro"><h2>Good morning. Here's what needs you today.</h2><p class="muted">Matching, CRM and compliance in one place, for your families and au pairs only.</p></div>
+    <div class="stats">
+      <div class="stat"><span class="label">Families matching</span><b>${count('Matching') + count('Registered')}</b></div>
+      <div class="stat"><span class="label">Placements running</span><b>${count('Placed')}</b></div>
+      <div class="stat"><span class="label">Au pairs approved</span><b>${aupairs.filter(a => a.status === 'approved').length}</b></div>
+      <div class="stat"><span class="label">Fees collected this month</span><b>${aud(brand.fee * 3)}</b></div>
+    </div>
+    <div class="grid2">
+      <div class="panel"><div class="panel-head"><h3>To do</h3><span class="small muted">5 items</span></div><div class="list">
+        ${[['p-bad', 'Review blocked account', 'Same ID as the Nguyen family', 'protection'], ['p-warn', 'Hours over agreement', 'Nguyen placement: 35 h logged, 30 h agreed', 'placements'], ['p-warn', 'CPR expires 14 Nov', 'Camille Durand', 'compliance'], ['p-info', 'Approve new family', 'The Patel family enquired yesterday', 'families'], ['p-info', 'First-month check-in', 'Morgan family, due 5 Jan', 'placements']].map(t => `<button class="row flat" data-sub="${t[3]}" style="grid-template-columns:minmax(0,1fr) auto"><span class="meta"><span class="nm">${t[1]}</span><span class="small muted">${t[2]}</span></span><span class="pill ${t[0]}">Open</span></button>`).join('')}
+      </div></div>
+      <div class="panel"><div class="panel-head"><h3>Au pairs already in Australia</h3><span class="small muted">From the PairMundo network</span></div>
+        <p class="small muted">Au pairs on a current Working Holiday visa who opted in to partner agencies and meet your rules. Invite them to apply.</p>
+        <div class="list" style="margin-top:8px">${[['Maeve O\'Connor', 'Ireland', 26, 'In Sydney, visa to Mar 2027'], ['Julie Martin', 'France', 24, 'In Brisbane, visa to Jun 2027'], ['Hannah Schulz', 'Germany', 23, 'In Cairns, visa to Feb 2027']].map((n, i) => `<div class="row flat"><span class="av" style="background:${COLORS[i + 2]}">${initials(n[0])}</span><span class="meta"><span class="nm">${esc(first(n[0]))} ${esc(n[0].split(' ').pop()[0])}.</span><span class="small muted">${n[2]} · ${n[1]} · ${n[3]}</span></span><span class="end"><button class="btn primary" data-invite="${i}">Invite</button></span></div>`).join('')}</div></div>
+    </div>`;
+}
+function cFamilies() {
+  return `<div class="intro"><h2>Every family, from first enquiry to finished</h2><p class="muted">Move a family along as things happen. Families see au pairs once they've paid your registration. Chatting is always free.</p></div>
+    <div class="board">${STAGES.map(s => { const fs = families.filter(f => f.stage === s); return `<div class="col"><h4>${s}<span class="muted">${fs.length}</span></h4>
+      ${fs.map(f => `<div class="fcard"><b>${esc(f.name)}</b><span class="muted">${esc(f.place)}</span><span>Kids ${esc(f.kids)} · from ${esc(f.start)}</span>
+        <span class="tags">${f.verified ? '<span class="pill p-ok">ID ✓</span>' : '<span class="pill p-warn">ID needed</span>'}${f.fee ? '<span class="pill p-ok">Registered</span>' : '<span class="pill p-mut">Not registered</span>'}${f.placed ? `<span class="pill p-brand">${esc(first(byId(f.placed).name))}</span>` : ''}</span>
+        ${s !== 'Finished' ? `<button class="btn" data-move="${f.id}">Move to ${STAGES[STAGES.indexOf(s) + 1]} →</button>` : ''}</div>`).join('')}</div>`; }).join('')}</div>
+    <p class="small muted" style="margin-top:8px">"Registered" moves automatically when the family pays registration in the app.</p>`;
+}
+function cAupairs() {
+  const ST = { new: ['Needs review', 'p-mut'], interview: ['Interview', 'p-info'], approved: ['Shown to families', 'p-ok'], declined: ['Declined', 'p-bad'] };
+  return `<div class="intro"><h2>Your au pairs, checked against your rules and the visa rules</h2><p class="muted">Open someone to see their checks, documents and history.</p></div>
+    <div class="list">${aupairs.map(a => { const r = route(a); return `<button class="row" data-ap="${a.id}"><span class="av" style="background:${a.color}">${initials(a.name)}</span>
+      <span class="meta"><span class="nm">${esc(a.name)}</span><span class="small muted">${a.age} · ${esc(a.nat)} · ${a.hours.toLocaleString()} h childcare</span>
+      <span class="tags"><span class="pill ${r.ok ? 'p-ok' : r.warn ? 'p-warn' : 'p-bad'}">${esc(r.text)}</span>${a.inAus ? '<span class="pill p-info">In Australia</span>' : ''}</span></span>
+      <span class="end"><span class="pill ${ST[a.status][1]}">${ST[a.status][0]}</span></span></button>`; }).join('')}</div>`;
+}
+function cPlacements() {
+  return `<div class="intro"><h2>Placements running now</h2><p class="muted">Check-ins, hours and documents for every placement. If one ends early, start a rematch here and both sides stay with you.</p></div>
+    <div class="list">${[['nguyen', 1, 'Week 9 of 26', [['p-warn', '35 h logged, 30 agreed'], ['p-ok', 'Check-in done 2 Oct']]], ['morgan', 4, 'Starts 5 Dec', [['p-warn', 'Visa grant waiting'], ['p-ok', 'Agreement signed']]]].map(([fid, aid, when, tags]) => { const f = famById(fid), a = byId(aid); return `<div class="row"><span class="av" style="background:${a.color}">${initials(a.name)}</span>
+      <span class="meta"><span class="nm">${esc(first(a.name))} with ${esc(f.name)}</span><span class="small muted">${esc(f.place)} · ${when}</span><span class="tags">${tags.map(t => `<span class="pill ${t[0]}">${t[1]}</span>`).join('')}</span></span>
+      <span class="end"><button class="btn" data-rematch="${fid}">Start rematch</button></span></div>`; }).join('')}</div>
+    <div id="rematch"></div>`;
+}
+function cProtection() {
+  const T = [['closed', 'Closed network', 'Your families and au pairs only exist in your app. They aren\'t shown on the public PairMundo app unless an au pair chooses that too.'],
+    ['invite', 'Families join by invitation', 'You approve each family before they see anyone.'],
+    ['feeFirst', 'Registration before matches', 'Chat stays free. Families pay your registration fee in the app before they see au pairs, and it counts towards your placement fee. There is no PairMundo fee for your families.'],
+    ['mask', 'Hide contact details in chat', 'Phone numbers, emails, links and social handles are hidden until you confirm the placement.'],
+    ['idRequired', 'ID check for every family', 'One person, one account.'],
+    ['dupes', 'Flag repeat accounts', 'A new account with the same ID, phone or card as an existing one is held for your review.'],
+    ['introLog', 'Introduction log', 'Every time you show an au pair to a family, the date is recorded. Use it as evidence for the private-placement clause in your family contract.']];
+  return `<div class="intro"><h2>Families can't easily go around you</h2><p class="muted">No app can stop someone set on cheating. These make going around you harder than staying, and give you proof if it happens. Switch one off to see what changes in the family app.</p></div>
+    <div class="grid2">
+      <div class="panel">${T.map(([k, n, h]) => `<div class="toggle"><b>${n}</b><button class="switch" role="switch" aria-label="${n}" aria-checked="${settings[k]}" data-set="${k}"></button><span class="hint">${h}</span></div>`).join('')}</div>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div class="panel"><div class="panel-head"><h3>Flagged</h3></div><div class="list">${flags.map(f => `<div class="row flat" style="grid-template-columns:minmax(0,1fr) auto"><span class="meta"><span class="nm">${esc(f.who)}</span><span class="small muted">${esc(f.why)}</span></span><span class="pill ${f.cls}">${esc(f.action)}</span></div>`).join('')}</div></div>
+        <div class="panel"><div class="panel-head"><h3>Introduction log</h3><span class="small muted">Export as PDF for a dispute</span></div>
+          <div class="tablewrap"><table><thead><tr><th>When</th><th>Family</th><th>Au pair</th><th>How</th></tr></thead><tbody>
+          ${intros.map(i => `<tr><td class="num">${i.when}</td><td>${esc(famById(i.fam).name)}</td><td>${esc(byId(i.ap).name)}</td><td>${i.how}</td></tr>`).join('')}</tbody></table></div></div>
+      </div></div>`;
+}
+function cCompliance() {
+  return `<div class="intro"><h2>Documents, visas and hours, checked for you</h2><p class="muted">Reminders go out before anything expires. Hours over the agreement are flagged to you, the family and the au pair.</p></div>
+    <div class="notice n-warn" style="margin-bottom:14px"><b>Working Holiday processing is slow</b>Agencies have reported long waits since 1 July 2026. Start dates in the app use each au pair's real visa status, so families aren't promised dates that can't happen.</div>
+    <div class="grid2">
+      <div class="panel"><div class="panel-head"><h3>Documents</h3></div><div class="tablewrap"><table><thead><tr><th>Au pair</th><th>Document</th><th>Status</th><th>Expiry</th></tr></thead><tbody>
+        ${docs.map(d => `<tr><td>${esc(first(byId(d.ap).name))}</td><td>${esc(d.doc)}</td><td><span class="pill ${d.cls}">${d.state}</span></td><td class="num">${esc(d.exp)}</td></tr>`).join('')}</tbody></table></div></div>
+      <div class="panel"><div class="panel-head"><h3>Rules you place by</h3><span class="small muted">Set with you at setup</span></div>
+        <div class="checks">
+          <div class="check"><span class="ico i-ok">✓</span><span>Working Holiday route, subclass 417 or 462, and age cap</span><span class="small muted">Checked on apply</span></div>
+          <div class="check"><span class="ico i-ok">✓</span><span>Months with one family, and when an au pair can ask for longer</span><span class="small muted">Your rule</span></div>
+          <div class="check"><span class="ico i-ok">✓</span><span>Weekly hours and pocket money</span><span class="small muted">Your rule</span></div>
+          <div class="check"><span class="ico i-ok">✓</span><span>Blue Card, police certificate, first aid</span><span class="small muted">Your rule</span></div>
+          <div class="check"><span class="ico i-ok">✓</span><span>Stay agreement, signed in the app</span><span class="small muted">Your template</span></div>
+          <div class="check"><span class="ico i-ok">✓</span><span>Who approved what, and when</span><span class="small muted">Audit trail</span></div>
+        </div></div>
+    </div>`;
+}
+function cReports() {
+  const rows = [['Jul', 2], ['Aug', 3], ['Sep', 2], ['Oct', 4]];
+  return `<div class="intro"><h2>October at a glance</h2><p class="muted">Sample numbers. Your real reports fill in from the app.</p></div>
+    <div class="stats">
+      <div class="stat"><span class="label">New enquiries</span><b>11</b></div>
+      <div class="stat"><span class="label">Placements started</span><b>4</b></div>
+      <div class="stat"><span class="label">Days from fee to match</span><b>18</b></div>
+      <div class="stat"><span class="label">Rematches</span><b>1</b></div>
+    </div>
+    <div class="panel"><div class="panel-head"><h3>Placements started per month</h3></div>
+      <div style="display:flex;flex-direction:column;gap:8px">${rows.map(r => `<div style="display:grid;grid-template-columns:40px minmax(0,1fr) 24px;gap:10px;align-items:center"><span class="small muted">${r[0]}</span><div class="bar" style="height:14px"><i style="width:${r[1] * 22}%"></i></div><b class="small">${r[1]}</b></div>`).join('')}</div>
+      <p class="small muted" style="margin-top:10px">Export families, au pairs and notes as a spreadsheet at any time. Your data is yours.</p></div>`;
+}
+function wireAgency() {
+  const root = $('#v-agency');
+  root.querySelectorAll('#cbody [data-sub]').forEach(b => b.onclick = () => { sub = b.dataset.sub; renderAgency(); });
+  root.querySelectorAll('[data-move]').forEach(b => b.onclick = () => {
+    const f = famById(b.dataset.move); const i = STAGES.indexOf(f.stage);
+    if (STAGES[i + 1] === 'Registered' && !f.verified) { toast(`${f.name} need to pass the ID check first`); return; }
+    f.stage = STAGES[i + 1]; if (f.stage === 'Registered') f.fee = true;
+    toast(`${f.name} moved to ${f.stage}`); renderAgency();
+  });
+  root.querySelectorAll('[data-set]').forEach(b => b.onclick = () => { settings[b.dataset.set] = !settings[b.dataset.set]; renderAgency(); });
+  root.querySelectorAll('[data-invite]').forEach(b => b.onclick = () => { b.disabled = true; b.textContent = 'Invited'; toast('Invitation sent. They see your agency\'s application form.'); });
+  root.querySelectorAll('[data-ap]').forEach(b => b.onclick = () => openAp(+b.dataset.ap));
+  root.querySelectorAll('[data-rematch]').forEach(b => b.onclick = () => {
+    const f = famById(b.dataset.rematch);
+    const pool = aupairs.filter(a => a.status === 'approved' && a.id !== f.placed);
+    $('#rematch').innerHTML = `<div class="panel" style="margin-top:14px"><div class="panel-head"><h3>Rematch for ${esc(f.name)}</h3><span class="small muted">The family keeps their paid package</span></div>
+      <p class="small muted" style="margin-bottom:8px">Approved au pairs who can start soonest. Au pairs already in Australia are first.</p>
+      <div class="list">${pool.sort((x, y) => y.inAus - x.inAus).map(a => `<div class="row flat"><span class="av" style="background:${a.color}">${initials(a.name)}</span><span class="meta"><span class="nm">${esc(a.name)}</span><span class="small muted">${esc(a.visa)}</span></span><span class="end"><button class="btn primary" data-propose="${a.id}">Propose</button></span></div>`).join('')}</div></div>`;
+    $('#rematch').querySelectorAll('[data-propose]').forEach(p => p.onclick = () => { p.disabled = true; p.textContent = 'Proposed'; intros.unshift({ when: 'Today', fam: f.id, ap: +p.dataset.propose, how: 'Rematch proposed by agency' }); toast('Profile sent to the family and logged.'); });
+  });
+}
+function openAp(id) {
+  const a = byId(id), r = route(a);
+  const mine = docs.filter(d => d.ap === id);
+  $('#overlay').innerHTML = `<div class="scrim" data-close></div><aside class="drawer" role="dialog" aria-label="${esc(a.name)}">
+    <div style="display:flex;gap:12px;align-items:center"><span class="av" style="background:${a.color};width:56px;height:56px;font-size:20px">${initials(a.name)}</span><div><h2>${esc(a.name)}</h2><div class="muted">${a.age} · ${esc(a.from)}, ${esc(a.nat)}</div></div><button class="x" data-close>Close</button></div>
+    <div class="notice ${r.ok ? 'n-ok' : r.warn ? 'n-warn' : 'n-bad'}"><b>Visa route</b>${esc(r.text)} · ${esc(a.visa)}</div>
+    <p>${esc(a.about)}</p>
+    <div><div class="label" style="margin-bottom:6px">Documents</div>${mine.length ? `<div class="checks">${mine.map(d => `<div class="check"><span class="ico ${d.cls === 'p-ok' ? 'i-ok' : d.cls === 'p-bad' ? 'i-bad' : 'i-warn'}">${d.cls === 'p-ok' ? '✓' : '!'}</span><span>${esc(d.doc)}</span><span class="small muted">${esc(d.exp)}</span></div>`).join('')}</div>` : '<p class="small muted">None uploaded yet.</p>'}</div>
+    <div><div class="label" style="margin-bottom:6px">History</div><div class="small" style="display:flex;flex-direction:column;gap:4px"><span>• Applied through your app</span><span>• References phoned: 2 of 2 confirmed</span>${a.status === 'approved' ? '<span>• Approved and shown to families</span>' : ''}</div></div>
+    <div class="actions">${a.status !== 'approved' ? `<button class="btn primary" data-act="approve" ${r.ok ? '' : 'disabled'}>Approve and show to families</button>` : '<button class="btn" data-act="hide">Hide from families</button>'}<button class="btn danger" data-act="decline">Decline kindly</button></div>
+  </aside>`;
+  $('#overlay').querySelectorAll('[data-close]').forEach(b => b.onclick = () => { $('#overlay').innerHTML = ''; renderAgency(); });
+  $('#overlay').querySelectorAll('[data-act]').forEach(b => b.onclick = () => {
+    a.status = { approve: 'approved', hide: 'interview', decline: 'declined' }[b.dataset.act];
+    toast(a.status === 'approved' ? `${first(a.name)} now appears in your families' app` : 'Saved'); openAp(id);
+  });
+}
+
+// ---------- branding ----------
+function renderBrand() {
+  const palette = ['#c2410c', '#be185d', '#7c3aed', '#1d4ed8', '#0f766e', '#15803d', '#b45309', '#334155'];
+  $('#v-brand').innerHTML = `<div class="intro"><h2>Your app, your name</h2><p class="muted">Families and au pairs see your agency everywhere. PairMundo only appears in the small print. Changes here show across the whole demo.</p></div>
+    <div class="grid2">
+      <div class="panel" style="display:flex;flex-direction:column;gap:12px">
+        <div class="field"><label for="b-name">Agency name</label><input id="b-name" value="${esc(brand.name)}" maxlength="40"></div>
+        <div class="field"><label for="b-tag">Tagline</label><input id="b-tag" value="${esc(brand.tag)}" maxlength="70"></div>
+        <div class="field"><label for="b-logo">Logo</label><input id="b-logo" type="file" accept="image/*"><span class="small muted">Stays in your browser. Nothing is uploaded.</span></div>
+        <div class="field"><label>Brand colour</label><div class="swatches">${palette.map(c => `<button class="sw" style="background:${c}" data-col="${c}" aria-label="Colour ${c}" aria-pressed="${c === brand.color}"></button>`).join('')}<input id="b-col" type="color" value="${brand.color}" aria-label="Custom colour" style="width:34px;height:34px;border:0;padding:0;background:none"></div></div>
+        <div class="field"><label for="b-fee">Your placement fee, including registration (AUD, for the demo)</label><input id="b-fee" type="number" min="0" step="50" value="${brand.fee}"></div><div class="field"><label for="b-reg">Registration fee (AUD)</label><input id="b-reg" type="number" min="0" step="50" value="${brand.reg}"></div>
+      </div>
+      <div class="panel"><h3 style="margin-bottom:8px">What's in the white-label version</h3>
+        <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px">
+          <li><b>Matching:</b> your pre-screen rules, a branded application, match suggestions per family, video interviews, ID checks and two-way reviews</li>
+          <li><b>CRM:</b> family and au pair pipelines, fees paid to you in the app, placements board, reminders, rematch and reports</li>
+          <li><b>Compliance:</b> Working Holiday route check, documents with expiry reminders, signed stay agreements, an hours log and an audit trail</li>
+          <li><b>Protection:</b> closed network, invitation-only families, registration before matches (chat stays free), hidden contact details, repeat-account flags and an introduction log</li>
+          <li><b>Extra au pairs:</b> PairMundo au pairs who opted in to partner agencies, including those already in Australia</li>
+          <li>Runs on the web from day one, with your own iPhone and Android apps to follow</li>
+        </ul></div>
+    </div>`;
+  $('#b-name').oninput = e => { brand.name = e.target.value; applyBrand(); };
+  $('#b-tag').oninput = e => { brand.tag = e.target.value; applyBrand(); };
+  $('#b-fee').oninput = e => { brand.fee = Math.max(0, +e.target.value || 0); applyBrand(); };
+  $('#b-reg').oninput = e => { brand.reg = Math.min(brand.fee, Math.max(0, +e.target.value || 0)); applyBrand(); };
+  $('#b-col').oninput = e => { brand.color = e.target.value; applyBrand(); };
+  $('#b-logo').onchange = e => { const f = e.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = () => { brand.logo = r.result; applyBrand(); toast('Logo added'); }; r.readAsDataURL(f); };
+  $('#v-brand').querySelectorAll('[data-col]').forEach(b => b.onclick = () => { brand.color = b.dataset.col; applyBrand(); renderBrand(); });
+}
+
+applyBrand();
+render();
+</script>
+</body>
+</html>
