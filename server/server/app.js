@@ -192,6 +192,22 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     }
     return safe;
   };
+  // Where a family is with its agency. A family the agency hasn't moved yet is an enquiry.
+  const FAMILY_STAGES = ['enquiry', 'approved', 'matching', 'matched', 'placed', 'finished', 'not_going'];
+  const familyStage = (fam, a = agencySpace(fam)) => {
+    const row = a ? db.prepare('SELECT * FROM agency_family_stages WHERE family_id = ? AND ambassador_id = ?').get(fam.id, a.id) : null;
+    return { stage: row?.stage ?? 'enquiry', fee_paid: !!row?.fee_paid, note: row?.note ?? null, updated_at: row?.updated_at ?? null };
+  };
+  /** A family whose agency approves families first, and hasn't approved this one yet. */
+  const awaitingAgency = (u) => {
+    if (u?.role !== 'family') return null;
+    const a = agencySpace(u);
+    return a?.approve_families && ['enquiry', 'not_going'].includes(familyStage(u, a).stage) ? a : null;
+  };
+  const mustBeApproved = (u) => {
+    const a = awaitingAgency(u);
+    if (a) throw new HttpError(403, 'Your agency approves your account first. They will be in touch soon.', 'agency_approval');
+  };
   /** Records when a family and an au pair in the same agency space first matched. */
   const logIntroduction = (x, y, how) => {
     const [fam, ap] = x.role === 'family' ? [x, y] : [y, x];
@@ -925,6 +941,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
 
   // ---------- search & matching ----------
   const findCandidates = (me, q, discover = false) => {
+    const waiting = awaitingAgency(me);
+    if (waiting) return { total: 0, results: [], awaiting_agency: waiting.name };
     const myProfile = getProfile(me);
     const lockLikes = needsPass(me);
     const targetRole = me.role === 'family' ? 'aupair' : 'family';
@@ -994,7 +1012,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const t = getUser(target_id);
     if (!t || t.suspended || t.role === me.role || t.role === 'admin') throw bad('You can only swipe on the other side (au pair ↔ host family).');
     if (blockedBetween(me.id, t.id) || closedApart(me, t)) throw notFound('Profile not found.');
-    if (direction !== 'pass') mustBeReady(me);
+    if (direction !== 'pass') { mustBeReady(me); mustBeApproved(me); }
     db.prepare('INSERT OR REPLACE INTO swipes (user_id, target_id, direction) VALUES (?,?,?)').run(me.id, t.id, direction);
     const theirs = db.prepare("SELECT * FROM match_requests WHERE from_user = ? AND to_user = ? AND status = 'pending'").get(t.id, me.id);
     if (direction === 'pass') {
@@ -1519,6 +1537,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (!to || to.suspended || to.role === req.user.role || to.role === 'admin') throw bad('You can only contact the other side (au pair ↔ host family).');
     if (blockedBetween(req.user.id, to.id) || closedApart(req.user, to)) throw notFound('Profile not found.');
     mustBeReady(req.user);
+    mustBeApproved(req.user);
     const open = db.prepare(`SELECT id FROM match_requests WHERE status IN ('pending','accepted')
         AND ((from_user = ? AND to_user = ?) OR (from_user = ? AND to_user = ?))`).get(req.user.id, to.id, to.id, req.user.id);
     if (open) throw new HttpError(409, 'You already have an open request with this person.');
@@ -2083,6 +2102,44 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     return { agency: a.name };
   }));
 
+  // ---------- an agency's families ----------
+  const myAgency = (req) => {
+    const a = req.user.role === 'agency' ? db.prepare("SELECT * FROM ambassadors WHERE user_id = ? AND kind = 'agency' AND active = 1").get(req.user.id) : null;
+    if (!a) throw forbidden('Only a partner agency account linked to its code can do this.');
+    return a;
+  };
+  const agencyFamily = (a, u) => {
+    const placement = db.prepare(`SELECT p.status, p.start_date, au.name aupair_name FROM placements p JOIN users au ON au.id = p.aupair_id
+      WHERE p.family_id = ? ORDER BY p.created_at DESC, p.id DESC LIMIT 1`).get(u.id);
+    return { id: u.id, name: u.name, email: u.email, city: u.city, country: u.country, joined: u.created_at, id_verified: !!u.id_verified,
+      matches: db.prepare("SELECT COUNT(*) n FROM match_requests WHERE status = 'accepted' AND (from_user = ? OR to_user = ?)").get(u.id, u.id).n,
+      placement: placement ?? null, ...familyStage(u, a) };
+  };
+  // Every family who joined with the agency's code, with where they are and the agency's own notes.
+  api.get('/agency/families', requireRole('agency'), wrap((req) => {
+    const a = myAgency(req);
+    const families = db.prepare("SELECT * FROM users WHERE ref_code = ? AND role = 'family' ORDER BY created_at DESC, id DESC LIMIT 1000").all(a.code).map((u) => agencyFamily(a, u));
+    return { stages: FAMILY_STAGES, approve_families: !!a.approve_families, families };
+  }));
+  api.post('/agency/families/:id', requireRole('agency'), wrap((req) => {
+    const a = myAgency(req);
+    const u = getUser(req.params.id);
+    if (!u || u.role !== 'family' || agencySpace(u)?.id !== a.id) throw notFound();
+    const cur = familyStage(u, a);
+    const b = req.body || {};
+    const stage = 'stage' in b ? String(b.stage) : cur.stage;
+    if (!FAMILY_STAGES.includes(stage)) throw bad('Unknown stage.');
+    const feePaid = 'fee_paid' in b ? (b.fee_paid ? 1 : 0) : Number(cur.fee_paid);
+    const note = 'note' in b ? str(b.note, 2000) || null : cur.note;
+    db.prepare(`INSERT INTO agency_family_stages (family_id, ambassador_id, stage, fee_paid, note) VALUES (?,?,?,?,?)
+      ON CONFLICT (family_id) DO UPDATE SET ambassador_id = excluded.ambassador_id, stage = excluded.stage, fee_paid = excluded.fee_paid, note = excluded.note, updated_at = datetime('now')`)
+      .run(u.id, a.id, stage, feePaid, note);
+    if (a.approve_families && ['enquiry', 'not_going'].includes(cur.stage) && !['enquiry', 'not_going'].includes(stage)) {
+      notify(u.id, 'agency', '{agency} approved your account. You can meet their au pairs now.', { agency: a.name }, '#/discover');
+    }
+    return agencyFamily(a, u);
+  }));
+
   // An ambassador's own numbers, shown in their app.
   api.get('/me/ambassador', requireAuth, wrap((req) => {
     const a = db.prepare('SELECT * FROM ambassadors WHERE user_id = ? AND active = 1').get(req.user.id);
@@ -2091,7 +2148,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (a.kind === 'agency') {
       return { kind: 'agency', code: a.code, name: a.name, link: referralLink(a),
         this_month: agencyStats(a, new Date().toISOString().slice(0, 7)), total: agencyStats(a),
-        space: { closed_network: !!a.closed_network, mask_contacts: !!a.mask_contacts, covers_pass: !!a.covers_pass,
+        space: { closed_network: !!a.closed_network, mask_contacts: !!a.mask_contacts, covers_pass: !!a.covers_pass, approve_families: !!a.approve_families,
           families: db.prepare("SELECT COUNT(*) n FROM users WHERE ref_code = ? AND role = 'family'").get(a.code).n },
         introductions: db.prepare('SELECT family_name, aupair_name, how, created_at FROM agency_introductions WHERE ambassador_id = ? ORDER BY created_at DESC, id DESC LIMIT 200').all(a.id),
         flags: db.prepare('SELECT user_name, kind, created_at FROM agency_flags WHERE ambassador_id = ? ORDER BY created_at DESC, id DESC LIMIT 100').all(a.id) };
@@ -2318,7 +2375,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     return { name, country: text('country', 2)?.toUpperCase() ?? null, contact: text('contact', 200), notes: text('notes', 2000), user_id: userId,
       active: 'active' in body ? (body.active ? 1 : 0) : Number(a.active ?? 1), gift_days: giftDays, kind, invite_email: inviteEmail,
       flyer_rate: kr('flyer_rate', 'Pay per flyer'), family_bonus: kr('family_bonus', 'Pay per family'), bonus_days: bonusDays, areas: JSON.stringify(areas),
-      ...Object.fromEntries(['closed_network', 'mask_contacts', 'covers_pass'].map((k) => [k, k in body ? (body[k] ? 1 : 0) : Number(a[k] ?? 0)])) };
+      ...Object.fromEntries(['closed_network', 'mask_contacts', 'covers_pass', 'approve_families'].map((k) => [k, k in body ? (body[k] ? 1 : 0) : Number(a[k] ?? 0)])) };
   };
   /** Emails someone without an account an invite to create one, so they can see their code's numbers. */
   const sendAmbassadorInvite = (a) => {
@@ -2357,8 +2414,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (!code) throw bad('A code is 3 to 24 letters, numbers or dashes, like ANACO.');
     if (db.prepare('SELECT 1 FROM ambassadors WHERE code = ?').get(code)) throw new HttpError(409, 'That code is already taken.');
     const f = ambassadorFields(req.body);
-    const r = db.prepare('INSERT INTO ambassadors (code, name, country, contact, notes, user_id, active, gift_days, kind, invite_email, flyer_rate, family_bonus, bonus_days, areas, closed_network, mask_contacts, covers_pass) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-      .run(code, f.name, f.country, f.contact, f.notes, f.user_id, f.active, f.gift_days, f.kind, f.invite_email, f.flyer_rate, f.family_bonus, f.bonus_days, f.areas, f.closed_network, f.mask_contacts, f.covers_pass);
+    const r = db.prepare('INSERT INTO ambassadors (code, name, country, contact, notes, user_id, active, gift_days, kind, invite_email, flyer_rate, family_bonus, bonus_days, areas, closed_network, mask_contacts, covers_pass, approve_families) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+      .run(code, f.name, f.country, f.contact, f.notes, f.user_id, f.active, f.gift_days, f.kind, f.invite_email, f.flyer_rate, f.family_bonus, f.bonus_days, f.areas, f.closed_network, f.mask_contacts, f.covers_pass, f.approve_families);
     if (f.user_id) partnerLinked(f.user_id, code);
     if (f.invite_email) sendAmbassadorInvite({ ...f, code });
     res.status(201);
@@ -2369,8 +2426,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   api.post('/admin/ambassadors/:id', requireRole('admin'), wrap((req) => {
     const a = adminAmbassador(req.params.id, null, false);
     const f = ambassadorFields(req.body || {}, a);
-    db.prepare('UPDATE ambassadors SET name = ?, country = ?, contact = ?, notes = ?, user_id = ?, active = ?, gift_days = ?, kind = ?, invite_email = ?, flyer_rate = ?, family_bonus = ?, bonus_days = ?, areas = ?, closed_network = ?, mask_contacts = ?, covers_pass = ? WHERE id = ?')
-      .run(f.name, f.country, f.contact, f.notes, f.user_id, f.active, f.gift_days, f.kind, f.invite_email, f.flyer_rate, f.family_bonus, f.bonus_days, f.areas, f.closed_network, f.mask_contacts, f.covers_pass, a.id);
+    db.prepare('UPDATE ambassadors SET name = ?, country = ?, contact = ?, notes = ?, user_id = ?, active = ?, gift_days = ?, kind = ?, invite_email = ?, flyer_rate = ?, family_bonus = ?, bonus_days = ?, areas = ?, closed_network = ?, mask_contacts = ?, covers_pass = ?, approve_families = ? WHERE id = ?')
+      .run(f.name, f.country, f.contact, f.notes, f.user_id, f.active, f.gift_days, f.kind, f.invite_email, f.flyer_rate, f.family_bonus, f.bonus_days, f.areas, f.closed_network, f.mask_contacts, f.covers_pass, f.approve_families, a.id);
     if (f.user_id && f.user_id !== a.user_id) partnerLinked(f.user_id, a.code);
     // Saving the form again doesn't re-send; a new email (or ?resend=1) does.
     if (f.invite_email && (f.invite_email !== a.invite_email || req.query.resend)) sendAmbassadorInvite({ ...f, code: a.code });

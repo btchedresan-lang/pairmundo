@@ -2038,3 +2038,48 @@ test('agency spaces: closed network, hidden contact details, introduction log an
   await call(admin, 'POST', `/admin/ambassadors/${amb.id ?? testDb.prepare("SELECT id FROM ambassadors WHERE code = 'DREAMDEMO'").get().id}`, { closed_network: false });
   assert.ok((await call(outsiderFam.token, 'GET', '/search?limit=100')).body.results.some((x) => x.user.id === ap.id));
 });
+
+test('agency approval: families wait for their agency, which tracks each one through its stages', async () => {
+  const { hashPassword } = await import('../server/auth.js');
+  testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
+  let r = await call(admin, 'POST', '/admin/ambassadors', { code: 'GATEDEMO', name: 'Gate Nannies', country: 'au', kind: 'agency', closed_network: true, approve_families: true });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.equal(r.body.approve_families, 1);
+  const join = async (email, role) => {
+    const res = await call(null, 'POST', '/auth/register', { email, password: 'password123', role, name: `${role} ${email}`, country: 'AU', ref_code: 'GATEDEMO' });
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    await call(res.body.token, 'POST', '/auth/verify-email', { code: lastCode(email) });
+    await completeProfile(res.body.token, res.body.user.id, email);
+    return { token: res.body.token, id: res.body.user.id };
+  };
+  const fam = await join('approvefam@test.io', 'family');
+  const ap = await join('approveap@test.io', 'aupair');
+
+  // Until the agency approves them, the family sees nobody and can't like or write to anyone.
+  r = await call(fam.token, 'GET', '/discover');
+  assert.deepEqual([r.body.results.length, r.body.awaiting_agency], [0, 'Gate Nannies']);
+  assert.equal((await call(fam.token, 'POST', '/swipe', { target_id: ap.id, direction: 'like' })).body.code, 'agency_approval');
+  assert.equal((await call(fam.token, 'POST', '/requests', { to_user: ap.id })).status, 403);
+  // The agency's au pairs aren't held back.
+  assert.equal((await call(ap.token, 'GET', '/search?limit=100')).body.awaiting_agency, undefined);
+
+  // Only the agency's own account sees and moves its families.
+  const boss = await register('boss@gatenannies.test', 'agency', 'AU', 'Boss', { complete: false });
+  assert.equal((await call(boss.token, 'GET', '/agency/families')).status, 403);
+  testDb.prepare("UPDATE ambassadors SET user_id = ? WHERE code = 'GATEDEMO'").run(boss.id);
+  r = await call(boss.token, 'GET', '/agency/families');
+  assert.equal(r.body.approve_families, true);
+  assert.deepEqual(r.body.families.map((f) => [f.id, f.stage, f.fee_paid]), [[fam.id, 'enquiry', false]]);
+  assert.equal((await call(boss.token, 'POST', `/agency/families/${ap.id}`, { stage: 'approved' })).status, 404);
+  assert.equal((await call(boss.token, 'POST', `/agency/families/${fam.id}`, { stage: 'nope' })).status, 400);
+  r = await call(boss.token, 'POST', `/agency/families/${fam.id}`, { stage: 'approved', fee_paid: true, note: 'Paid the registration fee' });
+  assert.deepEqual([r.body.stage, r.body.fee_paid, r.body.note], ['approved', true, 'Paid the registration fee']);
+  r = await call(boss.token, 'POST', `/agency/families/${fam.id}`, { stage: 'matching' });
+  assert.deepEqual([r.body.stage, r.body.fee_paid, r.body.note], ['matching', true, 'Paid the registration fee'], 'other fields are kept');
+  assert.ok((await call(fam.token, 'GET', '/notifications')).body.notifications?.some((n) => /approved your account/.test(n.body ?? n.text ?? JSON.stringify(n))));
+
+  // Approved, the family meets the agency's au pairs.
+  assert.ok((await call(fam.token, 'GET', '/discover')).body.results.some((x) => x.user.id === ap.id));
+  assert.equal((await call(fam.token, 'POST', '/swipe', { target_id: ap.id, direction: 'like' })).status, 200);
+});
