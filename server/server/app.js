@@ -7,7 +7,7 @@ import { hashPassword, verifyPassword, createSession, sessionMiddleware, require
 import { scoreMatch, checkCompliance, ageOn } from './matching.js';
 import { PROGRAMS, REVIEW_CRITERIA, familyDocuments, placementTaskList, visaRoute } from './programs.js';
 import { buildAgreement, buildHostLetter, cleanTerms, defaultTerms, REQUIRED_TERMS } from './agreement.js';
-import { createMailer, agencyLeadEmail, ambassadorInviteEmail, codeEmail, launchEmail, profileInviteEmail, referenceEmail, waitlistEmail } from './mailer.js';
+import { createMailer, agencyLeadEmail, agencyPartnerInviteEmail, ambassadorInviteEmail, codeEmail, launchEmail, profileInviteEmail, referenceEmail, waitlistEmail } from './mailer.js';
 import { countryName, pickLang, t as translate } from './i18n.js';
 import { createCheckout, createIdentity, verifyWebhook } from './identity.js';
 import { createRevenueCat, storeName, webhookAuthorized } from './revenuecat.js';
@@ -164,10 +164,24 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   /** The partner agency whose space a family or au pair belongs to, if any. */
   const agencySpace = (u) => (u?.ref_code && ['aupair', 'family'].includes(u.role)
     ? db.prepare("SELECT * FROM ambassadors WHERE code = ? AND kind = 'agency' AND active = 1").get(u.ref_code) ?? null : null);
-  /** A closed agency space keeps its members to itself: they only meet each other, and outsiders don't see them. */
+  // The agency network (agencies finding partners, sharing members, showing affiliations) stays off until AGENCY_NETWORK=on.
+  const networkOn = () => process.env.AGENCY_NETWORK === 'on';
+  /** The agencies an agency has an accepted partnership with. */
+  const partnersOf = (a) => (a && networkOn() ? db.prepare(`SELECT b.* FROM agency_partnerships p
+      JOIN ambassadors b ON b.id = CASE WHEN p.from_id = ? THEN p.to_id ELSE p.from_id END
+      WHERE p.status = 'accepted' AND (p.from_id = ? OR p.to_id = ?) AND b.active = 1 AND b.kind = 'agency'`).all(a.id, a.id, a.id) : []);
+  const arePartners = (a, b) => !!a && !!b && partnersOf(a).some((x) => x.id === b.id);
+  /** A closed agency space keeps its members to itself: they only meet each other (and its partner agencies' members),
+   *  and outsiders don't see them. */
   const closedApart = (a, b) => {
     const sa = agencySpace(a), sb = agencySpace(b);
-    return (!!sa?.closed_network || !!sb?.closed_network) && sa?.id !== sb?.id;
+    return (!!sa?.closed_network || !!sb?.closed_network) && sa?.id !== sb?.id && !arePartners(sa, sb);
+  };
+  /** Checked memberships of an au pair's agency, shown next to "Prepared by". */
+  const agencyBadges = (u) => {
+    if (!networkOn() || u.role !== 'aupair' || !u.ref_code) return [];
+    return db.prepare(`SELECT f.org_name FROM agency_affiliations f JOIN ambassadors a ON a.id = f.ambassador_id
+      WHERE a.code = ? AND a.kind = 'agency' AND a.active = 1 AND f.status = 'verified' ORDER BY f.org_name`).all(u.ref_code).map((r) => r.org_name);
   };
   const confirmedPlacementBetween = (a, b) => !!db.prepare(`SELECT 1 FROM placements WHERE status IN ('confirmed', 'active', 'completed')
     AND ((aupair_id = ? AND family_id = ?) OR (aupair_id = ? AND family_id = ?))`).get(a, b, b, a);
@@ -211,16 +225,18 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   /** Records when a family and an au pair in the same agency space first matched. */
   const logIntroduction = (x, y, how) => {
     const [fam, ap] = x.role === 'family' ? [x, y] : [y, x];
-    const a = agencySpace(fam);
-    if (!a || fam.role !== 'family' || ap.role !== 'aupair' || agencySpace(ap)?.id !== a.id) return;
-    db.prepare('INSERT OR IGNORE INTO agency_introductions (ambassador_id, family_id, aupair_id, family_name, aupair_name, how) VALUES (?,?,?,?,?,?)')
-      .run(a.id, fam.id, ap.id, fam.name, ap.name, how);
+    const a = agencySpace(fam), b = agencySpace(ap);
+    if (!a || fam.role !== 'family' || ap.role !== 'aupair' || !b) return;
+    const log = db.prepare('INSERT OR IGNORE INTO agency_introductions (ambassador_id, family_id, aupair_id, family_name, aupair_name, how, partner_name) VALUES (?,?,?,?,?,?,?)');
+    if (a.id === b.id) log.run(a.id, fam.id, ap.id, fam.name, ap.name, how, null);
+    // A family from one agency and an au pair from its partner: both agencies keep the record.
+    else if (arePartners(a, b)) { log.run(a.id, fam.id, ap.id, fam.name, ap.name, how, b.name); log.run(b.id, fam.id, ap.id, fam.name, ap.name, how, a.name); }
   };
   /** A member as `viewer` may see them. With no viewer, only the short name is shown. */
   const publicUser = (u, viewer = null) => u && ({
     id: u.id, role: u.role, name: seesFullName(viewer, u) ? u.name : shortName(u.name), country: u.country, city: u.city, photo_url: photosOf(u)[0] || null, photos: photosOf(u),
     verification: { id: !!u.id_verified, references: !!u.references_checked, background: !!u.background_checked },
-    agency: agencyOf(u),
+    agency: agencyOf(u), agency_badges: agencyBadges(u),
     member_since: u.created_at, last_active_at: u.last_active_at,
   });
 
@@ -952,9 +968,15 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       "(json_array_length(coalesce(u.photos, '[]')) > 0 OR u.photo_url IS NOT NULL)", "trim(coalesce(p.bio, '')) <> ''"];
     const params = [targetRole, me.id, me.id];
     // A closed agency space: its members only meet each other, and nobody outside sees them.
+    // Partner agencies share their members with each other.
     const space = agencySpace(me);
-    if (space?.closed_network) { where.push('u.ref_code = ?'); params.push(space.code); }
-    else { where.push("(u.ref_code IS NULL OR u.ref_code NOT IN (SELECT code FROM ambassadors WHERE kind = 'agency' AND active = 1 AND closed_network = 1))"); }
+    const shared = [space, ...partnersOf(space)].filter(Boolean).map((a) => a.code);
+    const marks = shared.map(() => '?').join(',');
+    if (space?.closed_network) { where.push(`u.ref_code IN (${marks})`); params.push(...shared); }
+    else {
+      where.push(`(u.ref_code IS NULL OR u.ref_code NOT IN (SELECT code FROM ambassadors WHERE kind = 'agency' AND active = 1 AND closed_network = 1)${shared.length ? ` OR u.ref_code IN (${marks})` : ''})`);
+      params.push(...shared);
+    }
     if (q.country) { where.push('u.country = ?'); params.push(String(q.country).toUpperCase()); }
     if (q.nationality && targetRole === 'aupair') { where.push('p.nationality = ?'); params.push(String(q.nationality).toUpperCase()); }
     if (q.verified === '1') where.push('u.id_verified = 1');
@@ -2140,6 +2162,200 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     return agencyFamily(a, u);
   }));
 
+  // ---------- the agency network ----------
+  // Agencies find partner agencies (a sending agency with au pairs, a host agency with families), invite agencies that
+  // aren't on PairMundo yet, and share their members once a partnership is accepted. Off until AGENCY_NETWORK=on.
+  const NETWORK_SIDES = ['sending', 'host', 'both'];
+  // Organisations an agency can show it belongs to. PairMundo checks each one before it shows as a badge.
+  const AFFILIATION_ORGS = {
+    iapa: ['IAPA', 'IAPA (International Au Pair Association)'],
+    wyse: ['WYSE', 'WYSE Travel Confederation'],
+    bapaa: ['BAPAA', 'BAPAA (British Au Pair Agencies Association)'],
+    ral: ['Gütegemeinschaft Au pair', 'Gütegemeinschaft Au pair (RAL quality mark, Germany)'],
+    ufaap: ['UFAAP', 'UFAAP (Union Française des Agences Au Pair)'],
+    j1: ['J-1 sponsor', 'US State Department designated J-1 au pair sponsor'],
+    other: [null, 'Another organisation'],
+  };
+  const myNetworkAgency = (req) => { if (!networkOn()) throw notFound(); return myAgency(req); };
+  const verifiedBadges = (a) => db.prepare("SELECT org_name FROM agency_affiliations WHERE ambassador_id = ? AND status = 'verified' ORDER BY org_name").all(a.id).map((r) => r.org_name);
+  /** How another agency shows to an agency: its listing, checked badges, and where the two stand. */
+  const networkCard = (a, viewer) => {
+    const link = viewer ? db.prepare(`SELECT * FROM agency_partnerships WHERE status IN ('pending', 'accepted')
+      AND ((from_id = ? AND to_id = ?) OR (from_id = ? AND to_id = ?)) ORDER BY id DESC LIMIT 1`).get(viewer.id, a.id, a.id, viewer.id) : null;
+    return { id: a.id, name: a.name, country: a.country, side: a.network_side, countries: json.parse(a.network_countries), about: a.network_about,
+      badges: verifiedBadges(a), aupairs: db.prepare("SELECT COUNT(*) n FROM users WHERE ref_code = ? AND role = 'aupair'").get(a.code).n,
+      families: db.prepare("SELECT COUNT(*) n FROM users WHERE ref_code = ? AND role = 'family'").get(a.code).n,
+      partnership: link ? { id: link.id, status: link.status, from_me: link.from_id === viewer.id, since: link.responded_at } : null };
+  };
+  /** Placements where one side is the agency's and the other its partner's. */
+  const sharedPlacements = (a) => {
+    const partners = partnersOf(a);
+    if (!partners.length) return [];
+    const codes = partners.map((x) => x.code);
+    const marks = codes.map(() => '?').join(',');
+    return db.prepare(`SELECT p.id, p.status, p.start_date, f.name family_name, f.ref_code family_code, au.name aupair_name, au.ref_code aupair_code
+      FROM placements p JOIN users f ON f.id = p.family_id JOIN users au ON au.id = p.aupair_id
+      WHERE (f.ref_code = ? AND au.ref_code IN (${marks})) OR (au.ref_code = ? AND f.ref_code IN (${marks}))
+      ORDER BY p.created_at DESC, p.id DESC LIMIT 200`).all(a.code, ...codes, a.code, ...codes)
+      .map((p) => {
+        const mineFamily = p.family_code?.toUpperCase() === a.code.toUpperCase();
+        const partner = partners.find((x) => x.code.toUpperCase() === (mineFamily ? p.aupair_code : p.family_code)?.toUpperCase());
+        // The partner's member shows by short name, like anywhere else before a placement is confirmed.
+        return { id: p.id, status: p.status, start_date: p.start_date, partner: partner?.name ?? null, yours: mineFamily ? 'family' : 'aupair',
+          family_name: mineFamily ? p.family_name : shortName(p.family_name), aupair_name: mineFamily ? shortName(p.aupair_name) : p.aupair_name };
+      });
+  };
+  const partnershipRow = (p, a) => {
+    const other = db.prepare('SELECT * FROM ambassadors WHERE id = ?').get(p.from_id === a.id ? p.to_id : p.from_id);
+    return { id: p.id, status: p.status, message: p.message, created_at: p.created_at, responded_at: p.responded_at,
+      agency: other ? networkCard(other, null) : null, invite_email: other ? null : p.invite_email, invite_name: other ? null : p.invite_name };
+  };
+  api.get('/agency/network', requireRole('agency'), wrap((req) => {
+    const a = myNetworkAgency(req);
+    const rows = db.prepare("SELECT * FROM agency_partnerships WHERE (from_id = ? OR to_id = ?) AND status IN ('pending', 'accepted') ORDER BY id DESC").all(a.id, a.id);
+    return {
+      listing: { listed: !!a.network_listed, side: a.network_side, countries: json.parse(a.network_countries), about: a.network_about },
+      partners: rows.filter((p) => p.status === 'accepted').map((p) => partnershipRow(p, a)),
+      incoming: rows.filter((p) => p.status === 'pending' && p.to_id === a.id).map((p) => partnershipRow(p, a)),
+      outgoing: rows.filter((p) => p.status === 'pending' && p.from_id === a.id).map((p) => partnershipRow(p, a)),
+      shared_placements: sharedPlacements(a),
+      affiliations: db.prepare('SELECT id, org, org_name, member_ref, proof_url, status, note, created_at FROM agency_affiliations WHERE ambassador_id = ? ORDER BY id').all(a.id),
+      orgs: Object.fromEntries(Object.entries(AFFILIATION_ORGS).map(([k, [, label]]) => [k, label])),
+    };
+  }));
+  // The agency's listing in the directory other agencies browse. Nobody sees it until the agency lists itself.
+  api.put('/agency/network/listing', requireRole('agency'), wrap((req) => {
+    const a = myNetworkAgency(req);
+    const b = req.body || {};
+    const side = 'side' in b ? String(b.side) : a.network_side;
+    if (!NETWORK_SIDES.includes(side)) throw bad('Choose sending, host or both.');
+    const countries = 'countries' in b ? [...new Set((Array.isArray(b.countries) ? b.countries : String(b.countries ?? '').split(/[\s,]+/))
+      .map((c) => String(c).trim().toUpperCase()).filter(Boolean))] : json.parse(a.network_countries);
+    if (countries.length > 60 || countries.some((c) => !/^[A-Z]{2}$/.test(c))) throw bad('Countries are two-letter codes like IS or DE.');
+    const about = 'about' in b ? str(b.about, 600) || null : a.network_about;
+    const listed = 'listed' in b ? (b.listed ? 1 : 0) : a.network_listed;
+    db.prepare('UPDATE ambassadors SET network_listed = ?, network_side = ?, network_countries = ?, network_about = ? WHERE id = ?').run(listed, side, JSON.stringify(countries), about, a.id);
+    return { listed: !!listed, side, countries, about };
+  }));
+  // Listed agencies, best fits first: the other side of the exchange (a host agency for a sending one), then shared countries.
+  api.get('/agency/directory', requireRole('agency'), wrap((req) => {
+    const a = myNetworkAgency(req);
+    const mine = new Set([a.country, ...json.parse(a.network_countries)].filter(Boolean));
+    const fits = (x) => (a.network_side === 'both' || x.network_side === 'both' || x.network_side !== a.network_side ? 2 : 0)
+      + (mine.has(x.country) || json.parse(x.network_countries).some((c) => mine.has(c)) ? 1 : 0);
+    let list = db.prepare("SELECT * FROM ambassadors WHERE kind = 'agency' AND active = 1 AND network_listed = 1 AND id <> ?").all(a.id);
+    if (req.query.side && NETWORK_SIDES.includes(req.query.side)) list = list.filter((x) => x.network_side === req.query.side || x.network_side === 'both');
+    if (req.query.country) {
+      const c = String(req.query.country).toUpperCase();
+      list = list.filter((x) => x.country === c || json.parse(x.network_countries).includes(c));
+    }
+    list.sort((x, y) => fits(y) - fits(x) || x.name.localeCompare(y.name));
+    return { agencies: list.slice(0, 200).map((x) => ({ ...networkCard(x, a), good_fit: fits(x) === 3 })) };
+  }));
+  /** Asks another agency on PairMundo to partner. If it already asked, this accepts. */
+  const askPartner = (a, b, message) => {
+    if (b.id === a.id) throw bad("That's your own agency.");
+    const existing = db.prepare(`SELECT * FROM agency_partnerships WHERE status IN ('pending', 'accepted')
+      AND ((from_id = ? AND to_id = ?) OR (from_id = ? AND to_id = ?))`).get(a.id, b.id, b.id, a.id);
+    if (existing?.status === 'accepted') throw new HttpError(409, 'You already work with this agency.');
+    if (existing?.from_id === a.id) throw new HttpError(409, 'You already asked this agency. They have not answered yet.');
+    if (existing) return respondPartner(a, existing, 'accept');
+    const r = db.prepare('INSERT INTO agency_partnerships (from_id, to_id, message) VALUES (?,?,?)').run(a.id, b.id, message);
+    if (b.user_id) notify(b.user_id, 'agency', '{agency} would like to work with you on PairMundo.', { agency: a.name }, '#/agency');
+    return partnershipRow(db.prepare('SELECT * FROM agency_partnerships WHERE id = ?').get(r.lastInsertRowid), a);
+  };
+  const respondPartner = (a, p, action) => {
+    const otherId = p.from_id === a.id ? p.to_id : p.from_id;
+    const other = otherId ? db.prepare('SELECT * FROM ambassadors WHERE id = ?').get(otherId) : null;
+    if (action === 'accept' || action === 'decline') {
+      if (p.status !== 'pending' || p.to_id !== a.id) throw bad('Only the agency that was asked can answer.');
+      db.prepare("UPDATE agency_partnerships SET status = ?, responded_at = datetime('now') WHERE id = ?").run(action === 'accept' ? 'accepted' : 'declined', p.id);
+      if (action === 'accept' && other?.user_id) notify(other.user_id, 'agency', '{agency} accepted. Your families and au pairs can now meet theirs.', { agency: a.name }, '#/agency');
+    } else if (action === 'end') {
+      // Withdrawing an unanswered request, or ending a partnership. Matches and placements already made stay.
+      if (!(p.status === 'accepted' || (p.status === 'pending' && p.from_id === a.id))) throw bad('There is nothing to end.');
+      db.prepare("UPDATE agency_partnerships SET status = 'ended', responded_at = datetime('now') WHERE id = ?").run(p.id);
+      if (p.status === 'accepted' && other?.user_id) notify(other.user_id, 'agency', '{agency} ended your partnership on PairMundo.', { agency: a.name }, '#/agency');
+    } else throw bad('Choose accept, decline or end.');
+    return partnershipRow(db.prepare('SELECT * FROM agency_partnerships WHERE id = ?').get(p.id), a);
+  };
+  api.post('/agency/partners', requireRole('agency'), wrap((req, res) => {
+    const a = myNetworkAgency(req);
+    const b = db.prepare("SELECT * FROM ambassadors WHERE id = ? AND kind = 'agency' AND active = 1 AND network_listed = 1").get(Number(req.body?.agency_id));
+    if (!b) throw notFound('Agency not found.');
+    res.status(201);
+    return askPartner(a, b, str(req.body?.message, 1000) || null);
+  }));
+  // An agency that isn't on PairMundo yet gets an email with a link to create its account. Once its account is linked to
+  // a code, the request waits for it on its agency page.
+  api.post('/agency/partners/invite', requireRole('agency'), wrap((req, res) => {
+    const a = myNetworkAgency(req);
+    const email = normEmail(req.body?.email);
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw bad('Enter a valid email.');
+    const name = str(req.body?.name, 120);
+    if (!name) throw bad('Enter the agency name.');
+    const message = str(req.body?.message, 1000) || null;
+    // Already on PairMundo: ask it directly instead.
+    const user = db.prepare('SELECT id, role FROM users WHERE lower(trim(email)) = ?').get(email);
+    const existing = user?.role === 'agency' ? db.prepare("SELECT * FROM ambassadors WHERE user_id = ? AND kind = 'agency' AND active = 1").get(user.id) : null;
+    res.status(201);
+    if (existing) return askPartner(a, existing, message);
+    if (user) throw bad('That email belongs to a member account, not an agency.');
+    if (db.prepare("SELECT 1 FROM agency_partnerships WHERE from_id = ? AND to_id IS NULL AND invite_email = ? AND status = 'pending'").get(a.id, email)) {
+      throw new HttpError(409, 'You already invited this agency.');
+    }
+    if (db.prepare("SELECT COUNT(*) n FROM agency_partnerships WHERE from_id = ? AND to_id IS NULL AND created_at > datetime('now', '-1 day')").get(a.id).n >= 20) {
+      throw new HttpError(429, 'You can invite up to 20 agencies a day.');
+    }
+    const r = db.prepare('INSERT INTO agency_partnerships (from_id, invite_email, invite_name, message) VALUES (?,?,?,?)').run(a.id, email, name, message);
+    const signup = `${publicBase()}/#/agency-signup?email=${encodeURIComponent(email)}`;
+    Promise.resolve(mailer({ to: email, ...agencyPartnerInviteEmail({ name, from: a.name, message, signup, email }) })).catch((e) => console.error('Email failed:', e.message));
+    return partnershipRow(db.prepare('SELECT * FROM agency_partnerships WHERE id = ?').get(r.lastInsertRowid), a);
+  }));
+  api.post('/agency/partners/:id', requireRole('agency'), wrap((req) => {
+    const a = myNetworkAgency(req);
+    const p = db.prepare('SELECT * FROM agency_partnerships WHERE id = ? AND (from_id = ? OR to_id = ?)').get(Number(req.params.id), a.id, a.id);
+    if (!p) throw notFound();
+    return respondPartner(a, p, String(req.body?.action));
+  }));
+
+  // Affiliations: the agency adds one, PairMundo checks it, and only checked ones show as badges.
+  api.post('/agency/affiliations', requireRole('agency'), wrap((req, res) => {
+    const a = myNetworkAgency(req);
+    const b = req.body || {};
+    const org = String(b.org || '');
+    if (!AFFILIATION_ORGS[org]) throw bad('Choose an organisation.');
+    const orgName = org === 'other' ? str(b.org_name, 80) : AFFILIATION_ORGS[org][0];
+    if (!orgName) throw bad("Enter the organisation's name.");
+    const proof = str(b.proof_url, 500) || null;
+    if (proof && !/^https?:\/\/\S+$/i.test(proof)) throw bad('The link starts with https://');
+    const memberRef = str(b.member_ref, 80) || null;
+    if (!proof && !memberRef) throw bad('Add a membership number or a link where we can check it.');
+    if (db.prepare('SELECT 1 FROM agency_affiliations WHERE ambassador_id = ? AND org_name = ?').get(a.id, orgName)) throw new HttpError(409, 'You already added this one.');
+    const r = db.prepare('INSERT INTO agency_affiliations (ambassador_id, org, org_name, member_ref, proof_url) VALUES (?,?,?,?,?)').run(a.id, org, orgName, memberRef, proof);
+    res.status(201);
+    return db.prepare('SELECT id, org, org_name, member_ref, proof_url, status, note, created_at FROM agency_affiliations WHERE id = ?').get(r.lastInsertRowid);
+  }));
+  api.delete('/agency/affiliations/:id', requireRole('agency'), wrap((req) => {
+    const a = myNetworkAgency(req);
+    if (!db.prepare('DELETE FROM agency_affiliations WHERE id = ? AND ambassador_id = ?').run(Number(req.params.id), a.id).changes) throw notFound();
+    return { ok: true };
+  }));
+  api.get('/admin/affiliations', requireRole('admin'), wrap(() => ({
+    affiliations: db.prepare(`SELECT f.*, a.name agency, a.code, a.country FROM agency_affiliations f JOIN ambassadors a ON a.id = f.ambassador_id
+      ORDER BY f.status = 'pending' DESC, f.created_at DESC LIMIT 500`).all(),
+  })));
+  api.post('/admin/affiliations/:id', requireRole('admin'), wrap((req) => {
+    const status = req.body?.status;
+    if (!['verified', 'rejected', 'pending'].includes(status)) throw bad('Choose verified or rejected.');
+    const f = db.prepare('SELECT f.*, a.user_id FROM agency_affiliations f JOIN ambassadors a ON a.id = f.ambassador_id WHERE f.id = ?').get(Number(req.params.id));
+    if (!f) throw notFound();
+    db.prepare("UPDATE agency_affiliations SET status = ?, note = ?, reviewed_at = datetime('now') WHERE id = ?").run(status, str(req.body?.note, 300) || null, f.id);
+    if (f.user_id && status === 'verified') notify(f.user_id, 'agency', 'PairMundo checked your {org} membership. The badge now shows on your listing and your au pairs\' profiles.', { org: f.org_name }, '#/agency');
+    if (f.user_id && status === 'rejected') notify(f.user_id, 'agency', "We couldn't confirm your {org} membership. Open your agency page to see why.", { org: f.org_name }, '#/agency');
+    return { ok: true };
+  }));
+
   // An ambassador's own numbers, shown in their app.
   api.get('/me/ambassador', requireAuth, wrap((req) => {
     const a = db.prepare('SELECT * FROM ambassadors WHERE user_id = ? AND active = 1').get(req.user.id);
@@ -2150,7 +2366,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
         this_month: agencyStats(a, new Date().toISOString().slice(0, 7)), total: agencyStats(a),
         space: { closed_network: !!a.closed_network, mask_contacts: !!a.mask_contacts, covers_pass: !!a.covers_pass, approve_families: !!a.approve_families,
           families: db.prepare("SELECT COUNT(*) n FROM users WHERE ref_code = ? AND role = 'family'").get(a.code).n },
-        introductions: db.prepare('SELECT family_name, aupair_name, how, created_at FROM agency_introductions WHERE ambassador_id = ? ORDER BY created_at DESC, id DESC LIMIT 200').all(a.id),
+        network: networkOn(),
+        introductions: db.prepare('SELECT family_name, aupair_name, how, partner_name, created_at FROM agency_introductions WHERE ambassador_id = ? ORDER BY created_at DESC, id DESC LIMIT 200').all(a.id),
         flags: db.prepare('SELECT user_name, kind, created_at FROM agency_flags WHERE ambassador_id = ? ORDER BY created_at DESC, id DESC LIMIT 100').all(a.id) };
     }
     // A flyer distributor sees their sessions and pay. Which families joined stays with the admin.
@@ -2396,7 +2613,19 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   /** Tells an agency or ambassador account that its code is ready, the first time it is linked to one. */
   const partnerLinked = (userId, code) => {
     const role = getUser(userId)?.role;
-    if (role === 'agency') notify(userId, 'agency', 'Your agency code {code} is ready. Share it with your au pairs.', { code }, '#/agency');
+    if (role === 'agency') {
+      notify(userId, 'agency', 'Your agency code {code} is ready. Share it with your au pairs.', { code }, '#/agency');
+      // Agencies that invited this one by email: their requests now wait on its agency page.
+      const a = db.prepare('SELECT id FROM ambassadors WHERE code = ?').get(code);
+      const email = normEmail(getUser(userId).email);
+      const invites = db.prepare("SELECT * FROM agency_partnerships WHERE to_id IS NULL AND invite_email = ? AND status = 'pending' AND from_id <> ?").all(email, a.id);
+      for (const p of invites) {
+        // One request per pair of agencies: a second invite from the same agency is dropped.
+        if (db.prepare("SELECT 1 FROM agency_partnerships WHERE status IN ('pending', 'accepted') AND ((from_id = ? AND to_id = ?) OR (from_id = ? AND to_id = ?))").get(p.from_id, a.id, a.id, p.from_id)) {
+          db.prepare("UPDATE agency_partnerships SET status = 'ended' WHERE id = ?").run(p.id);
+        } else db.prepare('UPDATE agency_partnerships SET to_id = ? WHERE id = ?').run(a.id, p.id);
+      }
+    }
     const kind = db.prepare('SELECT kind FROM ambassadors WHERE code = ?').get(code)?.kind;
     if (role === 'ambassador' && kind === 'distributor') notify(userId, 'ambassador', 'Your flyer delivery page is ready. Your sessions and pay show there.', {}, '#/ambassador');
     else if (role === 'ambassador') notify(userId, 'ambassador', 'Your ambassador code {code} is ready. Share it to start earning.', { code }, '#/ambassador');
