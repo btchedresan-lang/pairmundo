@@ -68,3 +68,8 @@ services:
         value: https://play.google.com/store/apps/details?id=com.pairmundo.app
       - key: APP_STORE_URL
         sync: false
+      # Partner agencies and membership badges (IAPA and others). Off until set to on; see DEPLOY.md.
+      - key: AGENCY_NETWORK
+        sync: false
+      - key: AGENCY_AFFILIATIONS
+        sync: false

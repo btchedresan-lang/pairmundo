@@ -914,6 +914,7 @@
   "Agency code": "Code de l'agence",
   "Did an au pair agency prepare you? Enter the code they gave you, and families will see the agency on your profile.": "Une agence au pair t'a préparé ? Saisis le code qu'elle t'a donné, et les familles verront l'agence sur ton profil.",
   "Prepared by {agency}": "Préparé par {agency}",
+  "{org} member": "Membre de {org}",
   "That agency code is not valid. Check it with your agency.": "Ce code d'agence n'est pas valide. Vérifie-le auprès de ton agence.",
   "Your account is already linked to a code.": "Ton compte est déjà lié à un code.",
   "Your agency": "Ton agence",

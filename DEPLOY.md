@@ -112,6 +112,13 @@ Matched families and au pairs can start a video call from their chat. It works w
 
 For private rooms with no sign-in, create a free account at [daily.co](https://dashboard.daily.co), copy the API key from **Developers**, and add it on Render as `DAILY_API_KEY`. Each call then gets its own private Daily room that closes after two hours, and only the two people in the chat can get in. With Daily, calls in the phone app open on the app's own call screen instead of the browser. To use your own Jitsi server instead, set `JITSI_DOMAIN`.
 
+## Partner agencies and memberships
+
+Both are off until you switch them on in Render → **Environment**:
+
+- `AGENCY_NETWORK` = `on` adds **Partner agencies** to agency accounts. An agency fills in a short profile (sending or host agency, where its au pairs come from and go to), lists itself, finds other listed agencies (best fits first) and asks them to work together. Once the other agency accepts, their au pairs and families can meet each other, even in closed agency spaces, and both agencies see the matches and placements they share. An agency can also invite one that isn't on PairMundo yet: it gets an email with the agency sign-up link, shows as "Invited by …" in Admin → Ambassadors, and once you link it to a code the partner request is waiting for it. Switching it off again closes the spaces back up; nothing is deleted.
+- `AGENCY_AFFILIATIONS` = `on` lets agencies add memberships such as IAPA, with a member number and a link to their entry in the organisation's member list. Check each one in Admin → **Agency memberships** (that tab works even while this is off). Approved ones show as a "🏅 IAPA member" badge on the agency's profile and on its au pairs' profiles.
+
 ## Pointing the phone app at the live server
 
 Build the app with `EXPO_PUBLIC_API_URL=https://your-render-address` (or `https://api.pairmundo.com` once the domain is set up). See `mobile/README.md`.

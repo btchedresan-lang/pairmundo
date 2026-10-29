@@ -914,6 +914,7 @@
   "Agency code": "Byråkod",
   "Did an au pair agency prepare you? Enter the code they gave you, and families will see the agency on your profile.": "Har en au pair-byrå förberett dig? Skriv koden du fick av dem, så ser familjer byrån på din profil.",
   "Prepared by {agency}": "Förberedd av {agency}",
+  "{org} member": "Medlem i {org}",
   "That agency code is not valid. Check it with your agency.": "Byråkoden är inte giltig. Kontrollera den med din byrå.",
   "Your account is already linked to a code.": "Ditt konto är redan kopplat till en kod.",
   "Your agency": "Din byrå",
