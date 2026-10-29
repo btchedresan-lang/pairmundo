@@ -442,7 +442,9 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   /** A distributor's sessions, newest first, each with how many families it brought in. */
   const flyerSessions = (a) => db.prepare(`SELECT s.*, (SELECT COUNT(*) FROM flyer_bonuses b WHERE b.session_id = s.id) families
     FROM flyer_sessions s WHERE s.ambassador_id = ? ORDER BY s.delivered_on DESC, s.id DESC LIMIT 500`).all(a.id);
-  const statsOf = (a, month) => (a.kind === 'distributor' ? distributorStats(a, month) : ambassadorStats(a, month));
+  // An agency earns no rewards, so its done profiles are counted from the profiles themselves.
+  const statsOf = (a, month) => (a.kind === 'distributor' ? distributorStats(a, month)
+    : a.kind === 'agency' ? { ...ambassadorStats(a, month), profiles: agencyStats(a, month).profiles } : ambassadorStats(a, month));
 
   const adminAmbassador = (id, month = null, detail = true) => {
     const a = db.prepare('SELECT a.*, COALESCE(u.email, a.invite_email) account_email FROM ambassadors a LEFT JOIN users u ON u.id = a.user_id WHERE a.id = ?').get(Number(id));
@@ -506,6 +508,34 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       translate(lang, gone ? "You're off the list. We won't email you about the launch." : 'This link was already used, or the address is not on the list.')}</p><p><a href="/">pairmundo.com</a></p></main>`);
   }));
 
+  /**
+   * Makes a member account and what comes with it: an empty profile, and for families the trial, early bonus and
+   * ambassador gift days. verified is set when the person already proved the email (a reference link they opened).
+   */
+  const createMember = ({ email, password, role, name, country, city, lang, source, ambassador, verified = false }) => {
+    const partner = role === 'agency' || role === 'ambassador';
+    const user = tx(db, () => {
+      const r = db.prepare('INSERT INTO users (email, password_hash, role, name, country, city, lang, source, ref_code, email_verified) VALUES (?,?,?,?,?,?,?,?,?,?)')
+        .run(email, hashPassword(String(password)), role, str(name, 120), str(country, 2)?.toUpperCase() ?? null, str(city, 120), lang,
+          source, ambassador?.code ?? null, verified ? 1 : 0);
+      const id = Number(r.lastInsertRowid);
+      if (!partner) db.prepare(`INSERT INTO ${role === 'aupair' ? 'aupair_profiles' : 'family_profiles'} (user_id) VALUES (?)`).run(id);
+      return getUser(id);
+    });
+    // The admin links a new agency or ambassador account to its code, unless it was invited to one.
+    if (partner && !db.prepare('SELECT 1 FROM ambassadors WHERE user_id IS NULL AND invite_email = ?').get(email)) {
+      const text = role === 'agency' ? 'New agency account: {name}. Link it to a code under Ambassadors.' : 'New ambassador account: {name}. Link it to a code under Ambassadors.';
+      for (const a of db.prepare("SELECT id FROM users WHERE role = 'admin'").all()) notify(a.id, role, text, { name: user.name }, '#/admin/ambassadors');
+    }
+    // New families can get a free trial of the Family Pass (FAMILY_TRIAL_DAYS, off unless set).
+    if (role === 'family' && trialDays()) grantPass(user.id, 'trial', `signup-${user.id}`, trialDays(), { quiet: true });
+    // Families who sign up before launch (or kept a spot from the waitlist) get the early family bonus, while spots last.
+    if (role === 'family') claimEarlyBonus(email, user.id);
+    // A family who came with an ambassador's code that gives gift days gets them saved, unless they have the early bonus.
+    if (role === 'family') claimGift(email, user.id, ambassador);
+    return user;
+  };
+
   api.post('/auth/register', authLimit, wrap((req, res) => {
     const { password, role, name, country, city } = req.body || {};
     const email = normEmail(req.body?.email);
@@ -525,25 +555,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (!partner) ambassador ??= ambassadorByCode(waited?.ref_code);
     const source = str(req.body?.source, 60)?.toLowerCase() ?? waited?.source ?? null;
     if (db.prepare('SELECT 1 FROM users WHERE lower(trim(email)) = ?').get(email)) throw new HttpError(409, 'An account with this email already exists.');
-    const user = tx(db, () => {
-      const r = db.prepare('INSERT INTO users (email, password_hash, role, name, country, city, lang, source, ref_code) VALUES (?,?,?,?,?,?,?,?,?)')
-        .run(email, hashPassword(String(password)), role, str(name, 120), str(country, 2)?.toUpperCase() ?? null, str(city, 120), pickLang(req.get('accept-language')),
-          source, ambassador?.code ?? null);
-      const id = Number(r.lastInsertRowid);
-      if (!partner) db.prepare(`INSERT INTO ${role === 'aupair' ? 'aupair_profiles' : 'family_profiles'} (user_id) VALUES (?)`).run(id);
-      return getUser(id);
-    });
-    // The admin links a new agency or ambassador account to its code, unless it was invited to one.
-    if (partner && !db.prepare('SELECT 1 FROM ambassadors WHERE user_id IS NULL AND invite_email = ?').get(email)) {
-      const text = role === 'agency' ? 'New agency account: {name}. Link it to a code under Ambassadors.' : 'New ambassador account: {name}. Link it to a code under Ambassadors.';
-      for (const a of db.prepare("SELECT id FROM users WHERE role = 'admin'").all()) notify(a.id, role, text, { name: user.name }, '#/admin/ambassadors');
-    }
-    // New families can get a free trial of the Family Pass (FAMILY_TRIAL_DAYS, off unless set).
-    if (role === 'family' && trialDays()) grantPass(user.id, 'trial', `signup-${user.id}`, trialDays(), { quiet: true });
-    // Families who sign up before launch (or kept a spot from the waitlist) get the early family bonus, while spots last.
-    if (role === 'family') claimEarlyBonus(email, user.id);
-    // A family who came with an ambassador's code that gives gift days gets them saved, unless they have the early bonus.
-    if (role === 'family') claimGift(email, user.id, ambassador);
+    const user = createMember({ email, password, role, name, country, city, lang: pickLang(req.get('accept-language')), source, ambassador });
     issueCode(user, 'verify');
     const s = createSession(db, user.id);
     setCookie(res, s.token);
@@ -739,30 +751,38 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   }));
 
   // ---------- references ----------
-  // An au pair names people they looked after children for. PairMundo emails each a private link to a short form,
-  // and families see the answers of those who confirm. A confirmed reference turns on the "References" badge.
+  // An au pair enters the email of a family they looked after children for. PairMundo emails the family a link; the
+  // family makes a free account with that email (opening the link proves it) and answers a short form, so every review
+  // comes from a real, signed-in person and the family is on PairMundo afterwards. These past-family references are
+  // separate from placement reviews, which only the two sides of a PairMundo placement can leave.
+  // A confirmed reference turns on the "References" badge.
   const MAX_REFERENCES = 5;
   const refAnswers = (r) => json.parse(r.answers, null);
+  const firstName = (name) => String(name || '').split(/\s+/)[0];
   const myReference = (r) => ({ id: r.id, name: r.name, email: r.email, relation: r.relation, status: r.status, created_at: r.created_at, responded_at: r.responded_at });
-  const shownReference = (r) => ({ id: r.id, name: String(r.name).split(/\s+/)[0], relation: r.relation, responded_at: r.responded_at, ...refAnswers(r) });
-  const confirmedReferences = (userId) => db.prepare("SELECT * FROM reference_checks WHERE user_id = ? AND status = 'confirmed' ORDER BY responded_at DESC").all(userId).map(shownReference);
+  // verified: answered from a PairMundo account on the invited email. References answered before accounts were needed show without it.
+  const shownReference = (r) => ({ id: r.id, name: firstName(r.reviewer_name || r.name), relation: r.relation, responded_at: r.responded_at,
+    verified: !!r.reviewer_id, ...refAnswers(r) });
+  const confirmedReferences = (userId) => db.prepare(`SELECT rc.*, ru.name reviewer_name FROM reference_checks rc LEFT JOIN users ru ON ru.id = rc.reviewer_id
+      WHERE rc.user_id = ? AND rc.status = 'confirmed' ORDER BY rc.responded_at DESC`).all(userId).map(shownReference);
+  const accountFor = (email) => db.prepare('SELECT * FROM users WHERE lower(trim(email)) = ?').get(normEmail(email));
 
   api.get('/me/references', requireRole('aupair'), wrap((req) => ({
     references: db.prepare('SELECT * FROM reference_checks WHERE user_id = ? ORDER BY id DESC').all(req.user.id).map(myReference),
   })));
   api.post('/me/references', requireRole('aupair'), authLimit, wrap(async (req) => {
     const u = req.user;
-    const name = str(req.body?.name, 80);
+    // Only the email is needed; the family gives their name when they make their account.
+    const name = str(req.body?.name, 80) ?? '';
     const email = normEmail(req.body?.email);
     const relation = str(req.body?.relation, 120);
-    if (!name) throw bad("Enter the person's name.");
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || email.length > 254) throw bad('Enter a valid email.');
     if (email === normEmail(u.email)) throw bad('A reference has to be someone else.');
     if (db.prepare("SELECT 1 FROM reference_checks WHERE user_id = ? AND email = ? AND status != 'declined'").get(u.id, email)) throw bad('You already asked this person.');
     if (db.prepare("SELECT COUNT(*) n FROM reference_checks WHERE user_id = ? AND status != 'declined'").get(u.id).n >= MAX_REFERENCES) throw bad('You can have up to 5 references.');
     const token = randomBytes(18).toString('base64url');
     const id = Number(db.prepare('INSERT INTO reference_checks (user_id, name, email, relation, token) VALUES (?,?,?,?,?)').run(u.id, name, email, relation, token).lastInsertRowid);
-    const { subject, text } = referenceEmail(u.lang, { aupair: u.name, referee: name.split(/\s+/)[0], link: `${publicBase()}/#/reference/${token}` });
+    const { subject, text } = referenceEmail(u.lang, { aupair: u.name, link: `${publicBase()}/#/reference/${token}` });
     try { await mailer({ to: email, subject, text }); } catch (e) { console.error('Reference email failed:', e.message); }
     return { reference: myReference(db.prepare('SELECT * FROM reference_checks WHERE id = ?').get(id)) };
   }));
@@ -772,16 +792,37 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (!left) db.prepare('UPDATE users SET references_checked = 0 WHERE id = ?').run(req.user.id);
     return { ok: true };
   }));
-  // The form the reference opens from their email. No account needed; the link itself is the key.
+  // The page the family opens from their email. The link is the key to the invitation and proves they get mail at
+  // that address; answering takes an account on the same email.
   const referenceByToken = (token) => {
     const r = db.prepare('SELECT * FROM reference_checks WHERE token = ?').get(String(token || ''));
     if (!r) throw notFound('This link is not valid any more.');
     return r;
   };
+  const isInvited = (user, r) => !!user && normEmail(user.email) === r.email;
   api.get('/references/:token', wrap((req) => {
     const r = referenceByToken(req.params.token);
     const u = getUser(r.user_id);
-    return { aupair: { name: u.name, first_name: String(u.name).split(/\s+/)[0], photo_url: photosOf(u)[0] || null }, name: r.name, relation: r.relation, status: r.status };
+    return { aupair: { name: u.name, first_name: firstName(u.name), photo_url: photosOf(u)[0] || null }, name: r.name, relation: r.relation, status: r.status,
+      email: r.email, has_account: !!accountFor(r.email), signed_in: isInvited(req.user, r) };
+  }));
+  // A family without an account makes one here: a host family account on the invited email, already confirmed.
+  // It happens before the questions, so a family who stops halfway still has their account.
+  api.post('/references/:token/account', authLimit, wrap((req, res) => {
+    const r = referenceByToken(req.params.token);
+    if (r.status !== 'sent') throw new HttpError(409, 'You already answered. Thank you!');
+    const { password, name, country } = req.body || {};
+    if (!str(name)) throw bad('Name is required.');
+    if (!password || String(password).length < 8) throw bad('Password must be at least 8 characters.');
+    if (accountFor(r.email)) throw new HttpError(409, 'You already have a PairMundo account. Sign in to leave your review.');
+    const waited = db.prepare('SELECT ref_code FROM waitlist WHERE email = ?').get(r.email);
+    const user = createMember({ email: r.email, password, role: 'family', name, country, lang: pickLang(req.get('accept-language')),
+      source: 'reference', ambassador: ambassadorByCode(waited?.ref_code), verified: true });
+    claimInvite(user);
+    const s = createSession(db, user.id);
+    setCookie(res, s.token);
+    res.status(201);
+    return { user: { ...publicUser(user, user), email: user.email, email_verified: true }, token: s.token };
   }));
   api.post('/references/:token', authLimit, wrap((req) => {
     const r = referenceByToken(req.params.token);
@@ -791,6 +832,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       db.prepare("UPDATE reference_checks SET status = 'declined', responded_at = datetime('now') WHERE id = ?").run(r.id);
       return { ok: true, status: 'declined' };
     }
+    if (!req.user) throw new HttpError(401, 'Make your free account or sign in to send your review.');
+    if (!isInvited(req.user, r)) throw forbidden('Sign in with the email this invitation was sent to.');
     const months = Math.round(Number(b.months));
     const rating = Math.round(Number(b.rating));
     if (!(months >= 1 && months <= 240)) throw bad('Say for how many months.');
@@ -798,9 +841,14 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (typeof b.recommend !== 'boolean') throw bad('Say whether you would recommend them.');
     const answers = { months, rating, recommend: b.recommend, comment: str(b.comment, 600) || null,
       age_groups: (Array.isArray(b.age_groups) ? b.age_groups : []).filter((g) => ['infant', 'toddler', 'school', 'teen'].includes(g)) };
-    db.prepare("UPDATE reference_checks SET status = 'confirmed', answers = ?, responded_at = datetime('now') WHERE id = ?").run(json.str(answers), r.id);
-    db.prepare('UPDATE users SET references_checked = 1 WHERE id = ?').run(r.user_id);
-    notify(r.user_id, 'verification', '{name} confirmed your reference. Families can now see it on your profile.', { name: String(r.name).split(/\s+/)[0] }, '#/profile');
+    tx(db, () => {
+      db.prepare(`UPDATE reference_checks SET status = 'confirmed', answers = ?, reviewer_id = ?, name = CASE WHEN name = '' THEN ? ELSE name END,
+          responded_at = datetime('now') WHERE id = ?`).run(json.str(answers), req.user.id, req.user.name, r.id);
+      db.prepare('UPDATE users SET references_checked = 1 WHERE id = ?').run(r.user_id);
+      // Opening the emailed link proves the address, like a code would.
+      if (!req.user.email_verified) db.prepare('UPDATE users SET email_verified = 1 WHERE id = ?').run(req.user.id);
+    });
+    notify(r.user_id, 'verification', '{name} confirmed your reference. Families can now see it on your profile.', { name: firstName(req.user.name) }, '#/profile');
     return { ok: true, status: 'confirmed' };
   }));
 
@@ -2264,6 +2312,9 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       if (areas.some((x) => !/^[a-z0-9][a-z0-9-]{0,39}$/.test(x))) throw bad('Areas are flyer sources like door-nacka, separated by commas.');
     }
     const kind = 'kind' in body ? (['agency', 'distributor'].includes(body.kind) ? body.kind : 'ambassador') : a.kind ?? 'ambassador';
+    if (kind === 'agency' && userId && db.prepare('SELECT role FROM users WHERE id = ?').get(userId)?.role !== 'agency') {
+      throw bad('That email belongs to an au pair or family account. The agency needs its own agency account with another email.');
+    }
     return { name, country: text('country', 2)?.toUpperCase() ?? null, contact: text('contact', 200), notes: text('notes', 2000), user_id: userId,
       active: 'active' in body ? (body.active ? 1 : 0) : Number(a.active ?? 1), gift_days: giftDays, kind, invite_email: inviteEmail,
       flyer_rate: kr('flyer_rate', 'Pay per flyer'), family_bonus: kr('family_bonus', 'Pay per family'), bonus_days: bonusDays, areas: JSON.stringify(areas),
@@ -2279,8 +2330,9 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   };
   /** Links an account to the code it was invited to, once its email is confirmed. */
   const claimInvite = (user) => {
-    const a = db.prepare('SELECT id, code FROM ambassadors WHERE user_id IS NULL AND invite_email = ?').get(normEmail(user.email));
-    if (!a) return;
+    const a = db.prepare('SELECT id, code, kind FROM ambassadors WHERE user_id IS NULL AND invite_email = ?').get(normEmail(user.email));
+    // An au pair or family who signed up with the agency's email is not the agency's account.
+    if (!a || (a.kind === 'agency' && user.role !== 'agency')) return;
     db.prepare('UPDATE ambassadors SET user_id = ?, invite_email = NULL WHERE id = ?').run(user.id, a.id);
     partnerLinked(user.id, a.code);
   };

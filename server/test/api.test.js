@@ -1057,8 +1057,17 @@ test('partner agencies: their code tags au pairs, shows on the profile, earns no
   await call(ap.token, 'PUT', '/me', { profile: { bio: 'Hi', nationality: 'ZW', birth_date: '2003-01-01', languages: [{ code: 'en', level: 'C2' }], available_from: '2027-01-01' } });
   await call(admin, 'POST', `/admin/users/${ap.id}`, { id_verified: true });
   const st = (await call(admin, 'GET', `/admin/ambassadors/${agencyId}`)).body;
-  assert.deepEqual([st.stats.aupairs, st.stats.profiles, st.stats.earned_cents], [1, 0, 0]);
+  // Its done profiles still count, from the profiles themselves.
+  assert.deepEqual([st.stats.aupairs, st.stats.profiles, st.stats.earned_cents], [1, 1, 0]);
   assert.equal(st.referrals.length, 1);
+
+  // An au pair account is never the agency's own account, so it still counts as one of its au pairs.
+  assert.equal((await call(admin, 'POST', `/admin/ambassadors/${agencyId}`, { account_email: 'agap@test.io' })).status, 400);
+  await call(admin, 'POST', `/admin/ambassadors/${agencyId}`, { account_email: 'alpha-staff@test.io' });
+  const staffAp = await call(null, 'POST', '/auth/register', { email: 'alpha-staff@test.io', password: 'password123', role: 'aupair', name: 'Staff Signup', country: 'ZW', ref_code: 'alpha-zw' });
+  await call(staffAp.body.token, 'POST', '/auth/verify-email', { code: lastCode('alpha-staff@test.io') });
+  const still = (await call(admin, 'GET', `/admin/ambassadors/${agencyId}`)).body;
+  assert.deepEqual([still.user_id, still.account_email, still.stats.aupairs], [null, 'alpha-staff@test.io', 2]);
 
   // An au pair who signed up without the code adds it from their account, once, and only an agency's code.
   const late = await register('aglate@test.io', 'aupair', 'ZW');
@@ -1416,28 +1425,63 @@ test('certificate checks: an au pair sends proof, an admin checks it, the file i
   assert.equal(r.body.profile.certificates[0].verified, false);
 });
 
-test('references: an au pair asks, the reference answers by email link, families see it', async () => {
+test('references: an au pair enters a past family email, the family makes an account from the link and reviews', async () => {
   const ap = await register('referenceap@test.io', 'aupair', 'PL', 'Ref Aupair');
   const fam = await register('referencefam@test.io', 'family', 'SE', 'Familjen Ref');
-  assert.equal((await call(ap.token, 'POST', '/me/references', { name: 'Self', email: 'referenceap@test.io' })).status, 400);
-  assert.equal((await call(fam.token, 'POST', '/me/references', { name: 'X', email: 'x@test.io' })).status, 403);
-  let r = await call(ap.token, 'POST', '/me/references', { name: 'Ewa Nowak', email: 'Ewa@Test.io', relation: 'Family I babysat for' });
+  assert.equal((await call(ap.token, 'POST', '/me/references', { email: 'referenceap@test.io' })).status, 400);
+  assert.equal((await call(fam.token, 'POST', '/me/references', { email: 'x@test.io' })).status, 403);
+  // The email is all the au pair needs to give.
+  let r = await call(ap.token, 'POST', '/me/references', { email: 'Ewa@Test.io' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.equal((await call(ap.token, 'POST', '/me/references', { name: 'Ewa again', email: 'ewa@test.io' })).status, 400);
+  assert.equal(r.body.reference.status, 'sent');
+  assert.equal((await call(ap.token, 'POST', '/me/references', { email: 'ewa@test.io' })).status, 400);
   const mail = outbox.find((m) => m.to === 'ewa@test.io');
+  assert.match(mail.text, /free PairMundo account/);
   const token = mail.text.match(/#\/reference\/([\w-]+)/)[1];
-  assert.equal((await call(null, 'GET', `/references/${token}`)).body.aupair.first_name, 'Ref');
-  assert.equal((await call(null, 'POST', `/references/${token}`, { months: 0, rating: 5, recommend: true })).status, 400);
-  r = await call(null, 'POST', `/references/${token}`, { months: 18, rating: 5, recommend: true, age_groups: ['toddler', 'nope'], comment: 'Wonderful with our son.' });
+  r = await call(null, 'GET', `/references/${token}`);
+  assert.deepEqual([r.body.aupair.first_name, r.body.email, r.body.has_account, r.body.signed_in], ['Ref', 'ewa@test.io', false, false]);
+  // No review without an account on the invited email.
+  assert.equal((await call(null, 'POST', `/references/${token}`, { months: 18, rating: 5, recommend: true })).status, 401);
+  assert.equal((await call(fam.token, 'POST', `/references/${token}`, { months: 18, rating: 5, recommend: true })).status, 403);
+  // The family makes a host family account from the link; opening it proved the email, so no code is needed.
+  assert.equal((await call(null, 'POST', `/references/${token}/account`, { name: 'Ewa', password: 'short' })).status, 400);
+  r = await call(null, 'POST', `/references/${token}/account`, { name: 'Ewa Nowak', password: 'password123', country: 'pl' });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  const ewa = r.body;
+  assert.deepEqual([ewa.user.role, ewa.user.email, ewa.user.email_verified], ['family', 'ewa@test.io', true]);
+  assert.equal(testDb.prepare('SELECT source FROM users WHERE id = ?').get(ewa.user.id).source, 'reference');
+  assert.equal((await call(null, 'POST', `/references/${token}/account`, { name: 'Ewa', password: 'password123' })).status, 409);
+  assert.equal((await call(ewa.token, 'GET', `/references/${token}`)).body.signed_in, true);
+  assert.equal((await call(ewa.token, 'POST', `/references/${token}`, { months: 0, rating: 5, recommend: true })).status, 400);
+  r = await call(ewa.token, 'POST', `/references/${token}`, { months: 18, rating: 5, recommend: true, age_groups: ['toddler', 'nope'], comment: 'Wonderful with our son.' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.equal((await call(null, 'POST', `/references/${token}`, { months: 18, rating: 5, recommend: true })).status, 409);
+  assert.equal((await call(ewa.token, 'POST', `/references/${token}`, { months: 18, rating: 5, recommend: true })).status, 409);
+  assert.equal((await call(ap.token, 'GET', '/me/references')).body.references[0].name, 'Ewa Nowak');
   r = await call(fam.token, 'GET', `/users/${ap.id}`);
   assert.equal(r.body.user.verification.references, true);
-  assert.deepEqual(r.body.references.map((x) => [x.name, x.months, x.recommend, x.age_groups]), [['Ewa', 18, true, ['toddler']]]);
+  assert.deepEqual(r.body.references.map((x) => [x.name, x.verified, x.months, x.recommend, x.age_groups]), [['Ewa', true, 18, true, ['toddler']]]);
   assert.ok(!JSON.stringify(r.body.references).includes('ewa@test.io'));
+  // Past-family references stay apart from placement reviews.
+  assert.deepEqual(r.body.reviews, []);
   // Removing the only confirmed reference takes the badge away again.
   await call(ap.token, 'DELETE', `/me/references/${r.body.references[0].id}`);
   assert.equal((await call(fam.token, 'GET', `/users/${ap.id}`)).body.user.verification.references, false);
+});
+
+test('references: a family who already has an account signs in to review, and anyone can say they do not know the au pair', async () => {
+  const ap = await register('referenceap2@test.io', 'aupair', 'PL', 'Lena Ap');
+  const fam = await register('pastfam@test.io', 'family', 'DE', 'Familie Weber');
+  await call(ap.token, 'POST', '/me/references', { email: 'pastfam@test.io', relation: 'Munich, 2024' });
+  await call(ap.token, 'POST', '/me/references', { email: 'stranger@test.io' });
+  const tokenFor = (to) => outbox.filter((m) => m.to === to).at(-1).text.match(/#\/reference\/([\w-]+)/)[1];
+  let r = await call(null, 'GET', `/references/${tokenFor('pastfam@test.io')}`);
+  assert.equal(r.body.has_account, true);
+  assert.equal((await call(null, 'POST', `/references/${tokenFor('pastfam@test.io')}/account`, { name: 'X', password: 'password123' })).status, 409);
+  r = await call(fam.token, 'POST', `/references/${tokenFor('pastfam@test.io')}`, { months: 10, rating: 4, recommend: true });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal((await call(null, 'POST', `/references/${tokenFor('stranger@test.io')}`, { knows: false })).body.status, 'declined');
+  r = await call(fam.token, 'GET', `/users/${ap.id}`);
+  assert.deepEqual(r.body.references.map((x) => [x.name, x.relation, x.verified]), [['Familie', 'Munich, 2024', true]]);
 });
 
 test('early family bonus: first families before launch get free days to use when they choose, while spots last', async () => {
