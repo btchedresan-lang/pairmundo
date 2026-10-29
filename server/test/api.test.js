@@ -2083,3 +2083,117 @@ test('agency approval: families wait for their agency, which tracks each one thr
   assert.ok((await call(fam.token, 'GET', '/discover')).body.results.some((x) => x.user.id === ap.id));
   assert.equal((await call(fam.token, 'POST', '/swipe', { target_id: ap.id, direction: 'like' })).status, 200);
 });
+
+test('agency network: off by default, directory with fit, partners share closed spaces, invites, affiliation badges', async () => {
+  const { hashPassword } = await import('../server/auth.js');
+  testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
+  const agency = async (code, name, country, email) => {
+    const acct = await register(email, 'agency', country, name, { complete: false });
+    const r = await call(admin, 'POST', '/admin/ambassadors', { code, name, country, kind: 'agency', account_email: email, closed_network: true });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    return { ...acct, amb: r.body.id };
+  };
+  const join = async (email, role, ref_code, country) => {
+    const res = await call(null, 'POST', '/auth/register', { email, password: 'password123', role, name: `${role} ${email}`, country, ref_code });
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    await call(res.body.token, 'POST', '/auth/verify-email', { code: lastCode(email) });
+    await completeProfile(res.body.token, res.body.user.id, email);
+    return { token: res.body.token, id: res.body.user.id };
+  };
+  const host = await agency('NORDHOST', 'Nord Host Families', 'is', 'boss@nordhost.test');
+  const send = await agency('MANILASEND', 'Manila Sending', 'ph', 'boss@manilasend.test');
+  const fam = await join('netfam@test.io', 'family', 'NORDHOST', 'IS');
+  const ap = await join('netap@test.io', 'aupair', 'MANILASEND', 'PH');
+
+  // Off by default: nothing is reachable and nothing changes.
+  assert.equal((await call(host.token, 'GET', '/agency/network')).status, 404);
+  assert.equal((await call(host.token, 'GET', '/me')).body.agency_network, false);
+  assert.equal((await call(host.token, 'GET', '/me/ambassador')).body.network, false);
+
+  process.env.AGENCY_NETWORK = 'on';
+  try {
+    // Members can't use it, and listing needs a side.
+    assert.equal((await call(fam.token, 'GET', '/agency/network')).status, 403);
+    assert.equal((await call(host.token, 'PUT', '/agency/network/profile', { listed: true })).status, 400);
+    assert.equal((await call(host.token, 'PUT', '/agency/network/profile', { listed: true, side: 'host', countries: 'is, no', about: 'Families in Reykjavik.', website: 'nordhost.test' })).status, 200);
+    // An unlisted agency isn't in the directory.
+    let net = (await call(send.token, 'GET', '/agency/network')).body;
+    assert.ok(net.agencies.some((x) => x.id === host.amb));
+    assert.equal((await call(host.token, 'GET', '/agency/network')).body.agencies.some((x) => x.id === send.amb), false);
+    await call(send.token, 'PUT', '/agency/network/profile', { listed: true, side: 'sending', countries: ['IS', 'DK'] });
+    net = (await call(send.token, 'GET', '/agency/network')).body;
+    const card = net.agencies.find((x) => x.id === host.amb);
+    assert.deepEqual([card.fit.complements, card.fit.countries, card.website, card.families], [true, ['IS'], 'https://nordhost.test', 1]);
+
+    // Before they partner, the closed spaces keep their members apart.
+    assert.equal((await call(fam.token, 'GET', `/users/${ap.id}`)).status, 404);
+
+    // The sending agency asks; the host agency accepts.
+    let r = await call(send.token, 'POST', '/agency/partners', { agency_id: host.amb, message: 'We prepare au pairs for Iceland.' });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.status, 'pending');
+    assert.equal((await call(send.token, 'POST', `/agency/partners/${r.body.id}`, { action: 'accept' })).status, 400, 'only the asked agency answers');
+    assert.equal((await call(fam.token, 'GET', `/users/${ap.id}`)).status, 404, 'a request alone shares nothing');
+    const incoming = (await call(host.token, 'GET', '/agency/network')).body.partnerships[0];
+    assert.deepEqual([incoming.incoming, incoming.message], [true, 'We prepare au pairs for Iceland.']);
+    r = await call(host.token, 'POST', `/agency/partners/${incoming.id}`, { action: 'accept' });
+    assert.equal(r.body.status, 'accepted');
+
+    // Now the host agency's family meets the sending agency's au pair, and their match is logged for both agencies.
+    assert.ok((await call(fam.token, 'GET', '/search?limit=100')).body.results.some((x) => x.user.id === ap.id));
+    assert.equal((await call(fam.token, 'POST', '/swipe', { target_id: ap.id, direction: 'like' })).status, 200);
+    assert.equal((await call(ap.token, 'POST', '/swipe', { target_id: fam.id, direction: 'like' })).body.matched, true);
+    const intro = (who) => testDb.prepare('SELECT partner_name FROM agency_introductions WHERE ambassador_id = ? AND family_id = ?').get(who, fam.id);
+    assert.equal(intro(host.amb).partner_name, 'Manila Sending');
+    assert.equal(intro(send.amb).partner_name, 'Nord Host Families');
+    // A placement between them shows on both agencies' pages.
+    testDb.prepare(`INSERT INTO placements (family_id, aupair_id, country, start_date, end_date, weekly_hours, pocket_money, status, created_by)
+      VALUES (?, ?, 'IS', '2027-01-15', '2028-01-14', 30, 500, 'confirmed', ?)`).run(fam.id, ap.id, fam.id);
+    const shared = (await call(send.token, 'GET', '/agency/network')).body.placements;
+    assert.deepEqual([shared.length, shared[0].ours, shared[0].partner], [1, 'aupair', 'Nord Host Families']);
+    assert.equal((await call(host.token, 'GET', '/agency/network')).body.placements[0].ours, 'family');
+
+    // Invites: an agency not on PairMundo gets an email, then a request once it joins and is linked.
+    r = await call(host.token, 'POST', '/agency/invites', { email: 'Hello@NewAgency.test', name: 'New Agency', message: 'Join us!' });
+    assert.deepEqual(r.body, { invited: true });
+    const mail = outbox.findLast((m) => m.to === 'hello@newagency.test');
+    assert.match(mail.subject, /Nord Host Families invites New Agency/);
+    assert.match(mail.text, /agency-signup\?email=hello%40newagency\.test/);
+    assert.deepEqual((await call(host.token, 'POST', '/agency/invites', { email: 'hello@newagency.test', name: 'New Agency' })).body, { invited: true, already: true });
+    // Inviting an agency already on PairMundo asks it to partner instead.
+    assert.equal((await call(host.token, 'POST', '/agency/invites', { email: 'boss@manilasend.test', name: 'Manila' })).body.joined, true);
+    const fresh = await agency('NEWAG', 'New Agency', 'se', 'hello@newagency.test');
+    const waiting = (await call(fresh.token, 'GET', '/agency/network')).body.partnerships;
+    assert.deepEqual([waiting.length, waiting[0].incoming, waiting[0].agency.name, waiting[0].message], [1, true, 'Nord Host Families', 'Join us!']);
+    assert.equal((await call(host.token, 'GET', '/agency/network')).body.invites[0].joined_as, 'New Agency');
+
+    // Ending the partnership closes the spaces again for new contact.
+    const pid = (await call(send.token, 'GET', '/agency/network')).body.partnerships.find((p) => p.agency.id === host.amb).id;
+    assert.equal((await call(send.token, 'POST', `/agency/partners/${pid}`, { action: 'end' })).body.status, 'ended');
+    assert.ok(!(await call(fam.token, 'GET', '/search?limit=100')).body.results.some((x) => x.user.id === ap.id));
+    // A declined request can't be sent again straight away.
+    const pf = (await call(fresh.token, 'GET', '/agency/network')).body.partnerships[0];
+    await call(fresh.token, 'POST', `/agency/partners/${pf.id}`, { action: 'decline' });
+    await call(fresh.token, 'PUT', '/agency/network/profile', { listed: true, side: 'both' });
+    assert.equal((await call(host.token, 'POST', '/agency/partners', { agency_id: fresh.amb })).status, 400);
+
+    // Affiliations: claimed by the agency, checked by the admin, then a badge on the agency and its au pairs.
+    assert.equal((await call(send.token, 'POST', '/agency/affiliations', { org: 'nope' })).status, 400);
+    r = await call(send.token, 'POST', '/agency/affiliations', { org: 'iapa', member_ref: 'M-123', proof_url: 'iapa.org/members' });
+    assert.deepEqual([r.status, r.body.org_name, r.body.status, r.body.proof_url], [200, 'IAPA', 'pending', 'https://iapa.org/members']);
+    assert.equal((await call(send.token, 'POST', '/agency/affiliations', { org: 'iapa' })).status, 400, 'no duplicates');
+    const other = (await call(send.token, 'POST', '/agency/affiliations', { org: 'other', org_name: 'PAAA' })).body;
+    assert.deepEqual((await call(ap.token, 'GET', `/users/${ap.id}`)).body.user.agency_badges, [], 'unchecked claims show nothing');
+    const list = (await call(admin, 'GET', '/admin/affiliations')).body.affiliations;
+    assert.ok(list.some((x) => x.id === r.body.id && x.agency === 'Manila Sending'));
+    assert.equal((await call(admin, 'POST', `/admin/affiliations/${r.body.id}`, { status: 'verified' })).status, 200);
+    await call(admin, 'POST', `/admin/affiliations/${other.id}`, { status: 'rejected', note: 'Not on their member list.' });
+    assert.deepEqual((await call(ap.token, 'GET', `/users/${ap.id}`)).body.user.agency_badges, ['IAPA']);
+    assert.deepEqual((await call(host.token, 'GET', '/agency/network')).body.agencies.find((x) => x.id === send.amb).badges, ['IAPA']);
+    const mine = (await call(send.token, 'GET', '/agency/network')).body.affiliations;
+    assert.equal(mine.find((x) => x.id === other.id).note, 'Not on their member list.');
+  } finally { delete process.env.AGENCY_NETWORK; }
+  // Off again: badges disappear from profiles.
+  assert.equal((await call(ap.token, 'GET', `/users/${ap.id}`)).body.user.agency_badges, undefined);
+});

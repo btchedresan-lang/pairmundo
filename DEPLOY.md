@@ -97,6 +97,15 @@ Early family bonus: on top of the trial, the first 500 families who sign up, or 
 
 Gift days: an ambassador code can come with free days of the pass, say for a real estate office to give the families it sends. Set **Gift days for families** (0 to 365, 0 = none) on the ambassador in Admin → Ambassadors. A family who signs up with the code gets that many days saved, fixed at sign-up, and starts them with **Use my 30 free days now** (or however many) on the Family Pass page, within 12 months of signing up. One gift per email, so deleting the account and signing up again doesn't give a second one. No double bonus: a family with the early family bonus keeps just that and gets no gift (while the early offer is open, that's every new family). The ambassador is credited as usual either way, and using gift days doesn't count as a paid pass for their reward. As with the early bonus, the days stay saved while `FAMILY_PASS` is off. Admin → Ambassadors and Admin → Waitlist show how many gifts are saved and used.
 
+## Agency network
+
+Partner agencies can find other agencies to work with, invite agencies that aren't on PairMundo yet, and show memberships like IAPA. It stays off until you set `AGENCY_NETWORK` = `on` in Render → Environment.
+
+- Each agency lists itself under **Partner agencies** (what it does: sends au pairs, finds host families or both, and the countries it works with). Others see it sorted by how well it fits theirs.
+- When one agency accepts another's request, their spaces are shared: each one's families can meet the other's au pairs, even in closed spaces. Matches go in both agencies' introduction logs, and placements between them show on both pages. Either can stop it; placements already agreed stay.
+- An invite to an agency not on PairMundo emails them a sign-up link. Once you link their new account to a code under Admin → Ambassadors, the invite becomes a request from the agency that sent it.
+- Memberships an agency adds wait in Admin → Affiliations. Check each one on the organisation's member list before approving: approved ones show as a badge on the agency and on its au pairs' profiles.
+
 ## Launch email
 
 On launch day, Admin → Waitlist → **Launch email** tells everyone the apps are out: everyone on the waitlist, plus every account with a confirmed email (not admins, not suspended), once per email address. Each person gets it in their language. Accounts are told to sign in as usual; waitlist people to sign up with that email (with the link to leave the list). Families are reminded of early free days they haven't used yet, and au pairs that it's free for them. Nothing is sent until you press **Send launch email**, and only from `LAUNCH_DATE` on.

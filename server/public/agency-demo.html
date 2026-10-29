@@ -482,9 +482,9 @@ function renderAupair() {
 
 // ---------- agency console ----------
 let sub = 'today';
-const SUBS = [['today', 'Today'], ['families', 'Families'], ['aupairs', 'Au pairs'], ['placements', 'Placements'], ['protection', 'Protection'], ['compliance', 'Compliance'], ['reports', 'Reports']];
+const SUBS = [['today', 'Today'], ['families', 'Families'], ['aupairs', 'Au pairs'], ['placements', 'Placements'], ['protection', 'Protection'], ['compliance', 'Compliance'], ['partners', 'Partner agencies'], ['reports', 'Reports']];
 function renderAgency() {
-  const views = { today: cToday, families: cFamilies, aupairs: cAupairs, placements: cPlacements, protection: cProtection, compliance: cCompliance, reports: cReports };
+  const views = { today: cToday, families: cFamilies, aupairs: cAupairs, placements: cPlacements, protection: cProtection, compliance: cCompliance, partners: cPartners, reports: cReports };
   $('#v-agency').innerHTML = `<nav class="subnav">${SUBS.map(([k, l]) => `<button data-sub="${k}" aria-current="${sub === k}">${l}</button>`).join('')}</nav><div id="cbody">${views[sub]()}</div>`;
   $('#v-agency').querySelectorAll('[data-sub]').forEach(b => b.onclick = () => { sub = b.dataset.sub; renderAgency(); });
   wireAgency();
@@ -565,6 +565,40 @@ function cCompliance() {
         </div></div>
     </div>`;
 }
+// Other agencies to work with: sending agencies that prepare au pairs for your families, and memberships like IAPA.
+const partnerAgencies = [
+  { id: 'emerald', name: 'Emerald Au Pairs', from: 'Ireland', side: 'Sends au pairs', badges: ['IAPA'], aupairs: 38, fit: 'Sends to Australia', state: 'partner', about: 'Irish au pairs with childcare experience, interviewed in Dublin.' },
+  { id: 'pampa', name: 'Pampa Au Pair', from: 'Argentina', side: 'Sends au pairs', badges: ['WYSE'], aupairs: 21, fit: 'Sends to Australia', state: 'incoming', about: 'Argentinian au pairs on the Work and Holiday visa, English tested before they apply.', msg: 'We have 12 au pairs ready to travel from February. Would your families like to meet them?' },
+  { id: 'lumiere', name: 'Lumière Au Pair', from: 'France', side: 'Sends au pairs', badges: ['IAPA', 'WYSE'], aupairs: 54, fit: 'Sends to Australia', state: '', about: 'French au pairs for families in Australia and New Zealand.' },
+  { id: 'nordlicht', name: 'Nordlicht Au Pair', from: 'Germany', side: 'Sends and hosts', badges: [], aupairs: 17, fit: 'Shared country: Australia', state: '', about: 'German au pairs, first aid course included.' },
+];
+const memberships = [{ org: 'IAPA', name: 'International Au Pair Association', state: 'Checked' }];
+function cPartners() {
+  const card = (a, end) => `<div class="row flat" style="grid-template-columns:44px minmax(0,1fr) auto"><span class="av" style="background:${COLORS[partnerAgencies.indexOf(a) + 1]}">${initials(a.name)}</span>
+    <span class="meta"><span class="nm">${esc(a.name)}</span><span class="small muted">${esc(a.from)} · ${esc(a.side)} · ${a.aupairs} au pairs</span><span class="small">${esc(a.about)}</span>
+    <span class="tags">${a.badges.map(b => `<span class="pill p-info">🏅 ${b} member</span>`).join('')}<span class="pill p-ok">Good fit: ${esc(a.fit)}</span></span></span>
+    <span class="end">${end}</span></div>`;
+  const partners = partnerAgencies.filter(a => a.state === 'partner'), incoming = partnerAgencies.filter(a => a.state === 'incoming');
+  return `<div class="intro"><h2>Work with other agencies</h2><p class="muted">Partner with sending agencies that prepare au pairs for your families, or invite the ones you already work with. Partners share their spaces: your families meet their au pairs, each match is logged for both agencies, and you agree the fee split between you.</p></div>
+    <div class="grid2">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        ${incoming.length ? `<div class="panel"><div class="panel-head"><h3>Asking to work with you</h3></div><div class="list">${incoming.map(a => `${card(a, `<button class="btn primary" data-partner="${a.id}" data-act="accept">Accept</button><button class="btn" data-partner="${a.id}" data-act="decline">Decline</button>`)}<p class="small"><b>Their message:</b> ${esc(a.msg)}</p>`).join('')}</div></div>` : ''}
+        <div class="panel"><div class="panel-head"><h3>Suggested for you</h3><span class="small muted">Sorted by how well they fit</span></div><div class="list">
+          ${partnerAgencies.filter(a => !['partner', 'incoming', 'declined'].includes(a.state)).map(a => card(a, a.state === 'sent' ? '<span class="pill p-mut">Request sent</span>' : `<button class="btn primary" data-partner="${a.id}" data-act="ask">Ask to work together</button>`)).join('') || '<p class="small muted">No more suggestions right now.</p>'}</div></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div class="panel"><div class="panel-head"><h3>Your partners</h3><span class="small muted">${partners.length}</span></div><div class="list">${partners.map(a => card(a, '<span class="pill p-ok">✓ Partner</span>')).join('')}</div>
+          <p class="small muted" style="margin-top:8px">Aoife Brennan came to you through Emerald Au Pairs. Her matches and placement show in both agencies' consoles.</p></div>
+        <div class="panel"><div class="panel-head"><h3>Invite an agency</h3></div><p class="small muted" style="margin-bottom:8px">Not on PairMundo yet? We email them an invite from you, and your request is waiting when they join.</p>
+          <form id="pinvite" style="display:flex;flex-direction:column;gap:8px"><div class="field"><label for="pi-name">Agency name</label><input id="pi-name" value="Kiwi Au Pair Partners"></div>
+          <div class="field"><label for="pi-email">Their email</label><input id="pi-email" type="email" value="hello@kiwi-aupair.example"></div><div class="actions"><button class="btn primary" type="submit">Send invite</button></div></form></div>
+        <div class="panel"><div class="panel-head"><h3>Your memberships</h3><span class="small muted">Shown as badges once PairMundo checks them</span></div>
+          <div class="list">${memberships.map(m => `<div class="row flat" style="grid-template-columns:minmax(0,1fr) auto"><span class="meta"><span class="nm">🏅 ${esc(m.org)}</span><span class="small muted">${esc(m.name)}</span></span><span class="pill ${m.state === 'Checked' ? 'p-ok' : 'p-mut'}">${m.state === 'Checked' ? '✓ Checked' : 'Being checked'}</span></div>`).join('')}</div>
+          <div class="actions" style="margin-top:8px"><select id="pm-org" style="padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg)">${[['WYSE', 'WYSE Travel Confederation'], ['Alliance', 'Alliance for International Exchange'], ['BAPAA', 'British Au Pair Agencies Association']].filter(o => !memberships.some(m => m.org === o[0])).map(o => `<option value="${o[0]}" data-name="${o[1]}">${o[0]}: ${o[1]}</option>`).join('')}</select><button class="btn" id="pm-add">Add membership</button></div>
+          <p class="small muted" style="margin-top:8px">Families see "🏅 IAPA member" next to "Prepared by ${esc(brand.name)}" on your au pairs' profiles.</p></div>
+      </div>
+    </div>`;
+}
 function cReports() {
   const rows = [['Jul', 2], ['Aug', 3], ['Sep', 2], ['Oct', 4]];
   return `<div class="intro"><h2>October at a glance</h2><p class="muted">Sample numbers. Your real reports fill in from the app.</p></div>
@@ -590,6 +624,15 @@ function wireAgency() {
   root.querySelectorAll('[data-set]').forEach(b => b.onclick = () => { settings[b.dataset.set] = !settings[b.dataset.set]; renderAgency(); });
   root.querySelectorAll('[data-invite]').forEach(b => b.onclick = () => { b.disabled = true; b.textContent = 'Invited'; toast('Invitation sent. They see your agency\'s application form.'); });
   root.querySelectorAll('[data-ap]').forEach(b => b.onclick = () => openAp(+b.dataset.ap));
+  root.querySelectorAll('[data-partner]').forEach(b => b.onclick = () => {
+    const a = partnerAgencies.find(x => x.id === b.dataset.partner);
+    a.state = { ask: 'sent', accept: 'partner', decline: 'declined' }[b.dataset.act];
+    toast({ ask: `Request sent to ${a.name}`, accept: `${a.name} is now a partner. Your families can meet their au pairs.`, decline: 'Declined' }[b.dataset.act]); renderAgency();
+  });
+  const pinv = root.querySelector('#pinvite');
+  if (pinv) pinv.onsubmit = e => { e.preventDefault(); toast(`Invite sent to ${$('#pi-name').value}`); pinv.querySelector('button').disabled = true; pinv.querySelector('button').textContent = 'Invited'; };
+  const pmAdd = root.querySelector('#pm-add');
+  if (pmAdd) pmAdd.onclick = () => { const o = $('#pm-org').selectedOptions[0]; if (!o) return; memberships.push({ org: o.value, name: o.dataset.name, state: 'pending' }); toast('Added. PairMundo checks it before the badge shows.'); renderAgency(); };
   root.querySelectorAll('[data-rematch]').forEach(b => b.onclick = () => {
     const f = famById(b.dataset.rematch);
     const pool = aupairs.filter(a => a.status === 'approved' && a.id !== f.placed);

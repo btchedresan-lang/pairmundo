@@ -451,6 +451,45 @@ CREATE TABLE IF NOT EXISTS agency_flags (
 );
 CREATE INDEX IF NOT EXISTS agency_flags_amb ON agency_flags(ambassador_id, created_at);
 
+-- Agencies working together: a sending agency that prepares au pairs and a host agency that finds families, say.
+-- Once a partnership is accepted, each one's families can meet the other's au pairs, even in closed spaces.
+CREATE TABLE IF NOT EXISTS agency_partnerships (
+  id INTEGER PRIMARY KEY,
+  from_id INTEGER NOT NULL REFERENCES ambassadors(id) ON DELETE CASCADE, -- the agency that asked
+  to_id INTEGER NOT NULL REFERENCES ambassadors(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'pending',         -- pending | accepted | declined | ended
+  message TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  responded_at TEXT,
+  UNIQUE (from_id, to_id)
+);
+-- Agencies an agency invited to join PairMundo. When the invited agency's account is linked to its code, the invite
+-- becomes a partnership request from the agency that invited it.
+CREATE TABLE IF NOT EXISTS agency_invites (
+  id INTEGER PRIMARY KEY,
+  from_id INTEGER NOT NULL REFERENCES ambassadors(id) ON DELETE CASCADE,
+  email TEXT NOT NULL,
+  agency_name TEXT NOT NULL,
+  message TEXT,
+  joined_id INTEGER REFERENCES ambassadors(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (from_id, email)
+);
+-- Memberships an agency claims, like IAPA. Only the ones PairMundo checked show as a badge.
+CREATE TABLE IF NOT EXISTS agency_affiliations (
+  id INTEGER PRIMARY KEY,
+  ambassador_id INTEGER NOT NULL REFERENCES ambassadors(id) ON DELETE CASCADE,
+  org TEXT NOT NULL,                              -- a key of AFFILIATIONS, or 'other'
+  org_name TEXT NOT NULL,                         -- the name shown on the badge
+  member_ref TEXT,                                -- membership number, if the organisation gives one
+  proof_url TEXT,                                 -- where PairMundo can check it, e.g. the organisation's member list
+  status TEXT NOT NULL DEFAULT 'pending',         -- pending | verified | rejected
+  note TEXT,                                      -- why it was rejected, shown to the agency
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  checked_at TEXT
+);
+CREATE INDEX IF NOT EXISTS agency_affiliations_amb ON agency_affiliations(ambassador_id);
+
 -- Ambassadors share a referral code (on a link or typed at sign-up). People who join with it earn them rewards.
 CREATE TABLE IF NOT EXISTS ambassadors (
   id INTEGER PRIMARY KEY,
@@ -567,6 +606,16 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
   }
   // An agency can approve each family before they see anyone in its space.
   if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'approve_families')) db.exec('ALTER TABLE ambassadors ADD COLUMN approve_families INTEGER NOT NULL DEFAULT 0');
+  // The agency directory: whether an agency is listed, which side it works on, the countries it works with and a few words.
+  if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'network_listed')) {
+    db.exec(`ALTER TABLE ambassadors ADD COLUMN network_listed INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE ambassadors ADD COLUMN network_side TEXT;
+      ALTER TABLE ambassadors ADD COLUMN network_countries TEXT NOT NULL DEFAULT '[]';
+      ALTER TABLE ambassadors ADD COLUMN network_about TEXT;
+      ALTER TABLE ambassadors ADD COLUMN website TEXT`);
+  }
+  // Which partner agency an introduction came through, when the family and the au pair are with different agencies.
+  if (!db.prepare('PRAGMA table_info(agency_introductions)').all().some((c) => c.name === 'partner_name')) db.exec('ALTER TABLE agency_introductions ADD COLUMN partner_name TEXT');
   // An agency's email for referrals: offers with one get a "Get help" button that sends the person's details there.
   if (!db.prepare('PRAGMA table_info(partner_offers)').all().some((c) => c.name === 'lead_email')) db.exec('ALTER TABLE partner_offers ADD COLUMN lead_email TEXT');
   // The family's street address, for the visa invitation letter.
