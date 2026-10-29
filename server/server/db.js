@@ -451,6 +451,37 @@ CREATE TABLE IF NOT EXISTS agency_flags (
 );
 CREATE INDEX IF NOT EXISTS agency_flags_amb ON agency_flags(ambassador_id, created_at);
 
+-- Agencies working together, e.g. a sending agency that supplies au pairs and a host agency that supplies families.
+-- Once accepted, each agency's families and au pairs can meet the other's, even in a closed space.
+-- An agency not on PairMundo yet is invited by email (to_id stays NULL until it has an account linked to a code).
+CREATE TABLE IF NOT EXISTS agency_partnerships (
+  id INTEGER PRIMARY KEY,
+  from_id INTEGER NOT NULL REFERENCES ambassadors(id) ON DELETE CASCADE,
+  to_id INTEGER REFERENCES ambassadors(id) ON DELETE CASCADE,
+  invite_email TEXT,
+  invite_name TEXT,
+  message TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',         -- pending | accepted | declined | ended
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  responded_at TEXT
+);
+CREATE INDEX IF NOT EXISTS agency_partnerships_to ON agency_partnerships(to_id, status);
+
+-- Memberships an agency shows on its listing and its au pairs' profiles (IAPA, WYSE, ...), once PairMundo has checked them.
+CREATE TABLE IF NOT EXISTS agency_affiliations (
+  id INTEGER PRIMARY KEY,
+  ambassador_id INTEGER NOT NULL REFERENCES ambassadors(id) ON DELETE CASCADE,
+  org TEXT NOT NULL,                              -- a key from AFFILIATION_ORGS, or other
+  org_name TEXT NOT NULL,                         -- the badge text
+  member_ref TEXT,                                -- membership number, if the organisation gives one
+  proof_url TEXT,                                 -- where PairMundo can check it, like the member list
+  status TEXT NOT NULL DEFAULT 'pending',         -- pending | verified | rejected
+  note TEXT,                                      -- why it was rejected, shown to the agency
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  reviewed_at TEXT,
+  UNIQUE (ambassador_id, org_name)
+);
+
 -- Ambassadors share a referral code (on a link or typed at sign-up). People who join with it earn them rewards.
 CREATE TABLE IF NOT EXISTS ambassadors (
   id INTEGER PRIMARY KEY,
@@ -567,6 +598,15 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
   }
   // An agency can approve each family before they see anyone in its space.
   if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'approve_families')) db.exec('ALTER TABLE ambassadors ADD COLUMN approve_families INTEGER NOT NULL DEFAULT 0');
+  // Agency network: whether an agency is listed for other agencies to find, which side it works on, and where.
+  if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'network_listed')) {
+    db.exec(`ALTER TABLE ambassadors ADD COLUMN network_listed INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE ambassadors ADD COLUMN network_side TEXT NOT NULL DEFAULT 'both';
+      ALTER TABLE ambassadors ADD COLUMN network_countries TEXT NOT NULL DEFAULT '[]';
+      ALTER TABLE ambassadors ADD COLUMN network_about TEXT`);
+  }
+  // A match between two partner agencies' members is logged for both, naming the other agency.
+  if (!db.prepare('PRAGMA table_info(agency_introductions)').all().some((c) => c.name === 'partner_name')) db.exec('ALTER TABLE agency_introductions ADD COLUMN partner_name TEXT');
   // An agency's email for referrals: offers with one get a "Get help" button that sends the person's details there.
   if (!db.prepare('PRAGMA table_info(partner_offers)').all().some((c) => c.name === 'lead_email')) db.exec('ALTER TABLE partner_offers ADD COLUMN lead_email TEXT');
   // The family's street address, for the visa invitation letter.

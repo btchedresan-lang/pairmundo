@@ -124,3 +124,14 @@ export const ambassadorInviteEmail = ({ kind, name, code, link, signup, email })
     `Sign up with this email address (${email}). Your account is linked to your code as soon as you confirm the email.`, '',
     `The ${APP_NAME} team`].join('\n'),
 });
+
+/** Another agency on PairMundo would like to work with an agency that isn't on it yet. */
+export const agencyPartnerInviteEmail = ({ name, from, message, signup, email }) => ({
+  subject: `${from} invited ${name} to work together on ${APP_NAME}`,
+  text: [`Hello ${name},`, '',
+    `${from} works with ${APP_NAME} to match au pairs and host families, and would like to work with you there: their au pairs could meet your families, or yours theirs, and you both follow the placements you share.`, '',
+    ...(message ? [`Their message: "${message}"`, ''] : []),
+    'Creating an agency account is free:', signup, '',
+    `Sign up with this email address (${email}). Once we have set up your agency code, ${from}'s request waits for you on your agency page, and you choose whether to accept it.`, '',
+    `The ${APP_NAME} team`].join('\n'),
+});

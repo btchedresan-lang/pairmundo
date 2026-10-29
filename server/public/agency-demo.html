@@ -366,7 +366,8 @@ function renderFamily() {
   } else if (fstep === 'profile') {
     const a = byId(fprofile), r = route(a);
     body = `<div class="card"><div class="top" style="background:${a.color}"><span class="badge">✓ Checked by ${esc(brand.name)}</span><span class="av big" style="background:${a.color}">${initials(a.name)}</span></div>
-      <div class="body"><h3>${esc(first(a.name))}, ${a.age}</h3><span class="small muted">${esc(a.from)}, ${esc(a.nat)}</span><p class="small">${esc(a.about)}</p></div></div>
+      <div class="body"><h3>${esc(first(a.name))}, ${a.age}</h3><span class="small muted">${esc(a.from)}, ${esc(a.nat)}</span><p class="small">${esc(a.about)}</p>
+        ${affiliations.some(f => f.state === 'verified') ? `<div class="tags">${affiliations.filter(f => f.state === 'verified').map(f => `<span class="pill p-ok" title="Checked by PairMundo">🏅 ${esc(brand.name)} is a ${esc(f.org)} member</span>`).join('')}</div>` : ''}</div></div>
       <div class="checks">
         <div class="check"><span class="ico i-ok">✓</span><span>ID checked</span><span class="small muted">Passport</span></div>
         <div class="check"><span class="ico ${r.ok ? 'i-ok' : 'i-warn'}">${r.ok ? '✓' : '!'}</span><span>Visa</span><span class="small muted">${esc(a.visa)}</span></div>
@@ -482,9 +483,9 @@ function renderAupair() {
 
 // ---------- agency console ----------
 let sub = 'today';
-const SUBS = [['today', 'Today'], ['families', 'Families'], ['aupairs', 'Au pairs'], ['placements', 'Placements'], ['protection', 'Protection'], ['compliance', 'Compliance'], ['reports', 'Reports']];
+const SUBS = [['today', 'Today'], ['families', 'Families'], ['aupairs', 'Au pairs'], ['placements', 'Placements'], ['protection', 'Protection'], ['compliance', 'Compliance'], ['partners', 'Partner agencies'], ['reports', 'Reports']];
 function renderAgency() {
-  const views = { today: cToday, families: cFamilies, aupairs: cAupairs, placements: cPlacements, protection: cProtection, compliance: cCompliance, reports: cReports };
+  const views = { today: cToday, families: cFamilies, aupairs: cAupairs, placements: cPlacements, protection: cProtection, compliance: cCompliance, partners: cPartners, reports: cReports };
   $('#v-agency').innerHTML = `<nav class="subnav">${SUBS.map(([k, l]) => `<button data-sub="${k}" aria-current="${sub === k}">${l}</button>`).join('')}</nav><div id="cbody">${views[sub]()}</div>`;
   $('#v-agency').querySelectorAll('[data-sub]').forEach(b => b.onclick = () => { sub = b.dataset.sub; renderAgency(); });
   wireAgency();
@@ -565,6 +566,51 @@ function cCompliance() {
         </div></div>
     </div>`;
 }
+// Agency-to-agency: partner with sending agencies abroad (or host agencies, for a sending agency), share au pairs and
+// families, and show checked memberships like IAPA. All sample agencies.
+const partnerAgencies = [
+  { id: 'andes', name: 'Andes Exchange', where: 'Colombia', side: 'Sends au pairs', badges: ['IAPA'], aupairs: 38, status: 'partner', since: 'Partners since Aug 2026', note: '6 au pairs ready for January' },
+  { id: 'manila', name: 'Manila Care Abroad', where: 'Philippines', side: 'Sends au pairs', badges: [], aupairs: 22, status: 'incoming', note: '"We train every au pair in first aid and would love to send them to your families."' },
+  { id: 'cape', name: 'Cape Au Pair Connect', where: 'South Africa', side: 'Sends au pairs', badges: ['IAPA', 'WYSE'], aupairs: 51, status: 'none', fit: true },
+  { id: 'berlin', name: 'Kinderwelt Au Pair', where: 'Germany', side: 'Sends au pairs', badges: ['Gütegemeinschaft Au pair'], aupairs: 64, status: 'none', fit: true },
+  { id: 'lima', name: 'Pacífico Intercambios', where: 'Peru', side: 'Au pairs and families', badges: [], aupairs: 17, status: 'none' },
+  { id: 'nz', name: 'Kiwi Nanny Network', where: 'New Zealand', side: 'Hosts families', badges: ['IAPA'], aupairs: 0, status: 'none' }];
+const affiliations = [{ org: 'IAPA', ref: 'Member no. 1044', state: 'verified' }];
+const badge = b => `<span class="pill p-ok" title="Checked by PairMundo">🏅 ${esc(b)}</span>`;
+function cPartners() {
+  const card = (a, action) => `<div class="row flat"><span class="av" style="background:${COLORS[partnerAgencies.indexOf(a) % COLORS.length]}">${initials(a.name)}</span>
+    <span class="meta"><span class="nm">${esc(a.name)}</span><span class="small muted">${esc(a.where)} · ${a.side}${a.aupairs ? ` · ${a.aupairs} au pairs` : ''}</span>
+    <span class="tags">${a.badges.map(badge).join('')}${a.fit ? '<span class="pill p-brand">Good fit</span>' : ''}</span>${a.note && a.status !== 'none' ? `<span class="small" style="margin-top:4px">${esc(a.note)}</span>` : ''}</span>
+    <span class="end">${action}</span></div>`;
+  const partners = partnerAgencies.filter(a => a.status === 'partner'), incoming = partnerAgencies.filter(a => a.status === 'incoming');
+  const others = partnerAgencies.filter(a => !['partner', 'incoming'].includes(a.status));
+  return `<div class="intro"><h2>Work with agencies abroad, in the same app</h2><p class="muted">Partner with sending agencies that recruit au pairs in their countries. Once you both accept, their au pairs can meet your families inside your closed network, and you both follow the matches and placements you share. You stay the agency your families know.</p></div>
+    <div class="grid2">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        ${incoming.length ? `<div class="panel"><div class="panel-head"><h3>Asking to work with you</h3><span class="small muted">${incoming.length} new</span></div><div class="list">
+          ${incoming.map(a => card(a, `<button class="btn primary" data-pact="accept" data-pid="${a.id}">Accept</button> <button class="btn" data-pact="decline" data-pid="${a.id}">Decline</button>`)).join('')}</div></div>` : ''}
+        <div class="panel"><div class="panel-head"><h3>Your partner agencies</h3><span class="small muted">${partners.length}</span></div><div class="list">
+          ${partners.map(a => card(a, `<span class="pill p-ok">Partner</span>`)).join('') || '<p class="small muted">None yet. Find one on the right.</p>'}</div></div>
+        <div class="panel"><div class="panel-head"><h3>Placements you share</h3><span class="small muted">Both agencies see these</span></div>
+          <div class="tablewrap"><table><thead><tr><th>Family (yours)</th><th>Au pair</th><th>With</th><th>Start</th></tr></thead><tbody>
+          <tr><td>Morgan family</td><td>Valentina G.</td><td>Andes Exchange</td><td class="num">5 Jan</td></tr>
+          <tr><td>Harper family</td><td>Camila R.</td><td>Andes Exchange</td><td class="num">Matched</td></tr></tbody></table></div>
+          <p class="small muted" style="margin-top:8px">Each match is logged for both agencies, so the introduction log covers au pairs from your partners too.</p></div>
+        <div class="panel"><div class="panel-head"><h3>Your affiliations</h3><span class="small muted">Checked by PairMundo</span></div>
+          <div class="list">${affiliations.map(f => `<div class="row flat" style="grid-template-columns:minmax(0,1fr) auto"><span class="meta"><span class="nm">${esc(f.org)}</span><span class="small muted">${esc(f.ref)}</span></span>${f.state === 'verified' ? badge('Verified') : '<span class="pill p-mut">Being checked</span>'}</div>`).join('')}</div>
+          <form class="actions" id="affForm" style="margin-top:10px;flex-wrap:wrap"><select id="affOrg" aria-label="Organisation"><option>WYSE Travel Confederation</option><option>Gütegemeinschaft Au pair (RAL)</option><option>BAPAA</option><option>UFAAP</option><option>Another organisation</option></select><input id="affRef" placeholder="Membership no." aria-label="Membership number" style="flex:1;min-width:120px"><button class="btn" type="submit">Add</button></form>
+          <p class="small muted" style="margin-top:8px">Verified memberships show as a badge on your listing and on your au pairs' profiles, so families see who stands behind them.</p></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div class="panel"><div class="panel-head"><h3>Find partner agencies</h3><span class="small muted">Best fits first</span></div><div class="list">
+          ${others.map(a => card(a, a.status === 'asked' ? '<span class="pill p-mut">Asked</span>' : `<button class="btn primary" data-pask="${a.id}">Ask to partner</button>`)).join('')}</div></div>
+        <div class="panel"><div class="panel-head"><h3>Invite an agency you already work with</h3></div>
+          <p class="small muted">Not on PairMundo yet? We email them a free sign-up link, and your request waits for them.</p>
+          <form id="pinvite" style="display:flex;flex-direction:column;gap:8px;margin-top:8px"><div class="field"><label for="pi-name">Agency name</label><input id="pi-name" value="Tbilisi Au Pair Centre"></div>
+            <div class="field"><label for="pi-email">Their email</label><input id="pi-email" type="email" value="hello@tbilisi-aupair.example"></div>
+            <button class="btn primary" type="submit">Send invite</button></form></div>
+      </div></div>`;
+}
 function cReports() {
   const rows = [['Jul', 2], ['Aug', 3], ['Sep', 2], ['Oct', 4]];
   return `<div class="intro"><h2>October at a glance</h2><p class="muted">Sample numbers. Your real reports fill in from the app.</p></div>
@@ -590,6 +636,17 @@ function wireAgency() {
   root.querySelectorAll('[data-set]').forEach(b => b.onclick = () => { settings[b.dataset.set] = !settings[b.dataset.set]; renderAgency(); });
   root.querySelectorAll('[data-invite]').forEach(b => b.onclick = () => { b.disabled = true; b.textContent = 'Invited'; toast('Invitation sent. They see your agency\'s application form.'); });
   root.querySelectorAll('[data-ap]').forEach(b => b.onclick = () => openAp(+b.dataset.ap));
+  root.querySelectorAll('[data-pact]').forEach(b => b.onclick = () => {
+    const a = partnerAgencies.find(x => x.id === b.dataset.pid);
+    a.status = b.dataset.pact === 'accept' ? 'partner' : 'declined';
+    if (a.status === 'partner') { a.note = 'Partners since today'; toast(`${a.name} is now a partner. Their au pairs can meet your families.`); } else toast(`Declined. ${a.name} isn't told why.`);
+    renderAgency();
+  });
+  root.querySelectorAll('[data-pask]').forEach(b => b.onclick = () => { const a = partnerAgencies.find(x => x.id === b.dataset.pask); a.status = 'asked'; toast(`Request sent to ${a.name}`); renderAgency(); });
+  const pinv = $('#pinvite');
+  if (pinv) pinv.onsubmit = e => { e.preventDefault(); toast(`Invite emailed to ${$('#pi-email').value}`); pinv.querySelector('button').disabled = true; };
+  const aff = $('#affForm');
+  if (aff) aff.onsubmit = e => { e.preventDefault(); affiliations.push({ org: $('#affOrg').value, ref: $('#affRef').value || 'Membership no. to follow', state: 'pending' }); toast('Added. PairMundo checks it before the badge shows.'); renderAgency(); };
   root.querySelectorAll('[data-rematch]').forEach(b => b.onclick = () => {
     const f = famById(b.dataset.rematch);
     const pool = aupairs.filter(a => a.status === 'approved' && a.id !== f.placed);
