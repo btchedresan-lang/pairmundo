@@ -124,3 +124,24 @@ export const ambassadorInviteEmail = ({ kind, name, code, link, signup, email })
     `Sign up with this email address (${email}). Your account is linked to your code as soon as you confirm the email.`, '',
     `The ${APP_NAME} team`].join('\n'),
 });
+
+/** To an agency another agency asked to work with on PairMundo. */
+export const agencyPartnerEmail = ({ to, from, message, link }) => ({
+  subject: `${from} would like to work with you on ${APP_NAME}`,
+  text: [`Hello ${to},`, '',
+    `${from} asked to become a partner agency of ${to} on ${APP_NAME}. Partner agencies' au pairs and families can meet each other, and you both follow the matches and placements you share.`, '',
+    ...(message ? [`Their message: "${message}"`, ''] : []),
+    'See their profile and answer here:', link, '',
+    `The ${APP_NAME} team`].join('\n'),
+});
+
+/** To an agency that isn't on PairMundo yet, invited by an agency that is. */
+export const agencyInviteEmail = ({ to, from, message, signup }) => ({
+  subject: `${from} invites you to ${APP_NAME}`,
+  text: [`Hello ${to},`, '',
+    `${from} works with ${APP_NAME}, where au pairs and host families match, sign their agreement and plan the visa in one place, and agencies follow every step. They would like to work with you there: their au pairs and families can meet yours, and you both see the matches and placements you share.`, '',
+    ...(message ? [`Their message: "${message}"`, ''] : []),
+    'Create your free agency account here:', signup, '',
+    `Their partner request is waiting for you once your agency code is set up.`, '',
+    `The ${APP_NAME} team`].join('\n'),
+});
