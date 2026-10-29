@@ -610,7 +610,16 @@ views.agency = async () => {
       <table><tr><th></th><th>${tr('Joined this month')}</th><th>${tr('All time')}</th></tr>
       ${[[tr('Au pairs who joined'), 'aupairs'], [tr('Profiles families can see'), 'profiles'], [tr('ID verified'), 'verified'], [tr('Placements agreed'), 'placements']]
     .map(([label, k]) => `<tr><td>${label}</td><td>${amb.this_month[k]}</td><td>${amb.total[k]}</td></tr>`).join('')}</table>
-      <p class="muted small">${tr('Au pairs count here when they sign up with your code or link, or add your code later in their account. A profile shows to families once it has a photo and an About me.')}</p></div>`);
+      <p class="muted small">${tr('Au pairs count here when they sign up with your code or link, or add your code later in their account. A profile shows to families once it has a photo and an About me.')}</p></div>
+    ${amb.space ? `<div class="card"><h2>${tr('Your agency space')}</h2>
+      <p>${trn(amb.space.families, '{n} family has joined with your code.', '{n} families have joined with your code.')}</p>
+      <ul>${[[amb.space.closed_network, tr('Closed network: your families and au pairs only meet each other.')], [amb.space.mask_contacts, tr('Contact details are hidden in chats until a placement is confirmed.')],
+    [amb.space.covers_pass, tr("Your families don't pay PairMundo for the Family Pass.")]].map(([on, label]) => `<li>${on ? '✓' : '–'} ${label}</li>`).join('')}</ul>
+      <p class="muted small">${tr('To change these, email PairMundo.')}</p></div>
+    <div class="card"><h2>${tr('Introduction log')}</h2><p class="muted small">${tr('When one of your families and one of your au pairs first matched. Keep it as a record for your family contracts.')}</p>
+      ${amb.introductions.length ? `<div class="table-wrap"><table><tr><th>${tr('When')}</th><th>${tr('Family')}</th><th>${tr('Au pair')}</th></tr>
+      ${amb.introductions.map((i) => `<tr><td>${esc(i.created_at.slice(0, 16))}</td><td>${esc(i.family_name)}</td><td>${esc(i.aupair_name)}</td></tr>`).join('')}</table></div>` : `<p class="muted">${tr('No matches yet.')}</p>`}</div>
+    ${amb.flags.length ? `<div class="card"><h2>${tr('Flagged')}</h2><table>${amb.flags.map((f) => `<tr><td>${esc(f.created_at.slice(0, 16))}</td><td>${esc(f.user_name)}</td><td>${tr('Tried to share contact details before a confirmed placement. They were hidden.')}</td></tr>`).join('')}</table></div>` : ''}` : ''}`);
   document.getElementById('ambCopy').onclick = async () => {
     try { await navigator.clipboard.writeText(amb.link); } catch { document.getElementById('ambLink').select(); document.execCommand('copy'); }
     toast(tr('Link copied'));
@@ -759,7 +768,9 @@ views.account = async () => {
   // An ambassador account has its code on its own page.
   const ambCard = amb?.kind === 'ambassador' && me.user.role !== 'ambassador' ? ambassadorCard(amb) : '';
   // An au pair whose agency gave them a code after they signed up can link their account to it here.
-  const agencyCard = me.user.role !== 'aupair' ? ''
+  const agencyCard = me.user.role === 'family' ? (me.has_code ? '' : `<div class="card"><h2>🎓 ${tr('Your agency')}</h2><p class="muted small">${tr('Working with an au pair agency? Enter the code they gave you to join their space on PairMundo.')}</p>
+      <form id="agency" class="row"><input name="code" required autocapitalize="characters" autocomplete="off" placeholder="${tr('Agency code')}" style="flex:1"><button class="btn sm">${tr('Add')}</button></form><div id="agencyErr"></div></div>`)
+    : me.user.role !== 'aupair' ? ''
     : me.user.agency ? `<div class="card"><h2>🎓 ${tr('Your agency')}</h2><p>${tr('Your profile is linked to {agency}. Families see it on your profile.', { agency: `<strong>${esc(me.user.agency)}</strong>` })}</p></div>`
     : !me.has_code ? `<div class="card"><h2>🎓 ${tr('Your agency')}</h2><p class="muted small">${tr('Did an au pair agency prepare you? Enter the code they gave you, and families will see the agency on your profile.')}</p>
       <form id="agency" class="row"><input name="code" required autocapitalize="characters" autocomplete="off" placeholder="${tr('Agency code')}" style="flex:1"><button class="btn sm">${tr('Add')}</button></form><div id="agencyErr"></div></div>` : '';
@@ -1837,8 +1848,9 @@ views.admin = async ([tab = 'overview', id], qs) => {
 
 const kindChip = (a) => ({ agency: '<span class="chip">Agency</span>', distributor: '<span class="chip">Flyer distributor</span>' })[a.kind] || '';
 /** Shows the flyer pay fields only when the type is flyer distributor. */
+const spaceFields = (form) => Object.fromEntries(['closed_network', 'mask_contacts', 'covers_pass'].map((k) => [k, form[k].checked]));
 function wireKind(form) {
-  const sync = () => { form.querySelector('.distOnly').hidden = form.kind.value !== 'distributor'; };
+  const sync = () => { form.querySelector('.distOnly').hidden = form.kind.value !== 'distributor'; form.querySelector('.agencyOnly').hidden = form.kind.value !== 'agency'; };
   form.kind.onchange = sync;
 }
 async function adminAmbassadors(head, id, qs) {
@@ -1858,6 +1870,10 @@ async function adminAmbassadors(head, id, qs) {
         <div class="field"><label>Per family who joins from their flyers</label><input name="family_bonus" inputmode="decimal" value="${(Number(a.family_bonus ?? 5000) / 100)}"></div></div>
       <div class="form-grid"><div class="field"><label>Their areas: the flyer sources, separated by commas (see Waitlist, sign-ups by source)</label><input name="areas" placeholder="door-nacka, door-bromma" value="${esc((a.areas || []).join(', '))}"></div>
         <div class="field"><label>A family counts if they join within this many days of a delivery in that area</label><input name="bonus_days" type="number" min="0" max="365" step="1" value="${Number(a.bonus_days ?? 28)}"></div></div></fieldset>
+    <fieldset class="agencyOnly" ${a.kind === 'agency' ? '' : 'hidden'}><legend>Agency space (for families and au pairs who join with this code)</legend>
+      <label class="check"><input type="checkbox" name="closed_network" ${a.closed_network ? 'checked' : ''}> Closed network: they only meet each other, and nobody outside sees them</label>
+      <label class="check"><input type="checkbox" name="mask_contacts" ${a.mask_contacts ? 'checked' : ''}> Hide phone numbers, emails and social handles in their chats until a placement is confirmed</label>
+      <label class="check"><input type="checkbox" name="covers_pass" ${a.covers_pass ? 'checked' : ''}> Families don't need the Family Pass (they pay the agency instead)</label></fieldset>
     <div class="form-grid"><div class="field"><label>Name</label><input name="name" required value="${esc(a.name)}"></div>
       <div class="field"><label>Country</label><select name="country">${options(COUNTRIES, a.country || '', '—')}</select></div></div>
     <div class="form-grid"><div class="field"><label>Phone or email (only you see this)</label><input name="contact" value="${esc(a.contact)}"></div>
@@ -1919,7 +1935,7 @@ async function adminAmbassadors(head, id, qs) {
     document.getElementById('ambEdit').onsubmit = async (e) => {
       e.preventDefault();
       try {
-        const r = await api(`/admin/ambassadors/${a.id}`, { method: 'POST', body: { ...formData(e.target), active: e.target.active.checked } });
+        const r = await api(`/admin/ambassadors/${a.id}`, { method: 'POST', body: { ...formData(e.target), active: e.target.active.checked, ...spaceFields(e.target) } });
         toast(r.invite_email && r.invite_email !== a.invite_email ? `Saved. Invite sent to ${r.invite_email}` : 'Saved'); views.admin(['ambassadors', a.id], qs);
       } catch (err) { toast(err.message); }
     };
@@ -1949,7 +1965,7 @@ async function adminAmbassadors(head, id, qs) {
   document.querySelector('#monthPick input').onchange = (e) => go(`#/admin/ambassadors?month=${e.target.value}`);
   document.getElementById('ambNew').onsubmit = async (e) => {
     e.preventDefault();
-    try { const a = await api('/admin/ambassadors', { method: 'POST', body: formData(e.target) }); toast(a.invite_email ? `Added. Invite sent to ${a.invite_email}` : `Added. Their link: ${a.link}`); go(`#/admin/ambassadors/${a.id}`); }
+    try { const a = await api('/admin/ambassadors', { method: 'POST', body: { ...formData(e.target), ...spaceFields(e.target) } }); toast(a.invite_email ? `Added. Invite sent to ${a.invite_email}` : `Added. Their link: ${a.link}`); go(`#/admin/ambassadors/${a.id}`); }
     catch (err) { toast(err.message); }
   };
 }

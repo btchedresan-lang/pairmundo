@@ -1068,8 +1068,8 @@ test('partner agencies: their code tags au pairs, shows on the profile, earns no
   assert.deepEqual((await call(late.token, 'POST', '/me/agency', { code: ' alpha-zw ' })).body, { agency: 'Alpha Academy' });
   assert.equal((await call(fam.token, 'GET', `/users/${late.id}`)).body.user.agency, 'Alpha Academy');
   assert.equal((await call(late.token, 'POST', '/me/agency', { code: 'ALPHA-ZW' })).status, 400, 'already linked');
-  assert.equal((await call(fam.token, 'POST', '/me/agency', { code: 'ALPHA-ZW' })).status, 403, 'au pairs only');
-  // Families are never shown as an agency's.
+  // Families can join an agency's space too, but are never shown as an agency's.
+  assert.deepEqual((await call(fam.token, 'POST', '/me/agency', { code: 'ALPHA-ZW' })).body, { agency: 'Alpha Academy' });
   assert.equal((await call(ap.token, 'GET', `/users/${fam.id}`)).body.user.agency, null);
 });
 
@@ -1934,4 +1934,63 @@ test('visa help: partner agency referrals with consent, the family document pack
   assert.equal((await call(fam.token, 'GET', '/admin/referrals')).status, 403);
   assert.equal((await call(admin, 'PUT', `/admin/referrals/${mine.id}`, { status: 'maybe' })).status, 400);
   assert.equal((await call(admin, 'PUT', `/admin/referrals/${mine.id}`, { status: 'not_going' })).body.started_at, null);
+});
+
+test('agency spaces: closed network, hidden contact details, introduction log and covered Family Pass', async () => {
+  const { hashPassword } = await import('../server/auth.js');
+  testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
+  let r = await call(admin, 'POST', '/admin/ambassadors', { code: 'DREAMDEMO', name: 'Demo Nannies', country: 'au', kind: 'agency', account_email: 'boss@demonannies.test',
+    closed_network: true, mask_contacts: true, covers_pass: true });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.deepEqual([r.body.closed_network, r.body.mask_contacts, r.body.covers_pass], [1, 1, 1]);
+  const join = async (email, role, ref_code) => {
+    const res = await call(null, 'POST', '/auth/register', { email, password: 'password123', role, name: `${role} ${email}`, country: 'AU', ref_code });
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    await call(res.body.token, 'POST', '/auth/verify-email', { code: lastCode(email) });
+    await completeProfile(res.body.token, res.body.user.id, email);
+    return { token: res.body.token, id: res.body.user.id };
+  };
+  const fam = await join('spacefam@test.io', 'family', 'DREAMDEMO');
+  const ap = await join('spaceap@test.io', 'aupair', 'DREAMDEMO');
+  const outsiderFam = await register('outfam@test.io', 'family', 'AU');
+  const outsiderAp = await register('outap@test.io', 'aupair', 'IE');
+
+  // Closed network: the agency's family only sees its au pairs, and outsiders can't see or like them.
+  const seen = (await call(fam.token, 'GET', '/search?limit=100')).body.results.map((x) => x.user.id);
+  assert.ok(seen.includes(ap.id) && !seen.includes(outsiderAp.id), JSON.stringify(seen));
+  assert.ok(!(await call(outsiderFam.token, 'GET', '/search?limit=100')).body.results.some((x) => x.user.id === ap.id));
+  assert.equal((await call(outsiderFam.token, 'GET', `/users/${ap.id}`)).status, 404);
+  assert.equal((await call(outsiderFam.token, 'POST', '/swipe', { target_id: ap.id, direction: 'like' })).status, 404);
+  assert.equal((await call(fam.token, 'POST', '/requests', { to_user: outsiderAp.id })).status, 404);
+
+  // The agency covers the Family Pass: its family can message without one, even when the pass is on.
+  process.env.FAMILY_PASS = 'on';
+  try {
+    assert.equal((await call(fam.token, 'GET', '/family-pass')).body.required, true);
+    assert.equal((await call(fam.token, 'POST', '/swipe', { target_id: ap.id, direction: 'like', message: 'Hi! Call me on +61 412 345 678' })).status, 200);
+    r = await call(ap.token, 'POST', '/swipe', { target_id: fam.id, direction: 'like' });
+    assert.equal(r.body.matched, true);
+    const cid = r.body.conversation_id;
+    r = await call(fam.token, 'POST', `/conversations/${cid}/messages`, { body: 'Email me at sarah@example.com or find me @sarah.h, we start 2027-01-15' });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    assert.ok(!r.body.body.includes('sarah@example.com') && !r.body.body.includes('@sarah.h'), r.body.body);
+    assert.ok(r.body.body.includes('2027-01-15'), 'dates are not hidden');
+    const msgs = (await call(ap.token, 'GET', `/conversations/${cid}/messages`)).body.messages;
+    assert.ok(msgs.every((m) => !/412 345 678/.test(m.body)), 'the like message was hidden too');
+    assert.equal((await call(ap.token, 'POST', `/conversations/${cid}/messages`, { body: 'See you Thursday!' })).body.body, 'See you Thursday!');
+  } finally { delete process.env.FAMILY_PASS; }
+
+  // The agency account sees the introduction and the flags.
+  const boss = await register('boss@demonannies.test', 'agency', 'AU', 'Boss', { complete: false });
+  testDb.prepare("UPDATE ambassadors SET user_id = ? WHERE code = 'DREAMDEMO'").run(boss.id);
+  const amb = (await call(boss.token, 'GET', '/me/ambassador')).body;
+  assert.equal(amb.introductions.length, 1);
+  assert.equal(amb.introductions[0].how, 'match');
+  assert.equal(amb.flags.length, 2);
+  assert.deepEqual([amb.space.closed_network, amb.space.families], [true, 1]);
+
+  // An open agency space changes nothing for outsiders.
+  await call(admin, 'POST', `/admin/ambassadors/${amb.id ?? testDb.prepare("SELECT id FROM ambassadors WHERE code = 'DREAMDEMO'").get().id}`, { closed_network: false });
+  assert.ok((await call(outsiderFam.token, 'GET', '/search?limit=100')).body.results.some((x) => x.user.id === ap.id));
 });

@@ -416,6 +416,30 @@ CREATE TABLE IF NOT EXISTS agency_referrals (
   started_at TEXT
 );
 
+-- When an agency's family and au pair first matched: the agency's evidence if a family later places that au pair privately.
+CREATE TABLE IF NOT EXISTS agency_introductions (
+  id INTEGER PRIMARY KEY,
+  ambassador_id INTEGER NOT NULL REFERENCES ambassadors(id) ON DELETE CASCADE,
+  family_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  aupair_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  family_name TEXT NOT NULL,                      -- kept so the record survives a deleted account
+  aupair_name TEXT NOT NULL,
+  how TEXT NOT NULL,                              -- match (both liked each other) | request (a match request was accepted)
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (ambassador_id, family_id, aupair_id)
+);
+
+-- Things an agency should know about in its space, e.g. contact details hidden from a chat.
+CREATE TABLE IF NOT EXISTS agency_flags (
+  id INTEGER PRIMARY KEY,
+  ambassador_id INTEGER NOT NULL REFERENCES ambassadors(id) ON DELETE CASCADE,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  user_name TEXT NOT NULL,
+  kind TEXT NOT NULL,                             -- contact (tried to share contact details before a confirmed placement)
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS agency_flags_amb ON agency_flags(ambassador_id, created_at);
+
 -- Ambassadors share a referral code (on a link or typed at sign-up). People who join with it earn them rewards.
 CREATE TABLE IF NOT EXISTS ambassadors (
   id INTEGER PRIMARY KEY,
@@ -522,6 +546,13 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
       ALTER TABLE ambassadors ADD COLUMN family_bonus INTEGER NOT NULL DEFAULT 5000;
       ALTER TABLE ambassadors ADD COLUMN bonus_days INTEGER NOT NULL DEFAULT 28;
       ALTER TABLE ambassadors ADD COLUMN areas TEXT NOT NULL DEFAULT '[]'`);
+  }
+  // Agency spaces: a partner agency can keep its families and au pairs to itself (closed network), hide contact details
+  // in their chats until a placement is confirmed, and cover the Family Pass for its families (they pay the agency instead).
+  if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'closed_network')) {
+    db.exec(`ALTER TABLE ambassadors ADD COLUMN closed_network INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE ambassadors ADD COLUMN mask_contacts INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE ambassadors ADD COLUMN covers_pass INTEGER NOT NULL DEFAULT 0`);
   }
   // An agency's email for referrals: offers with one get a "Get help" button that sends the person's details there.
   if (!db.prepare('PRAGMA table_info(partner_offers)').all().some((c) => c.name === 'lead_email')) db.exec('ALTER TABLE partner_offers ADD COLUMN lead_email TEXT');
