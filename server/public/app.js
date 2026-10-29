@@ -106,8 +106,8 @@ const firstName = (name) => { const w = String(name || '').split(' '); return /^
 const avatar = (u, size = '') => (u?.photo_url
   ? `<img class="avatar ${size}" src="${esc(u.photos?.[0] || u.photo_url)}" alt="" onerror="this.outerHTML='<span class=&quot;avatar ${size}&quot;>${initials(u.name)}</span>'">`
   : `<span class="avatar ${size}">${initials(u?.name)}</span>`);
-const verifyBadges = (v, agency) => [v?.id && `✔ ${tr('ID verified')}`, v?.references && `✔ ${tr('References')}`, v?.background && `✔ ${tr('Background check')}`,
-  agency && `🎓 ${tr('Prepared by {agency}', { agency: esc(agency) })}`]
+const verifyBadges = (v, agency, agencyBadges = []) => [v?.id && `✔ ${tr('ID verified')}`, v?.references && `✔ ${tr('References')}`, v?.background && `✔ ${tr('Background check')}`,
+  agency && `🎓 ${tr('Prepared by {agency}', { agency: esc(agency) })}`, ...(agency ? agencyBadges || [] : []).map((b) => `🏅 ${tr('{org} member', { org: esc(b) })}`)]
   .filter(Boolean).map((t) => `<span class="verify">${t}</span>`).join(' ');
 const scoreBadge = (s) => `<span class="score ${s >= 75 ? 'high' : s < 50 ? 'low' : ''}" title="${tr('Match score')}">${s}%</span>`;
 /** <option>s for a { value: 'English label' } map, translated and sorted by label. */
@@ -153,7 +153,8 @@ function renderNav() {
     return;
   }
   if (me.user.role === 'agency') {
-    $nav.innerHTML = [link('#/agency', tr('Your agency')), link('#/account', tr('Account')), `<a href="#/logout">${tr('Sign out')}</a>`].join('');
+    $nav.innerHTML = [link('#/agency', tr('Your agency')), me.agency_network && me.ambassador ? link('#/network', tr('Partner agencies')) : '',
+      link('#/account', tr('Account')), `<a href="#/logout">${tr('Sign out')}</a>`].join('');
     return;
   }
   if (me.user.role === 'ambassador') {
@@ -617,6 +618,8 @@ views.agency = async () => {
       ${[[tr('Au pairs who joined'), 'aupairs'], [tr('Profiles families can see'), 'profiles'], [tr('ID verified'), 'verified'], [tr('Placements agreed'), 'placements']]
     .map(([label, k]) => `<tr><td>${label}</td><td>${amb.this_month[k]}</td><td>${amb.total[k]}</td></tr>`).join('')}</table>
       <p class="muted small">${tr('Au pairs count here when they sign up with your code or link, or add your code later in their account. A profile shows to families once it has a photo and an About me.')}</p></div>
+    ${amb.network ? `<div class="card"><h2>🤝 ${tr('Partner agencies')}</h2><p>${tr('Find agencies to work with, like a sending agency for your families or a host agency for your au pairs. Partners share their spaces, and you can show memberships like IAPA.')}</p>
+      <a class="btn sm" href="#/network">${tr('Open partner agencies')}</a></div>` : ''}
     ${amb.space ? `<div class="card"><h2>${tr('Your agency space')}</h2>
       <p>${trn(amb.space.families, '{n} family has joined with your code.', '{n} families have joined with your code.')}</p>
       <ul>${[[amb.space.closed_network, tr('Closed network: your families and au pairs only meet each other.')], [amb.space.mask_contacts, tr('Contact details are hidden in chats until a placement is confirmed.')],
@@ -624,8 +627,8 @@ views.agency = async () => {
       <p class="muted small">${tr('To change these, email PairMundo.')}</p></div>
     <div class="card"><h2>${tr('Your families')}</h2><div id="agencyFamilies"><p class="muted">${tr('Loading…')}</p></div></div>
     <div class="card"><h2>${tr('Introduction log')}</h2><p class="muted small">${tr('When one of your families and one of your au pairs first matched. Keep it as a record for your family contracts.')}</p>
-      ${amb.introductions.length ? `<div class="table-wrap"><table><tr><th>${tr('When')}</th><th>${tr('Family')}</th><th>${tr('Au pair')}</th></tr>
-      ${amb.introductions.map((i) => `<tr><td>${esc(i.created_at.slice(0, 16))}</td><td>${esc(i.family_name)}</td><td>${esc(i.aupair_name)}</td></tr>`).join('')}</table></div>` : `<p class="muted">${tr('No matches yet.')}</p>`}</div>
+      ${amb.introductions.length ? `<div class="table-wrap"><table><tr><th>${tr('When')}</th><th>${tr('Family')}</th><th>${tr('Au pair')}</th>${amb.introductions.some((i) => i.partner_name) ? `<th>${tr('With partner')}</th>` : ''}</tr>
+      ${amb.introductions.map((i) => `<tr><td>${esc(i.created_at.slice(0, 16))}</td><td>${esc(i.family_name)}</td><td>${esc(i.aupair_name)}</td>${amb.introductions.some((x) => x.partner_name) ? `<td>${esc(i.partner_name || '')}</td>` : ''}</tr>`).join('')}</table></div>` : `<p class="muted">${tr('No matches yet.')}</p>`}</div>
     ${amb.flags.length ? `<div class="card"><h2>${tr('Flagged')}</h2><table>${amb.flags.map((f) => `<tr><td>${esc(f.created_at.slice(0, 16))}</td><td>${esc(f.user_name)}</td><td>${tr('Tried to share contact details before a confirmed placement. They were hidden.')}</td></tr>`).join('')}</table></div>` : ''}` : ''}`);
   if (amb.space) loadAgencyFamilies();
   document.getElementById('ambCopy').onclick = async () => {
@@ -658,6 +661,120 @@ async function loadAgencyFamilies() {
     };
   }));
 }
+
+// ---------- the agency network ----------
+// Agencies find other agencies to work with, ask them to partner up or invite them to PairMundo, and show memberships
+// like IAPA once PairMundo checked them. Partners share their spaces: each one's families can meet the other's au pairs.
+const NETWORK_SIDES = () => ({ sending: tr('We send au pairs abroad'), host: tr('We find host families'), both: tr('Both') });
+const countryNames = (codes) => (codes || []).map((c) => tr(COUNTRIES[c] || c)).join(', ');
+const agencyCard = (a, actions = '') => `<div class="card agency-card"><div class="spread"><div><h3 style="margin:0">${esc(a.name)}</h3>
+    <div class="muted small">${[a.country && tr(COUNTRIES[a.country] || a.country), a.side && NETWORK_SIDES()[a.side]].filter(Boolean).map(esc).join(' · ')}</div></div>
+    <div class="row">${actions}</div></div>
+  ${a.badges.length ? `<div style="margin-top:6px">${a.badges.map((b) => `<span class="verify">🏅 ${tr('{org} member', { org: esc(b) })}</span>`).join(' ')}</div>` : ''}
+  ${a.about ? `<p style="white-space:pre-wrap">${esc(a.about)}</p>` : ''}
+  <div class="small">${a.countries.length ? `${tr('Works with')}: ${esc(countryNames(a.countries))} · ` : ''}${tr('{a} au pairs · {f} families', { a: a.aupairs, f: a.families })}${a.website ? ` · <a href="${esc(a.website)}" target="_blank" rel="noopener">${esc(a.website.replace(/^https?:\/\//, ''))}</a>` : ''}</div>
+  ${a.fit.complements || a.fit.countries.length ? `<div class="small" style="margin-top:6px">${[a.fit.complements && `<span class="chip ok">${tr('Good fit')}: ${a.side === 'host' ? tr('they find host families') : a.side === 'sending' ? tr('they send au pairs') : tr('they send and host')}</span>`,
+    a.fit.countries.length && `<span class="chip">${tr('Shared countries')}: ${esc(countryNames(a.fit.countries))}</span>`].filter(Boolean).join(' ')}</div>` : ''}</div>`;
+
+views.network = async () => {
+  if (me.user.role !== 'agency' || !me.agency_network) return go('#/agency');
+  const n = await api('/agency/network');
+  const sides = NETWORK_SIDES();
+  const incoming = n.partnerships.filter((p) => p.status === 'pending' && p.incoming);
+  const outgoing = n.partnerships.filter((p) => p.status === 'pending' && !p.incoming);
+  const partners = n.partnerships.filter((p) => p.status === 'accepted');
+  const affStatus = { pending: `<span class="chip">${tr('Being checked')}</span>`, verified: `<span class="chip ok">✓ ${tr('Checked')}</span>`, rejected: `<span class="chip warn">${tr('Not confirmed')}</span>` };
+  const placementStatus = trMap(STATUSES);
+  render(`<h1>🤝 ${tr('Partner agencies')}</h1>
+    <p class="muted">${tr('Partner agencies share their spaces: your families can meet their au pairs, and theirs can meet yours. Each match and placement you make together shows for both agencies.')}</p>
+    ${incoming.length ? `<div class="card"><h2>${tr('Requests to work with you')}</h2>${incoming.map((p) => `${agencyCard(p.agency, `<button class="btn sm" data-answer="${p.id}" data-action="accept">${tr('Accept')}</button><button class="btn ghost sm" data-answer="${p.id}" data-action="decline">${tr('Decline')}</button>`)}
+      ${p.message ? `<p class="small"><strong>${tr('Their message')}:</strong> ${esc(p.message)}</p>` : ''}`).join('')}</div>` : ''}
+    <div class="card"><h2>${tr('Your partners')}</h2>${partners.length ? partners.map((p) => agencyCard(p.agency, `<button class="btn ghost sm" data-answer="${p.id}" data-action="end">${tr('Stop working together')}</button>`)).join('')
+      : `<p class="muted">${tr('No partners yet. Find an agency below, or invite one that is not on PairMundo yet.')}</p>`}
+      ${outgoing.length ? `<h3>${tr('Waiting for an answer')}</h3>${outgoing.map((p) => `<div class="spread small"><span>${esc(p.agency.name)} · ${fmtDate(p.created_at)}</span><button class="btn ghost sm" data-answer="${p.id}" data-action="end">${tr('Take back')}</button></div>`).join('')}` : ''}</div>
+    ${n.placements.length ? `<div class="card"><h2>${tr('Placements with partners')}</h2><div class="table-wrap"><table><tr><th>${tr('Family')}</th><th>${tr('Au pair')}</th><th>${tr('Partner')}</th><th>${tr('Start')}</th><th>${tr('Status')}</th></tr>
+      ${n.placements.map((p) => `<tr><td>${esc(p.family_name)}</td><td>${esc(p.aupair_name)}</td><td>${esc(p.partner || '')}</td><td>${esc(p.start_date || '')}</td><td>${esc(placementStatus[p.status] || p.status)}</td></tr>`).join('')}</table></div></div>` : ''}
+    <div class="card"><h2>${tr('Find agencies')}</h2>
+      ${n.profile.listed ? '' : `<p class="alert">${tr('Other agencies only see you once you list your agency below.')}</p>`}
+      <div class="row" style="margin-bottom:10px"><select id="netSide"><option value="">${tr('Any kind of agency')}</option>${Object.entries(sides).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('')}</select>
+        <select id="netCountry">${options(Object.fromEntries([...new Set(n.agencies.flatMap((a) => [a.country, ...a.countries]).filter(Boolean))].map((c) => [c, COUNTRIES[c] || c])), '', tr('Any country'))}</select></div>
+      <div id="netList"></div></div>
+    <div class="card"><h2>${tr('Your listing')}</h2><p class="muted small">${tr('What other agencies see about you. We suggest partners whose side and countries fit yours.')}</p>
+      <form id="netProfile">
+        <label class="check"><input type="checkbox" name="listed" ${n.profile.listed ? 'checked' : ''}> ${tr('List my agency so other agencies can find it')}</label>
+        <div class="field"><label>${tr('What your agency does')}</label><select name="side">${options(sides, n.profile.side, tr('Choose…'), false)}</select></div>
+        <div class="field"><label>${tr('Countries you work with')}</label><input name="countries" value="${esc(n.profile.countries.join(', '))}" placeholder="IS, NO, PH" autocapitalize="characters">
+          <span class="muted small">${tr('Two-letter country codes, separated by commas: where your au pairs come from or where your families live.')}</span></div>
+        <div class="field"><label>${tr('About your agency')}</label><textarea name="about" maxlength="600" placeholder="${tr('For example: we prepare au pairs from the Philippines for Iceland and Norway, with language classes before they travel.')}">${esc(n.profile.about || '')}</textarea></div>
+        <div class="field"><label>${tr('Website')}</label><input name="website" value="${esc(n.profile.website || '')}" placeholder="https://"></div>
+        <div id="netProfileErr"></div><button class="btn sm">${tr('Save')}</button></form></div>
+    <div class="card"><h2>${tr('Invite an agency')}</h2><p class="muted small">${tr("Work with an agency that isn't on PairMundo yet? We email them an invite from you. When they join, your request to work together is waiting for them.")}</p>
+      <form id="netInvite"><div class="row"><input name="name" required placeholder="${tr('Agency name')}" style="flex:1"><input name="email" type="email" required placeholder="${tr('Their email')}" style="flex:1"></div>
+        <div class="field"><textarea name="message" maxlength="1000" placeholder="${tr('A message for them (optional)')}"></textarea></div><div id="netInviteErr"></div><button class="btn sm">${tr('Send invite')}</button></form>
+      ${n.invites.length ? `<div class="table-wrap"><table><tr><th>${tr('Agency')}</th><th>${tr('Sent')}</th><th></th></tr>${n.invites.map((i) => `<tr><td>${esc(i.agency_name)}<br><span class="muted small">${esc(i.email)}</span></td><td>${fmtDate(i.created_at)}</td>
+        <td>${i.joined_as ? `<span class="chip ok">✓ ${tr('Joined')}</span>` : `<span class="muted small">${tr('Not joined yet')}</span>`}</td></tr>`).join('')}</table></div>` : ''}</div>
+    <div class="card"><h2>🏅 ${tr('Memberships')}</h2><p class="muted small">${tr('Show families and agencies that you belong to organisations like IAPA. PairMundo checks each one before its badge shows on your agency and on your au pairs\' profiles.')}</p>
+      ${n.affiliations.map((f) => `<div class="spread"><div><strong>${esc(f.org_name)}</strong> ${affStatus[f.status]}${f.member_ref ? ` <span class="muted small">${esc(f.member_ref)}</span>` : ''}
+        ${f.status === 'rejected' && f.note ? `<div class="small">${esc(f.note)}</div>` : ''}</div><button class="btn ghost sm" data-del-aff="${f.id}">${tr('Remove')}</button></div>`).join('')}
+      <form id="netAff" style="margin-top:12px"><div class="row"><select name="org" required style="flex:1"><option value="">${tr('Choose an organisation')}</option>
+        ${Object.entries(n.orgs).map(([k, o]) => `<option value="${k}">${esc(o.badge)}: ${esc(o.name)}</option>`).join('')}<option value="other">${tr('Other')}</option></select>
+        <input name="org_name" placeholder="${tr('Organisation name')}" style="flex:1;display:none"></div>
+        <div class="row"><input name="member_ref" placeholder="${tr('Membership number (optional)')}" style="flex:1"><input name="proof_url" placeholder="${tr('Link where we can check it, e.g. their member list')}" style="flex:1"></div>
+        <div id="netAffErr"></div><button class="btn sm">${tr('Add membership')}</button></form></div>`);
+
+  const ask = (a) => {
+    const p = a.partnership;
+    if (p?.status === 'accepted') return `<span class="chip ok">✓ ${tr('Partner')}</span>`;
+    if (p?.status === 'pending') return p.incoming ? `<button class="btn sm" data-answer="${p.id}" data-action="accept">${tr('Accept their request')}</button>` : `<span class="chip">${tr('Request sent')}</span>`;
+    return `<button class="btn sm" data-ask="${a.id}">${tr('Ask to work together')}</button>`;
+  };
+  const list = () => {
+    const side = document.getElementById('netSide').value, c = document.getElementById('netCountry').value;
+    const shown = n.agencies.filter((a) => (!side || a.side === side || a.side === 'both') && (!c || a.country === c || a.countries.includes(c)));
+    document.getElementById('netList').innerHTML = shown.map((a) => agencyCard(a, ask(a))).join('') || `<div class="empty">${tr('No agencies match yet. Invite the ones you work with below.')}</div>`;
+    bind();
+  };
+  const reload = () => views.network();
+  function bind() {
+    document.querySelectorAll('[data-ask]').forEach((b) => { b.onclick = async () => {
+      const message = prompt(tr('A short message for them (optional), e.g. which countries you would like to place au pairs in.'));
+      if (message === null) return;
+      try { await api('/agency/partners', { method: 'POST', body: { agency_id: Number(b.dataset.ask), message } }); toast(tr('Request sent')); reload(); } catch (err) { toast(err.message); }
+    }; });
+    document.querySelectorAll('[data-answer]').forEach((b) => { b.onclick = async () => {
+      if (b.dataset.action === 'end' && !confirm(tr('Stop working with this agency? Your members stop meeting theirs. Placements you already agreed stay as they are.'))) return;
+      try { await api(`/agency/partners/${b.dataset.answer}`, { method: 'POST', body: { action: b.dataset.action } }); toast(tr('Saved')); reload(); } catch (err) { toast(err.message); }
+    }; });
+    document.querySelectorAll('[data-del-aff]').forEach((b) => { b.onclick = async () => {
+      try { await api(`/agency/affiliations/${b.dataset.delAff}`, { method: 'DELETE' }); toast(tr('Removed')); reload(); } catch (err) { toast(err.message); }
+    }; });
+  }
+  document.getElementById('netSide').onchange = list;
+  document.getElementById('netCountry').onchange = list;
+  list();
+  const err = (id, e) => { document.getElementById(id).innerHTML = `<div class="alert error">${esc(e.message)}</div>`; };
+  document.getElementById('netProfile').onsubmit = async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    try { await api('/agency/network/profile', { method: 'PUT', body: { listed: f.listed.checked, side: f.side.value, countries: f.countries.value, about: f.about.value, website: f.website.value } }); toast(tr('Saved')); reload(); }
+    catch (x) { err('netProfileErr', x); }
+  };
+  document.getElementById('netInvite').onsubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const r = await api('/agency/invites', { method: 'POST', body: formData(e.target) });
+      toast(r.joined ? tr("They're already on PairMundo, so we sent them your request instead.") : r.already ? tr('You already invited them.') : tr('Invite sent'));
+      reload();
+    } catch (x) { err('netInviteErr', x); }
+  };
+  const aff = document.getElementById('netAff');
+  aff.org.onchange = () => { aff.org_name.style.display = aff.org.value === 'other' ? '' : 'none'; };
+  aff.onsubmit = async (e) => {
+    e.preventDefault();
+    try { await api('/agency/affiliations', { method: 'POST', body: formData(aff) }); toast(tr('Added. PairMundo will check it soon.')); reload(); }
+    catch (x) { err('netAffErr', x); }
+  };
+};
 
 // ---------- ambassadors without a profile ----------
 // Anyone can recommend PairMundo: a teacher, a former host family, a community leader. They get an account with no
@@ -874,7 +991,7 @@ function resultCard(r) {
       ${u.role === 'family' && p.start_date ? `<span class="chip">${tr('Starts {date}', { date: fmtDate(p.start_date) })}</span>` : ''}</div>
     ${r.match?.reasons?.length ? `<div class="small" style="margin-top:8px;color:var(--ok)">✓ ${esc(r.match.reasons.slice(0, 2).join(' · '))}</div>` : ''}
     ${r.match?.warnings?.length ? `<div class="small" style="color:var(--warn)">⚠ ${esc(r.match.warnings[0])}</div>` : ''}
-    <div class="small" style="margin-top:6px">${verifyBadges(u.verification, u.agency)}</div></a>`;
+    <div class="small" style="margin-top:6px">${verifyBadges(u.verification, u.agency, u.agency_badges)}</div></a>`;
 }
 
 views.search = async (_, query) => {
@@ -999,7 +1116,7 @@ views.u = async ([id]) => {
         ${d.match.reasons.map((r) => `<div class="small" style="color:var(--ok)">✓ ${esc(r)}</div>`).join('')}
         ${d.match.warnings.map((r) => `<div class="small" style="color:var(--warn)">⚠ ${esc(r)}</div>`).join('')}</div>` : ''}
       ${visaCard(d.visa)}
-      ${ap ? `${verifyBadges(u.verification, u.agency) ? `<div style="margin-bottom:10px">${verifyBadges(u.verification, u.agency)}</div>` : ''}${posterBody(u, p, d.references)}` : `<div class="card"><h3>${tr('About us')}</h3><p style="white-space:pre-wrap;margin-top:0">${esc(p.bio) || `<span class="muted">${tr('No description yet.')}</span>`}</p>
+      ${ap ? `${verifyBadges(u.verification, u.agency) ? `<div style="margin-bottom:10px">${verifyBadges(u.verification, u.agency, u.agency_badges)}</div>` : ''}${posterBody(u, p, d.references)}` : `<div class="card"><h3>${tr('About us')}</h3><p style="white-space:pre-wrap;margin-top:0">${esc(p.bio) || `<span class="muted">${tr('No description yet.')}</span>`}</p>
         <div>${verifyBadges(u.verification) || `<span class="muted small">${tr('Not yet verified')}</span>`}</div></div>
       <div class="card"><h3>${tr('Basics')}</h3><div class="facts">${facts.filter(([, , v]) => v != null && v !== '').map(([i, k, v]) => `<div class="fact"><span>${i}</span><div><div class="muted small">${k}</div>${esc(v)}</div></div>`).join('')}</div></div>
       <div class="card"><h3>${tr('Languages at home')}</h3><div class="chips">${(p.languages || []).map((l) => `<span class="chip">${esc(langName(l))}</span>`).join('')}</div>
@@ -1715,7 +1832,7 @@ async function adminLaunchEmail() {
 }
 views.admin = async ([tab = 'overview', id], qs) => {
   if (me.user.role !== 'admin') return go('#/');
-  const tabs = { overview: 'Overview', users: 'Users & verification', reports: 'Reports', programs: 'Program rules', placements: 'Placements', waitlist: 'Waitlist', ambassadors: 'Ambassadors', certificates: 'Certificates', partners: 'Partners', referrals: 'Referrals' };
+  const tabs = { overview: 'Overview', users: 'Users & verification', reports: 'Reports', programs: 'Program rules', placements: 'Placements', waitlist: 'Waitlist', ambassadors: 'Ambassadors', certificates: 'Certificates', partners: 'Partners', referrals: 'Referrals', ...(me.agency_network ? { affiliations: 'Affiliations' } : {}) };
   const head = `<h1>Program administration</h1><div class="row" style="margin-bottom:16px">${Object.entries(tabs).map(([k, v]) =>
     `<a class="btn ${k === tab ? '' : 'ghost'} sm" href="#/admin/${k}">${v}</a>`).join('')}</div>`;
   if (tab === 'overview') {
@@ -1851,6 +1968,22 @@ views.admin = async ([tab = 'overview', id], qs) => {
       const url = URL.createObjectURL(await res.blob());
       box.innerHTML = res.headers.get('content-type') === 'application/pdf' ? `<iframe src="${url}" title="Certificate" class="cert-pdf"></iframe>` : `<img src="${url}" alt="Certificate" class="cert-img">`;
     });
+    return;
+  }
+  if (tab === 'affiliations') {
+    const { orgs, affiliations } = await api('/admin/affiliations');
+    render(`${head}<p class="muted">Memberships agencies say they have. Check each one on the organisation's member list (or ask for proof) before approving: approved ones show as a badge on the agency and on its au pairs' profiles.</p>
+      ${affiliations.map((f) => `<div class="card spread"><div><strong>${esc(f.agency)}</strong> <span class="muted small">${esc(f.country || '')}${f.website ? ` · <a href="${esc(f.website)}" target="_blank" rel="noopener">${esc(f.website)}</a>` : ''}</span>
+        <div>🏅 ${esc(f.org_name)}${orgs[f.org] ? ` <span class="muted small">(${esc(orgs[f.org].name)} · <a href="${esc(orgs[f.org].site)}" target="_blank" rel="noopener">site</a>)</span>` : ''}</div>
+        <div class="small">${f.member_ref ? `Member no. ${esc(f.member_ref)} · ` : ''}${f.proof_url ? `<a href="${esc(f.proof_url)}" target="_blank" rel="noopener">${esc(f.proof_url)}</a> · ` : ''}sent ${fmtTime(f.created_at)}${f.note ? ` · ${esc(f.note)}` : ''}</div></div>
+        <div class="row">${f.status === 'pending' ? '' : `<span class="chip ${f.status === 'verified' ? 'ok' : 'warn'}">${f.status}</span>`}
+          <button class="btn sm" data-aff="${f.id}" data-status="verified">✔ Approve</button><button class="btn ghost sm" data-aff="${f.id}" data-status="rejected">✖ Reject</button></div></div>`).join('')
+      || '<div class="empty">No memberships to check.</div>'}`);
+    document.querySelectorAll('[data-aff]').forEach((b) => { b.onclick = async () => {
+      const note = b.dataset.status === 'rejected' ? prompt('Why? The agency sees this, e.g. "Not on the IAPA member list."') : null;
+      if (b.dataset.status === 'rejected' && note === null) return;
+      try { await api(`/admin/affiliations/${b.dataset.aff}`, { method: 'POST', body: { status: b.dataset.status, note } }); toast('Saved'); views.admin(['affiliations']); } catch (err) { toast(err.message); }
+    }; });
     return;
   }
   if (tab === 'placements') {
