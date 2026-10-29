@@ -430,6 +430,16 @@ CREATE TABLE IF NOT EXISTS agency_introductions (
   UNIQUE (ambassador_id, family_id, aupair_id)
 );
 
+-- Where each family in an agency's space is with that agency. A family without a row is a new enquiry.
+CREATE TABLE IF NOT EXISTS agency_family_stages (
+  family_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  ambassador_id INTEGER NOT NULL REFERENCES ambassadors(id) ON DELETE CASCADE,
+  stage TEXT NOT NULL DEFAULT 'enquiry',          -- enquiry | approved | matching | matched | placed | finished | not_going
+  fee_paid INTEGER NOT NULL DEFAULT 0,            -- the agency's own fee, which the agency marks as paid
+  note TEXT,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Things an agency should know about in its space, e.g. contact details hidden from a chat.
 CREATE TABLE IF NOT EXISTS agency_flags (
   id INTEGER PRIMARY KEY,
@@ -555,6 +565,8 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
       ALTER TABLE ambassadors ADD COLUMN mask_contacts INTEGER NOT NULL DEFAULT 0;
       ALTER TABLE ambassadors ADD COLUMN covers_pass INTEGER NOT NULL DEFAULT 0`);
   }
+  // An agency can approve each family before they see anyone in its space.
+  if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'approve_families')) db.exec('ALTER TABLE ambassadors ADD COLUMN approve_families INTEGER NOT NULL DEFAULT 0');
   // An agency's email for referrals: offers with one get a "Get help" button that sends the person's details there.
   if (!db.prepare('PRAGMA table_info(partner_offers)').all().some((c) => c.name === 'lead_email')) db.exec('ALTER TABLE partner_offers ADD COLUMN lead_email TEXT');
   // The family's street address, for the visa invitation letter.

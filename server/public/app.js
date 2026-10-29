@@ -223,6 +223,7 @@ function cardCaption(r) {
 // ---------- discover (swipe deck) ----------
 let deck = [];
 let deckQuery = '';
+let deckAwaiting = null;
 views.discover = async (_, query) => {
   const isFamily = me.user.role === 'family';
   const q = Object.fromEntries(query.entries());
@@ -271,8 +272,8 @@ views.discover = async (_, query) => {
 };
 
 async function loadDeck(frontId) {
-  const { results } = await api(`/discover${deckQuery ? `?${deckQuery}` : ''}`);
-  deck = results;
+  const { results, awaiting_agency } = await api(`/discover${deckQuery ? `?${deckQuery}` : ''}`);
+  deck = results; deckAwaiting = awaiting_agency;
   if (frontId) { const i = deck.findIndex((r) => r.user.id === frontId); if (i > 0) deck.unshift(...deck.splice(i, 1)); }
   renderDeck();
 }
@@ -280,6 +281,11 @@ async function loadDeck(frontId) {
 function renderDeck() {
   const $deck = document.getElementById('deck'); if (!$deck) return;
   document.getElementById('deckActions').classList.toggle('disabled', !deck.length);
+  if (!deck.length && deckAwaiting) {
+    $deck.innerHTML = `<div class="deck-empty"><div style="font-size:3rem">⏳</div><h2>${tr('{agency} approves your account first', { agency: esc(deckAwaiting) })}</h2>
+      <p class="muted">${tr('They will be in touch soon. Once they approve you, their au pairs show here.')}</p></div>`;
+    return;
+  }
   if (!deck.length) {
     $deck.innerHTML = `<div class="deck-empty"><div style="font-size:3rem">🌍</div><h2>${tr("You've seen everyone for now")}</h2>
       <p class="muted">${me.user.role === 'family' ? tr('New au pairs join every day. Try wider filters, or take another look at people you passed.') : tr('New families join every day. Try wider filters, or take another look at people you passed.')}</p>
@@ -614,17 +620,44 @@ views.agency = async () => {
     ${amb.space ? `<div class="card"><h2>${tr('Your agency space')}</h2>
       <p>${trn(amb.space.families, '{n} family has joined with your code.', '{n} families have joined with your code.')}</p>
       <ul>${[[amb.space.closed_network, tr('Closed network: your families and au pairs only meet each other.')], [amb.space.mask_contacts, tr('Contact details are hidden in chats until a placement is confirmed.')],
-    [amb.space.covers_pass, tr("Your families don't pay PairMundo for the Family Pass.")]].map(([on, label]) => `<li>${on ? '✓' : '–'} ${label}</li>`).join('')}</ul>
+    [amb.space.covers_pass, tr("Your families don't pay PairMundo for the Family Pass.")], [amb.space.approve_families, tr('You approve each family before they see your au pairs.')]].map(([on, label]) => `<li>${on ? '✓' : '–'} ${label}</li>`).join('')}</ul>
       <p class="muted small">${tr('To change these, email PairMundo.')}</p></div>
+    <div class="card"><h2>${tr('Your families')}</h2><div id="agencyFamilies"><p class="muted">${tr('Loading…')}</p></div></div>
     <div class="card"><h2>${tr('Introduction log')}</h2><p class="muted small">${tr('When one of your families and one of your au pairs first matched. Keep it as a record for your family contracts.')}</p>
       ${amb.introductions.length ? `<div class="table-wrap"><table><tr><th>${tr('When')}</th><th>${tr('Family')}</th><th>${tr('Au pair')}</th></tr>
       ${amb.introductions.map((i) => `<tr><td>${esc(i.created_at.slice(0, 16))}</td><td>${esc(i.family_name)}</td><td>${esc(i.aupair_name)}</td></tr>`).join('')}</table></div>` : `<p class="muted">${tr('No matches yet.')}</p>`}</div>
     ${amb.flags.length ? `<div class="card"><h2>${tr('Flagged')}</h2><table>${amb.flags.map((f) => `<tr><td>${esc(f.created_at.slice(0, 16))}</td><td>${esc(f.user_name)}</td><td>${tr('Tried to share contact details before a confirmed placement. They were hidden.')}</td></tr>`).join('')}</table></div>` : ''}` : ''}`);
+  if (amb.space) loadAgencyFamilies();
   document.getElementById('ambCopy').onclick = async () => {
     try { await navigator.clipboard.writeText(amb.link); } catch { document.getElementById('ambLink').select(); document.execCommand('copy'); }
     toast(tr('Link copied'));
   };
 };
+
+const FAMILY_STAGE_LABELS = () => ({ enquiry: tr('New enquiry'), approved: tr('Approved'), matching: tr('Matching'), matched: tr('Matched'),
+  placed: tr('Placed'), finished: tr('Finished'), not_going: tr('Not going ahead') });
+
+// The agency's families, each with a stage, whether the agency's fee is paid, and a note only the agency sees.
+async function loadAgencyFamilies() {
+  const box = document.getElementById('agencyFamilies'); if (!box) return;
+  const { stages, approve_families, families } = await api('/agency/families');
+  const labels = FAMILY_STAGE_LABELS();
+  box.innerHTML = `${approve_families ? `<p class="muted small">${tr('New families see no au pairs until you move them past New enquiry. They get a notification when you approve them.')}</p>` : ''}
+    ${families.length ? `<div class="table-wrap"><table><tr><th>${tr('Family')}</th><th>${tr('Joined')}</th><th>${tr('Stage')}</th><th>${tr('Fee paid')}</th><th>${tr('Note')}</th></tr>
+    ${families.map((f) => `<tr data-id="${f.id}"><td>${esc(f.name)}${f.id_verified ? ' ✓' : ''}<br><span class="muted small">${esc(f.email)}${f.city ? ` · ${esc(f.city)}` : ''}</span>
+      ${f.placement ? `<br><span class="small">${tr('Au pair')}: ${esc(f.placement.aupair_name)}${f.placement.start_date ? ` · ${esc(f.placement.start_date)}` : ''}</span>` : ''}</td>
+      <td>${esc(f.joined.slice(0, 10))}</td>
+      <td><select name="stage">${stages.map((s) => `<option value="${s}" ${s === f.stage ? 'selected' : ''}>${labels[s]}</option>`).join('')}</select></td>
+      <td><input type="checkbox" name="fee_paid" ${f.fee_paid ? 'checked' : ''}></td>
+      <td><input name="note" value="${esc(f.note)}" placeholder="${tr('Only you see this')}"></td></tr>`).join('')}</table></div>`
+    : `<p class="muted">${tr('No families have joined with your code yet.')}</p>`}`;
+  box.querySelectorAll('tr[data-id]').forEach((row) => row.querySelectorAll('select, input').forEach((el) => {
+    el.onchange = async () => {
+      try { await api(`/agency/families/${row.dataset.id}`, { method: 'POST', body: { [el.name]: el.type === 'checkbox' ? el.checked : el.value } }); toast(tr('Saved')); }
+      catch (err) { toast(err.message); }
+    };
+  }));
+}
 
 // ---------- ambassadors without a profile ----------
 // Anyone can recommend PairMundo: a teacher, a former host family, a community leader. They get an account with no
@@ -868,7 +901,11 @@ views.search = async (_, query) => {
     const params = new URLSearchParams(Object.entries(formData(e.target)).filter(([, v]) => v));
     go(`#/search?${params}`);
   };
-  const { total, results } = await api(`/search?${new URLSearchParams(Object.entries(q).filter(([, v]) => v))}`);
+  const { total, results, awaiting_agency } = await api(`/search?${new URLSearchParams(Object.entries(q).filter(([, v]) => v))}`);
+  if (awaiting_agency) {
+    document.getElementById('results').innerHTML = `<div class="empty"><strong>${tr('{agency} approves your account first', { agency: esc(awaiting_agency) })}</strong><br>${tr('They will be in touch soon. Once they approve you, their au pairs show here.')}</div>`;
+    return;
+  }
   document.getElementById('results').innerHTML = `<p class="muted">${trn(total, '{n} result', '{n} results')}</p>
     <div class="grid">${results.map(resultCard).join('') || `<div class="empty">${tr('No one matches these filters yet. Try widening them.')}</div>`}</div>`;
 };
@@ -1848,7 +1885,7 @@ views.admin = async ([tab = 'overview', id], qs) => {
 
 const kindChip = (a) => ({ agency: '<span class="chip">Agency</span>', distributor: '<span class="chip">Flyer distributor</span>' })[a.kind] || '';
 /** Shows the flyer pay fields only when the type is flyer distributor. */
-const spaceFields = (form) => Object.fromEntries(['closed_network', 'mask_contacts', 'covers_pass'].map((k) => [k, form[k].checked]));
+const spaceFields = (form) => Object.fromEntries(['closed_network', 'mask_contacts', 'covers_pass', 'approve_families'].map((k) => [k, form[k].checked]));
 function wireKind(form) {
   const sync = () => { form.querySelector('.distOnly').hidden = form.kind.value !== 'distributor'; form.querySelector('.agencyOnly').hidden = form.kind.value !== 'agency'; };
   form.kind.onchange = sync;
@@ -1873,7 +1910,8 @@ async function adminAmbassadors(head, id, qs) {
     <fieldset class="agencyOnly" ${a.kind === 'agency' ? '' : 'hidden'}><legend>Agency space (for families and au pairs who join with this code)</legend>
       <label class="check"><input type="checkbox" name="closed_network" ${a.closed_network ? 'checked' : ''}> Closed network: they only meet each other, and nobody outside sees them</label>
       <label class="check"><input type="checkbox" name="mask_contacts" ${a.mask_contacts ? 'checked' : ''}> Hide phone numbers, emails and social handles in their chats until a placement is confirmed</label>
-      <label class="check"><input type="checkbox" name="covers_pass" ${a.covers_pass ? 'checked' : ''}> Families don't need the Family Pass (they pay the agency instead)</label></fieldset>
+      <label class="check"><input type="checkbox" name="covers_pass" ${a.covers_pass ? 'checked' : ''}> Families don't need the Family Pass (they pay the agency instead)</label>
+      <label class="check"><input type="checkbox" name="approve_families" ${a.approve_families ? 'checked' : ''}> The agency approves each family before they see any au pairs</label></fieldset>
     <div class="form-grid"><div class="field"><label>Name</label><input name="name" required value="${esc(a.name)}"></div>
       <div class="field"><label>Country</label><select name="country">${options(COUNTRIES, a.country || '', '—')}</select></div></div>
     <div class="form-grid"><div class="field"><label>Phone or email (only you see this)</label><input name="contact" value="${esc(a.contact)}"></div>
