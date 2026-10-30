@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY,
   email TEXT NOT NULL UNIQUE COLLATE NOCASE,
   password_hash TEXT NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('aupair','family','admin','agency','ambassador')), -- agency, ambassador: a partner's own account, not a member others see
+  role TEXT NOT NULL CHECK (role IN ('aupair','family','admin','agency','ambassador','partner_manager')), -- agency, ambassador: a partner's own account, not a member others see; partner_manager: staff who run the partnerships pipeline
   name TEXT NOT NULL,
   country TEXT,
   city TEXT,
@@ -550,6 +550,115 @@ CREATE TABLE IF NOT EXISTS flyer_bonuses (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- The partnerships pipeline: agencies and other partners PairMundo is courting, from first research to an active
+-- partner, worked by the admin and partner managers (staff with their own login who see only this).
+CREATE TABLE IF NOT EXISTS partner_team (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  base_cents INTEGER NOT NULL DEFAULT 40000,      -- monthly base, US cents
+  signed_cents INTEGER NOT NULL DEFAULT 4000,     -- per signed partner
+  activated_cents INTEGER NOT NULL DEFAULT 8000,  -- per activated partner
+  revshare_pct REAL NOT NULL DEFAULT 7,           -- % of partner revenue in a partner's first 12 months, entered by the admin
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS partner_leads (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  country TEXT,
+  kind TEXT NOT NULL DEFAULT 'host',              -- host (finds families) | sending (prepares au pairs) | sponsor (e.g. US J-1) | other
+  website TEXT,
+  contact_name TEXT,
+  email TEXT,
+  phone TEXT,
+  lang TEXT,                                      -- the language to write to them in
+  source TEXT,                                    -- where the lead came from, e.g. wave2
+  stage TEXT NOT NULL DEFAULT 'target',           -- target | contacted | replied | meeting | agreement | signed | active | declined
+  owner_id INTEGER REFERENCES users(id) ON DELETE SET NULL, -- who works it and earns its commission
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  next_action TEXT,
+  next_action_on TEXT,                            -- YYYY-MM-DD
+  objection TEXT,                                 -- why they hesitated or said no, to find a way around it
+  notes TEXT,
+  agreement_url TEXT,                             -- the signed agreement, wherever it is kept
+  onboarding_done INTEGER NOT NULL DEFAULT 0,     -- the onboarding call happened
+  ambassador_id INTEGER REFERENCES ambassadors(id) ON DELETE SET NULL, -- their agency code, once they have one
+  offer_id INTEGER REFERENCES partner_offers(id) ON DELETE SET NULL,   -- their referral offer, for agencies that take referrals
+  contacted_at TEXT,
+  replied_at TEXT,
+  meeting_at TEXT,
+  signed_at TEXT,
+  activated_at TEXT,
+  declined_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS partner_leads_stage ON partner_leads(stage, next_action_on);
+CREATE INDEX IF NOT EXISTS partner_leads_email ON partner_leads(email);
+CREATE TABLE IF NOT EXISTS partner_activity (
+  id INTEGER PRIMARY KEY,
+  lead_id INTEGER NOT NULL REFERENCES partner_leads(id) ON DELETE CASCADE,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL, -- NULL when the system did it, e.g. an automatic activation
+  kind TEXT NOT NULL,                             -- note | email | reply | call | meeting | stage
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS partner_activity_lead ON partner_activity(lead_id, created_at);
+-- What partner managers earned, in US cents. Signed and activated are earned once per partner, at the rate of the day;
+-- revenue share and bonuses are added by the admin. Nothing is paid until the admin approves it.
+CREATE TABLE IF NOT EXISTS partner_commissions (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  lead_id INTEGER REFERENCES partner_leads(id) ON DELETE SET NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('signed','activated','revenue','bonus','adjustment')),
+  amount_cents INTEGER NOT NULL,
+  note TEXT,
+  approved_at TEXT,
+  paid_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS partner_commissions_once ON partner_commissions(lead_id, kind) WHERE kind IN ('signed','activated');
+-- A partner manager's monthly base, recorded when the admin pays that month.
+CREATE TABLE IF NOT EXISTS partner_base_pay (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  month TEXT NOT NULL,                            -- YYYY-MM
+  amount_cents INTEGER NOT NULL,
+  paid_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (user_id, month)
+);
+
+-- People applying for a job at PairMundo (hiring.js), from the public job page through test task and interview.
+CREATE TABLE IF NOT EXISTS job_applications (
+  id INTEGER PRIMARY KEY,
+  job TEXT NOT NULL,                              -- a key of JOBS, e.g. partnerships-onboarding-manager
+  name TEXT NOT NULL,
+  email TEXT NOT NULL,
+  country TEXT,
+  phone TEXT,
+  linkedin TEXT,
+  years_b2b REAL,
+  hours_ok INTEGER NOT NULL DEFAULT 0,            -- can work the hours in the job post
+  languages TEXT,
+  video_url TEXT,                                 -- their 2-minute introduction video
+  campaign_answer TEXT,                           -- an outreach campaign they ran, with numbers
+  objection_answer TEXT,                          -- how they answer the agency objection in the job post
+  cv_mime TEXT,
+  cv_data BLOB,                                   -- kept here, not in public photo storage; only the admin can open it
+  status TEXT NOT NULL DEFAULT 'new',             -- new | shortlisted | test | interview | hired | rejected
+  scores TEXT NOT NULL DEFAULT '{}',              -- JSON 1-5 per scorecard line
+  notes TEXT,
+  token TEXT NOT NULL UNIQUE,                     -- in the candidate's test task and interview links
+  test_sent_at TEXT,
+  test_answer TEXT,
+  test_submitted_at TEXT,
+  interview_at TEXT,                              -- UTC, 'YYYY-MM-DD HH:MM:SS'
+  call_url TEXT,
+  call_created_at TEXT,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL, -- their partner manager account, once hired
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (job, email)
+);
+
 CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_reviews_reviewee ON reviews(reviewee_id);
 CREATE INDEX IF NOT EXISTS idx_requests_to ON match_requests(to_user, status);
@@ -646,6 +755,15 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
     db.exec('PRAGMA writable_schema = ON');
     db.prepare("UPDATE sqlite_master SET sql = replace(sql, ?, ?) WHERE type = 'table' AND name = 'users'")
       .run("role IN ('aupair','family','admin','agency'))", "role IN ('aupair','family','admin','agency','ambassador'))");
+    db.exec(`PRAGMA schema_version = ${v + 1}; PRAGMA writable_schema = OFF;`);
+  }
+  // Partner managers (staff who run the partnerships pipeline) got their own accounts, the same way.
+  const usersSql3 = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'").get().sql;
+  if (usersSql3.includes("role IN ('aupair','family','admin','agency','ambassador'))")) {
+    const v = db.prepare('PRAGMA schema_version').get().schema_version;
+    db.exec('PRAGMA writable_schema = ON');
+    db.prepare("UPDATE sqlite_master SET sql = replace(sql, ?, ?) WHERE type = 'table' AND name = 'users'")
+      .run("role IN ('aupair','family','admin','agency','ambassador'))", "role IN ('aupair','family','admin','agency','ambassador','partner_manager'))");
     db.exec(`PRAGMA schema_version = ${v + 1}; PRAGMA writable_schema = OFF;`);
   }
   return db;

@@ -7,7 +7,9 @@ import { hashPassword, verifyPassword, createSession, sessionMiddleware, require
 import { scoreMatch, checkCompliance, ageOn } from './matching.js';
 import { PROGRAMS, REVIEW_CRITERIA, familyDocuments, placementTaskList, visaRoute } from './programs.js';
 import { buildAgreement, buildHostLetter, cleanTerms, defaultTerms, REQUIRED_TERMS } from './agreement.js';
-import { createMailer, agencyLeadEmail, agencyNetworkInviteEmail, ambassadorInviteEmail, codeEmail, launchEmail, profileInviteEmail, referenceEmail, waitlistEmail } from './mailer.js';
+import { createMailer, agencyLeadEmail, agencyNetworkInviteEmail, ambassadorInviteEmail, codeEmail, launchEmail, profileInviteEmail, referenceEmail, teamInviteEmail, waitlistEmail } from './mailer.js';
+import { mountPipeline } from './pipeline.js';
+import { mountHiring } from './hiring.js';
 import { countryName, pickLang, t as translate } from './i18n.js';
 import { createCheckout, createIdentity, verifyWebhook } from './identity.js';
 import { createRevenueCat, storeName, webhookAuthorized } from './revenuecat.js';
@@ -118,6 +120,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   app.post('/api/stripe/webhook', express.raw({ type: '*/*', limit: '200kb' }), (req, res) => stripeWebhook(req, res));
   app.use('/api/me/photos', express.json({ limit: '8mb' }));
   app.use('/api/me/certificates', express.json({ limit: '8mb' }));
+  // Job applications carry a CV.
+  app.use('/api/jobs', express.json({ limit: '6mb' }));
   app.use(express.json({ limit: '200kb' }));
   // The mobile app talks to this API with a Bearer token. Native apps ignore CORS; this lets its web preview work too.
   const corsOrigin = process.env.CORS_ORIGIN || '*';
@@ -2411,6 +2415,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   // ---------- admin ----------
   // A leading ' stops spreadsheet apps from running a cell that starts like a formula.
   const csvCell = (v) => { if (v == null) return ''; let s = String(v); if (/^[=+\-@]/.test(s)) s = `'${s}`; return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const { addTeamMember } = mountPipeline(api, { db, wrap, requireRole, HttpError, str, isDate, normEmail, csvCell, mailer, publicBase, hashPassword, notify, teamInviteEmail });
+  mountHiring(api, { db, wrap, requireRole, rateLimit, HttpError, str, normEmail, mailer, publicBase, notify, video, addTeamMember });
   api.get('/admin/waitlist', requireRole('admin'), wrap(() => ({
     total: db.prepare('SELECT COUNT(*) n FROM waitlist').get().n,
     by_role: db.prepare('SELECT role, COUNT(*) n FROM waitlist GROUP BY role ORDER BY n DESC').all(),

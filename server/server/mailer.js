@@ -125,6 +125,16 @@ export const ambassadorInviteEmail = ({ kind, name, code, link, signup, email })
     `The ${APP_NAME} team`].join('\n'),
 });
 
+/** Invites a new partner manager to the partnerships pipeline. Their account exists; they set a password to sign in. */
+export const teamInviteEmail = ({ name, email, link }) => ({
+  subject: `Your ${APP_NAME} partnerships account`,
+  text: [`Hello ${name},`, '',
+    `You have a ${APP_NAME} account for running agency partnerships: the pipeline of agencies, your next steps each day, and your pay.`, '',
+    'To sign in the first time, set your password here. Choose "Forgot password", enter this email address and use the code we send you:', link, '',
+    `Your sign-in email: ${email}`, '',
+    'Badji Tchedre-San, Co-founder & Partnerships, PairMundo'].join('\n'),
+});
+
 /** An agency on PairMundo invites another agency to join and work with it. In English, like ambassadorInviteEmail. */
 export const agencyNetworkInviteEmail = ({ from, name, message, signup, email }) => ({
   subject: `${from} invites ${name} to work together on ${APP_NAME}`,

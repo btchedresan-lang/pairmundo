@@ -1253,6 +1253,7 @@ test('ambassador accounts: a database from before them gets the wider role check
   old.close();
   const db = openDb(file);
   db.prepare("INSERT INTO users (email, password_hash, role, name) VALUES ('m@test.io', 'x', 'ambassador', 'M')").run();
+  db.prepare("INSERT INTO users (email, password_hash, role, name) VALUES ('pm@test.io', 'x', 'partner_manager', 'P')").run();
   assert.throws(() => db.prepare("INSERT INTO users (email, password_hash, role, name) VALUES ('n@test.io', 'x', 'nobody', 'N')").run());
   db.close();
 });
@@ -2196,4 +2197,197 @@ test('agency network: off by default, directory with fit, partners share closed 
   } finally { delete process.env.AGENCY_NETWORK; }
   // Off again: badges disappear from profiles.
   assert.equal((await call(ap.token, 'GET', `/users/${ap.id}`)).body.user.agency_badges, undefined);
+});
+
+test('partnerships pipeline: partner manager login, leads, follow-ups, import, signing, automatic activation and pay', async () => {
+  const { hashPassword } = await import('../server/auth.js');
+  testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
+
+  // The admin adds a partner manager, who gets an invite and sets a password through Forgot password.
+  let r = await call(admin, 'POST', '/pipeline/team', { name: 'Joy Santos', email: 'joy@pm.test', base: '400', signed: '40', activated: '80', revshare_pct: '7' });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.equal(r.body.base_cents, 40000);
+  assert.match(outbox.at(-1).text, /Forgot password/);
+  assert.match(outbox.at(-1).text, /Badji Tchedre-San, Co-founder & Partnerships, PairMundo/);
+  assert.equal((await call(admin, 'POST', '/pipeline/team', { name: 'X', email: 'admin@test.io' })).status, 409);
+  await call(null, 'POST', '/auth/forgot', { email: 'joy@pm.test' });
+  r = await call(null, 'POST', '/auth/reset', { email: 'joy@pm.test', code: lastCode('joy@pm.test'), password: 'password123' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const pm = r.body.token; const pmId = r.body.user.id;
+
+  // Managers see the pipeline, not the admin or member pages.
+  assert.equal((await call(pm, 'GET', '/admin/stats')).status, 403);
+  const fam = await register('pipefam@test.io', 'family', 'DE', 'Familie Pipe');
+  assert.equal((await call(fam.token, 'GET', '/pipeline')).status, 403);
+
+  // Adding a lead makes the manager its owner; its first step is the first email.
+  r = await call(pm, 'POST', '/pipeline/leads', { name: 'Sunny Au Pairs', country: 'Colombia', kind: 'sending agency', email: 'Hello@Sunny.test', lang: 'Spanish' });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  const sunny = r.body;
+  assert.equal(sunny.owner_id, pmId);
+  assert.equal(sunny.country, 'CO');
+  assert.equal(sunny.kind, 'sending');
+  assert.equal(sunny.lang, 'es');
+  assert.equal(sunny.email, 'hello@sunny.test');
+  assert.ok(sunny.next.due);
+  assert.equal((await call(pm, 'POST', '/pipeline/leads', { name: 'Again', email: 'hello@sunny.test' })).status, 409);
+
+  // Import from the master sheet: headers matched by name, known emails skipped, and marked contacted after a wave.
+  const csv = 'Agency;Email;Country;Type;Language\n"Kinder, Inc.";kinder@host.test;Germany;Host;German\nSunny dup;hello@sunny.test;CO;sending;es\n;nobody@x.test;DE;host;de\n';
+  r = await call(admin, 'POST', '/pipeline/import', { csv, source: 'wave2', stage: 'contacted', owner_id: pmId });
+  assert.deepEqual([r.body.added, r.body.skipped], [1, 2], JSON.stringify(r.body));
+  const kinder = testDb.prepare("SELECT * FROM partner_leads WHERE email = 'kinder@host.test'").get();
+  assert.equal(kinder.name, 'Kinder, Inc.');
+  assert.equal(kinder.stage, 'contacted');
+  assert.equal(kinder.source, 'wave2');
+  assert.equal(kinder.country, 'DE');
+
+  // A contacted lead's follow-up is due after a week.
+  let p = (await call(pm, 'GET', '/pipeline?owner=me')).body;
+  assert.ok(!p.due.some((l) => l.id === kinder.id));
+  testDb.prepare("UPDATE partner_leads SET next_action_on = date('now', '-1 day') WHERE id = ?").run(kinder.id);
+  p = (await call(pm, 'GET', '/pipeline?owner=me')).body;
+  assert.ok(p.due.some((l) => l.id === kinder.id && /follow-up/.test(l.next.text)));
+  assert.equal(p.counts.contacted, 1);
+
+  // Logging moves leads along: an email makes a target contacted, a reply makes it replied, a meeting a meeting.
+  r = await call(pm, 'POST', `/pipeline/leads/${sunny.id}/activity`, { kind: 'email', body: 'First email (ES)' });
+  assert.equal(r.body.stage, 'contacted');
+  r = await call(pm, 'POST', `/pipeline/leads/${sunny.id}/activity`, { kind: 'reply', body: 'Interested, worried about cost' });
+  assert.equal(r.body.stage, 'replied');
+  r = await call(pm, 'PUT', `/pipeline/leads/${sunny.id}`, { stage: 'meeting', meeting_at: '2026-11-05T15:00', objection: 'They already have their own matching system' });
+  assert.equal(r.body.stage, 'meeting');
+  r = await call(pm, 'PUT', `/pipeline/leads/${sunny.id}`, { stage: 'agreement' });
+  assert.equal(r.body.stage, 'agreement');
+
+  // Only the admin marks a partner signed, and only with the agreement and the onboarding call done.
+  assert.equal((await call(pm, 'PUT', `/pipeline/leads/${sunny.id}`, { stage: 'signed' })).status, 403);
+  assert.equal((await call(admin, 'PUT', `/pipeline/leads/${sunny.id}`, { stage: 'signed' })).status, 400);
+  r = await call(pm, 'PUT', `/pipeline/leads/${sunny.id}`, { agreement_url: 'https://drive.test/sunny.pdf', onboarding_done: true });
+  assert.equal(r.body.onboarding_done, true);
+  r = await call(admin, 'PUT', `/pipeline/leads/${sunny.id}`, { stage: 'signed' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal((await call(pm, 'PUT', `/pipeline/leads/${sunny.id}`, { stage: 'meeting' })).status, 403);
+
+  // Commission for signing waits for approval; managers can't approve.
+  let pay = (await call(pm, 'GET', '/pipeline/pay')).body;
+  assert.equal(pay.statements.length, 1);
+  assert.equal(pay.statements[0].pending_cents, 4000);
+  assert.equal(pay.statements[0].total_cents, 40000);
+  assert.equal(pay.to_approve, undefined);
+  const signedLine = testDb.prepare("SELECT id FROM partner_commissions WHERE lead_id = ? AND kind = 'signed'").get(sunny.id).id;
+  assert.equal((await call(pm, 'POST', '/pipeline/pay/approve', { ids: [signedLine] })).status, 403);
+
+  // A sending agency activates once 10 au pairs join with its code: counted from real sign-ups, then commission.
+  testDb.prepare("INSERT INTO ambassadors (code, name, kind) VALUES ('SUNNY-CO', 'Sunny Au Pairs', 'agency')").run();
+  const code = testDb.prepare("SELECT id FROM ambassadors WHERE code = 'SUNNY-CO'").get().id;
+  await call(pm, 'PUT', `/pipeline/leads/${sunny.id}`, { ambassador_id: code });
+  for (let i = 0; i < 9; i++) testDb.prepare("INSERT INTO users (email, password_hash, role, name, ref_code) VALUES (?, 'x', 'aupair', 'Ap', 'SUNNY-CO')").run(`sunny${i}@ap.test`);
+  let lead = (await call(pm, 'GET', `/pipeline/leads/${sunny.id}`)).body;
+  assert.equal(lead.stage, 'signed');
+  assert.equal(lead.progress.aupairs, 9);
+  testDb.prepare("INSERT INTO users (email, password_hash, role, name, ref_code) VALUES ('sunny9@ap.test', 'x', 'aupair', 'Ap', 'SUNNY-CO')").run();
+  lead = (await call(pm, 'GET', `/pipeline/leads/${sunny.id}`)).body;
+  assert.equal(lead.stage, 'active');
+  assert.ok(lead.activity.some((a) => /Activated automatically/.test(a.body)));
+  assert.equal(lead.commissions.find((c) => c.kind === 'activated').amount_cents, 8000);
+
+  // A lead the admin found and handed over earns half.
+  r = await call(admin, 'POST', '/pipeline/leads', { name: 'Big Host', email: 'big@host.test', kind: 'host', owner_id: pmId, agreement_url: 'x', onboarding_done: true });
+  await call(admin, 'PUT', `/pipeline/leads/${r.body.id}`, { stage: 'signed' });
+  assert.equal(testDb.prepare("SELECT amount_cents FROM partner_commissions WHERE lead_id = ? AND kind = 'signed'").get(r.body.id).amount_cents, 2000);
+
+  // The admin approves, adds revenue share, and pays the month: base plus approved commission.
+  pay = (await call(admin, 'GET', '/pipeline/pay')).body;
+  assert.equal(pay.to_approve.length, 3);
+  await call(admin, 'POST', '/pipeline/pay/approve', { ids: pay.to_approve.map((c) => c.id) });
+  r = await call(admin, 'POST', '/pipeline/pay/lines', { user_id: pmId, kind: 'revenue', amount: '7', note: '7% of €100', lead_id: sunny.id });
+  assert.equal(r.status, 201);
+  const month = new Date().toISOString().slice(0, 7);
+  r = await call(admin, 'POST', '/pipeline/pay/paid', { user_id: pmId, month });
+  assert.equal(r.body.total_cents, 40000 + 4000 + 8000 + 2000 + 700);
+  assert.equal(r.body.unpaid_cents, 0);
+  assert.equal(r.body.quarter_activated, 1);
+  assert.equal((await call(admin, 'DELETE', `/pipeline/pay/lines/${signedLine}`)).status, 400);
+
+  // The weekly report counts what happened, with the Friday text.
+  const rep = (await call(pm, 'GET', '/pipeline/report')).body;
+  assert.equal(rep.numbers.signed, 2);
+  assert.equal(rep.numbers.activated, 1);
+  assert.match(rep.text, /Signed: 2 \(Sunny Au Pairs, Big Host\)/);
+
+  // Pausing a manager stops their login.
+  await call(admin, 'PUT', `/pipeline/team/${pmId}`, { active: false });
+  assert.equal((await call(pm, 'GET', '/pipeline')).status, 401);
+});
+
+test('hiring: job page, application with CV, test task, interview on PairMundo video, and hire', async () => {
+  const { hashPassword } = await import('../server/auth.js');
+  testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
+  const slug = 'partnerships-onboarding-manager';
+
+  let r = await call(null, 'GET', `/jobs/${slug}`);
+  assert.equal(r.status, 200);
+  assert.match(r.body.title, /Partnerships Onboarding Manager/);
+  assert.equal(r.body.test, undefined);
+  assert.equal((await call(null, 'GET', '/jobs/nope')).status, 404);
+
+  const pdf = `data:application/pdf;base64,${Buffer.from('%PDF-1.4 test cv').toString('base64')}`;
+  const form = { name: 'Wanjiru Kamau', email: 'Wanjiru@cand.test', country: 'ke', years_b2b: 3, hours_ok: true, languages: 'English, Swahili',
+    video_url: 'https://loom.com/share/abc', campaign_answer: 'I emailed 800 HR managers for a SaaS client over 6 weeks. Reply rate went from 2% to 7% after I shortened the first email and added a one-line case study. Booked 34 meetings.',
+    objection_answer: 'Understood. PairMundo is not another system to run: your au pairs keep working with you, and families find them through us for free.', cv: pdf };
+  assert.equal((await call(null, 'POST', `/jobs/${slug}/apply`, { ...form, cv: 'data:application/pdf;base64,aGVsbG8=' })).status, 400);
+  assert.equal((await call(null, 'POST', `/jobs/${slug}/apply`, { ...form, campaign_answer: '' })).status, 400);
+  r = await call(null, 'POST', `/jobs/${slug}/apply`, form);
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.match(outbox.at(-1).text, /Badji Tchedre-San, Co-founder & Partnerships, PairMundo/);
+  assert.equal((await call(null, 'POST', `/jobs/${slug}/apply`, form)).status, 409);
+  await call(null, 'POST', `/jobs/${slug}/apply`, { ...form, email: 'weak@cand.test', years_b2b: 0, hours_ok: false, video_url: '', cv: null, campaign_answer: 'Some emails.', objection_answer: 'ok' });
+
+  // Only the admin sees applicants; the strong one ranks first, the weak one is flagged.
+  assert.equal((await call(null, 'GET', '/pipeline/applicants')).status, 401);
+  let list = (await call(admin, 'GET', '/pipeline/applicants')).body;
+  assert.equal(list.applicants[0].email, 'wanjiru@cand.test');
+  assert.equal(list.applicants[0].flags.length, 0);
+  assert.ok(list.applicants[1].flags.includes('No video'));
+  assert.equal(list.applicants[0].cv_data, undefined);
+  const id = list.applicants[0].id;
+  const cv = await fetch(`${base}/pipeline/applicants/${id}/cv`, { headers: { Authorization: `Bearer ${admin}` } });
+  assert.equal(cv.headers.get('content-type'), 'application/pdf');
+
+  // Scorecard, then the paid test task answered on PairMundo.
+  r = await call(admin, 'PUT', `/pipeline/applicants/${id}`, { status: 'shortlisted', scores: { english: 5, research: '4' }, notes: 'Strong' });
+  assert.equal(r.body.score_total, 9);
+  assert.equal((await call(admin, 'PUT', `/pipeline/applicants/${id}`, { scores: { english: 9 } })).status, 400);
+  r = await call(admin, 'POST', `/pipeline/applicants/${id}/test`);
+  assert.equal(r.body.status, 'test');
+  const token = outbox.at(-1).text.match(/jobs\/test\?t=([a-f0-9]{32})/)[1];
+  assert.equal((await call(null, 'GET', `/jobs/test/${token}`)).body.test.length, 3);
+  assert.equal((await call(null, 'POST', `/jobs/test/${token}`, { answer: 'too short' })).status, 400);
+  assert.equal((await call(null, 'POST', `/jobs/test/${token}`, { answer: 'x'.repeat(300) })).status, 200);
+  assert.equal((await call(null, 'POST', `/jobs/test/${token}`, { answer: 'y'.repeat(300) })).status, 400);
+
+  // The interview: emailed with the time and the candidate's link, which opens the call only around that time.
+  assert.equal((await call(admin, 'POST', `/pipeline/applicants/${id}/interview`, { interview_at: '2020-01-01T10:00' })).status, 400);
+  const soon = new Date(Date.now() + 5 * 60000).toISOString().slice(0, 16);
+  r = await call(admin, 'POST', `/pipeline/applicants/${id}/interview`, { interview_at: soon });
+  assert.equal(r.body.status, 'interview');
+  assert.match(outbox.at(-1).text, new RegExp(`/api/jobs/interview/${token}`));
+  const join = await fetch(`${base}/jobs/interview/${token}`, { redirect: 'manual' });
+  assert.equal(join.status, 302);
+  assert.match(join.headers.get('location'), /meet\.jit\.si\/PairMundo-/);
+  const mine = await call(admin, 'POST', `/pipeline/applicants/${id}/join`);
+  assert.equal(mine.body.url.split('#')[0], join.headers.get('location').split('#')[0]);
+  const later = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 16);
+  await call(admin, 'POST', `/pipeline/applicants/${id}/interview`, { interview_at: later });
+  assert.match(await (await fetch(`${base}/jobs/interview/${token}`)).text(), /opens the call from 15 minutes before/);
+
+  // Hire: a partner manager account at the rates entered.
+  r = await call(admin, 'POST', `/pipeline/applicants/${id}/hire`, { base: '450', signed: '40', activated: '80', revshare_pct: '7' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.status, 'hired');
+  assert.equal(r.body.member.base_cents, 45000);
+  assert.equal(testDb.prepare("SELECT role FROM users WHERE email = 'wanjiru@cand.test'").get().role, 'partner_manager');
 });
