@@ -85,7 +85,7 @@ async function setLanguage(code) {
 }
 function renderFooter() {
   const $foot = document.getElementById('foot'); if (!$foot) return;
-  $foot.innerHTML = `<a href="/privacy" target="_blank">${tr('Privacy Policy')}</a> · <a href="/terms" target="_blank">${tr('Terms of Use')}</a> · <a href="#/partners">${tr('Our partners')}</a>
+  $foot.innerHTML = `<a href="/privacy" target="_blank">${tr('Privacy Policy')}</a> · <a href="/terms" target="_blank">${tr('Terms of Use')}</a> · <a href="#/partners">${tr('Our partners')}</a> · <a href="#/careers">${tr('Careers')}</a>
     <label style="margin-left:12px">🌐 <select id="langPick" aria-label="${tr('Language')}">${Object.entries(LANGUAGES).map(([k, v]) => `<option value="${k}" ${k === LANG ? 'selected' : ''}>${v}</option>`).join('')}</select></label>`;
   document.getElementById('langPick').onchange = (e) => setLanguage(e.target.value);
 }
@@ -2374,11 +2374,21 @@ async function pipelinePay(head, qs) {
 
 // ---------- jobs at PairMundo ----------
 // The public job page and application form, and the candidate's test task page (from the link in their email).
-views.jobs = async ([slug = 'partnerships-onboarding-manager'], qs) => {
+// Careers: every open role at PairMundo, linked from the footer. Staff pages are in English, and so are job posts.
+views.careers = async () => {
+  const { jobs } = await api('/jobs');
+  render(`<div style="max-width:760px;margin:24px auto"><h1>Careers at PairMundo</h1>
+    <p class="muted">We're a small, remote team helping au pairs and host families find each other safely, all over the world.</p>
+    ${jobs.map((j) => `<a class="card" style="display:block;text-decoration:none;color:inherit" href="#/jobs/${esc(j.slug)}"><h2>${esc(j.title)}</h2><p class="muted small">${esc(j.meta)}</p><p>${esc(j.role)}</p><span class="btn sm">See the role and apply</span></a>`).join('')
+      || '<div class="card"><p>No open roles right now. Check back soon.</p></div>'}</div>`);
+};
+
+views.jobs = async ([slug], qs) => {
+  if (!slug) return go('#/careers');
   if (slug === 'test') return jobTest(qs.get('t'));
   const j = await api(`/jobs/${encodeURIComponent(slug)}`);
   const list = (items) => `<ul>${items.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>`;
-  render(`<div class="card" style="max-width:760px;margin:24px auto"><h1>${esc(j.title)}</h1><p class="muted">${esc(j.meta)}</p>
+  render(`<p style="max-width:760px;margin:16px auto 0"><a href="#/careers">← All jobs</a></p><div class="card" style="max-width:760px;margin:12px auto 24px"><h1>${esc(j.title)}</h1><p class="muted">${esc(j.meta)}</p>
     <p>${esc(j.about)}</p><p>${esc(j.role)}</p>
     <h3>What you'll do</h3>${list(j.tasks)}<h3>What we're looking for</h3>${list(j.needs)}<h3>Pay</h3>${list(j.pay)}</div>
     ${j.open ? `<form class="card" id="apply" style="max-width:760px;margin:0 auto 24px"><h2>Apply</h2>
@@ -2432,8 +2442,8 @@ async function pipelineHiring(head, id, qs) {
   if (id) return pipelineApplicant(head, id);
   const status = qs.get('status') || '';
   const d = await api(`/pipeline/applicants${status ? `?status=${status}` : ''}`);
-  const jobLink = `${location.origin}/#/jobs/partnerships-onboarding-manager`;
-  render(`${head}<div class="card"><div class="spread"><div><strong>Your job page:</strong> <a href="${esc(jobLink)}" target="_blank">${esc(jobLink)}</a></div><button class="btn ghost sm" id="copyJob">Copy link</button></div>
+  const jobLink = `${location.origin}/#/careers`;
+  render(`${head}<div class="card"><div class="spread"><div><strong>Your careers page:</strong> <a href="${esc(jobLink)}" target="_blank">${esc(jobLink)}</a></div><button class="btn ghost sm" id="copyJob">Copy link</button></div>
       <p class="muted small">Put this link in your LinkedIn, BrighterMonday and Fuzu posts as the way to apply. Applications, test tasks and interviews then all happen here.</p></div>
     <div class="row" style="margin-bottom:12px"><a class="btn ${status ? 'ghost' : ''} sm" href="#/pipeline/hiring">All</a>${d.statuses.map((s) =>
       `<a class="btn ${s === status ? '' : 'ghost'} sm" href="#/pipeline/hiring?status=${s}">${APP_STATUS[s]} (${d.counts[s]})</a>`).join('')}</div>
@@ -2701,7 +2711,7 @@ function afterLogin() {
   try { next = sessionStorage.getItem('next'); sessionStorage.removeItem('next'); } catch { /* private mode */ }
   go(next && next !== '#/login' ? next : '#/');
 }
-const PUBLIC = new Set(['home', 'login', 'register', 'agency-signup', 'ambassador-signup', 'programs', 'forgot', 'reference', 'partners', 'jobs']);
+const PUBLIC = new Set(['home', 'login', 'register', 'agency-signup', 'ambassador-signup', 'programs', 'forgot', 'reference', 'partners', 'jobs', 'careers']);
 views.messages = ((orig) => (args) => (args[0] ? orig(args) : go('#/matches')))(views.messages);
 async function route() {
   clearInterval(pollTimer);

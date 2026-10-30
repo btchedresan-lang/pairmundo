@@ -2332,6 +2332,8 @@ test('hiring: job page, application with CV, test task, interview on PairMundo v
   const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
   const slug = 'partnerships-onboarding-manager';
 
+  const open = (await call(null, 'GET', '/jobs')).body.jobs;
+  assert.ok(open.some((j) => j.slug === slug && /Partnerships/.test(j.title)));
   let r = await call(null, 'GET', `/jobs/${slug}`);
   assert.equal(r.status, 200);
   assert.match(r.body.title, /Partnerships Onboarding Manager/);
