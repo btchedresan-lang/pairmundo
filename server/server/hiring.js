@@ -91,6 +91,8 @@ export function mountHiring(api, { db, wrap, requireRole, rateLimit, HttpError, 
   const cet = (t) => new Date(`${t}Z`).toLocaleString('en-GB', { timeZone: 'Europe/Stockholm', weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
 
   // ---------- public ----------
+  // The careers page: every open role.
+  api.get('/jobs', wrap(() => ({ jobs: Object.entries(JOBS).filter(([, j]) => j.open).map(([slug, j]) => ({ slug, title: j.title, meta: j.meta, role: j.role })) })));
   api.get('/jobs/:slug', wrap((req) => {
     const j = jobOf(req.params.slug);
     const { test: _test, ...pub } = j;
