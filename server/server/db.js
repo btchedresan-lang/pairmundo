@@ -626,6 +626,39 @@ CREATE TABLE IF NOT EXISTS partner_base_pay (
   PRIMARY KEY (user_id, month)
 );
 
+-- People applying for a job at PairMundo (hiring.js), from the public job page through test task and interview.
+CREATE TABLE IF NOT EXISTS job_applications (
+  id INTEGER PRIMARY KEY,
+  job TEXT NOT NULL,                              -- a key of JOBS, e.g. partnerships-onboarding-manager
+  name TEXT NOT NULL,
+  email TEXT NOT NULL,
+  country TEXT,
+  phone TEXT,
+  linkedin TEXT,
+  years_b2b REAL,
+  hours_ok INTEGER NOT NULL DEFAULT 0,            -- can work the hours in the job post
+  languages TEXT,
+  video_url TEXT,                                 -- their 2-minute introduction video
+  campaign_answer TEXT,                           -- an outreach campaign they ran, with numbers
+  objection_answer TEXT,                          -- how they answer the agency objection in the job post
+  cv_mime TEXT,
+  cv_data BLOB,                                   -- kept here, not in public photo storage; only the admin can open it
+  status TEXT NOT NULL DEFAULT 'new',             -- new | shortlisted | test | interview | hired | rejected
+  scores TEXT NOT NULL DEFAULT '{}',              -- JSON 1-5 per scorecard line
+  notes TEXT,
+  token TEXT NOT NULL UNIQUE,                     -- in the candidate's test task and interview links
+  test_sent_at TEXT,
+  test_answer TEXT,
+  test_submitted_at TEXT,
+  interview_at TEXT,                              -- UTC, 'YYYY-MM-DD HH:MM:SS'
+  call_url TEXT,
+  call_created_at TEXT,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL, -- their partner manager account, once hired
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (job, email)
+);
+
 CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_reviews_reviewee ON reviews(reviewee_id);
 CREATE INDEX IF NOT EXISTS idx_requests_to ON match_requests(to_user, status);

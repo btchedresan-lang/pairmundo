@@ -2321,3 +2321,73 @@ test('partnerships pipeline: partner manager login, leads, follow-ups, import, s
   await call(admin, 'PUT', `/pipeline/team/${pmId}`, { active: false });
   assert.equal((await call(pm, 'GET', '/pipeline')).status, 401);
 });
+
+test('hiring: job page, application with CV, test task, interview on PairMundo video, and hire', async () => {
+  const { hashPassword } = await import('../server/auth.js');
+  testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
+  const slug = 'partnerships-onboarding-manager';
+
+  let r = await call(null, 'GET', `/jobs/${slug}`);
+  assert.equal(r.status, 200);
+  assert.match(r.body.title, /Partnerships Onboarding Manager/);
+  assert.equal(r.body.test, undefined);
+  assert.equal((await call(null, 'GET', '/jobs/nope')).status, 404);
+
+  const pdf = `data:application/pdf;base64,${Buffer.from('%PDF-1.4 test cv').toString('base64')}`;
+  const form = { name: 'Wanjiru Kamau', email: 'Wanjiru@cand.test', country: 'ke', years_b2b: 3, hours_ok: true, languages: 'English, Swahili',
+    video_url: 'https://loom.com/share/abc', campaign_answer: 'I emailed 800 HR managers for a SaaS client over 6 weeks. Reply rate went from 2% to 7% after I shortened the first email and added a one-line case study. Booked 34 meetings.',
+    objection_answer: 'Understood. PairMundo is not another system to run: your au pairs keep working with you, and families find them through us for free.', cv: pdf };
+  assert.equal((await call(null, 'POST', `/jobs/${slug}/apply`, { ...form, cv: 'data:application/pdf;base64,aGVsbG8=' })).status, 400);
+  assert.equal((await call(null, 'POST', `/jobs/${slug}/apply`, { ...form, campaign_answer: '' })).status, 400);
+  r = await call(null, 'POST', `/jobs/${slug}/apply`, form);
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.match(outbox.at(-1).text, /Badji Tchedre-San, Co-founder & Partnerships, PairMundo/);
+  assert.equal((await call(null, 'POST', `/jobs/${slug}/apply`, form)).status, 409);
+  await call(null, 'POST', `/jobs/${slug}/apply`, { ...form, email: 'weak@cand.test', years_b2b: 0, hours_ok: false, video_url: '', cv: null, campaign_answer: 'Some emails.', objection_answer: 'ok' });
+
+  // Only the admin sees applicants; the strong one ranks first, the weak one is flagged.
+  assert.equal((await call(null, 'GET', '/pipeline/applicants')).status, 401);
+  let list = (await call(admin, 'GET', '/pipeline/applicants')).body;
+  assert.equal(list.applicants[0].email, 'wanjiru@cand.test');
+  assert.equal(list.applicants[0].flags.length, 0);
+  assert.ok(list.applicants[1].flags.includes('No video'));
+  assert.equal(list.applicants[0].cv_data, undefined);
+  const id = list.applicants[0].id;
+  const cv = await fetch(`${base}/pipeline/applicants/${id}/cv`, { headers: { Authorization: `Bearer ${admin}` } });
+  assert.equal(cv.headers.get('content-type'), 'application/pdf');
+
+  // Scorecard, then the paid test task answered on PairMundo.
+  r = await call(admin, 'PUT', `/pipeline/applicants/${id}`, { status: 'shortlisted', scores: { english: 5, research: '4' }, notes: 'Strong' });
+  assert.equal(r.body.score_total, 9);
+  assert.equal((await call(admin, 'PUT', `/pipeline/applicants/${id}`, { scores: { english: 9 } })).status, 400);
+  r = await call(admin, 'POST', `/pipeline/applicants/${id}/test`);
+  assert.equal(r.body.status, 'test');
+  const token = outbox.at(-1).text.match(/jobs\/test\?t=([a-f0-9]{32})/)[1];
+  assert.equal((await call(null, 'GET', `/jobs/test/${token}`)).body.test.length, 3);
+  assert.equal((await call(null, 'POST', `/jobs/test/${token}`, { answer: 'too short' })).status, 400);
+  assert.equal((await call(null, 'POST', `/jobs/test/${token}`, { answer: 'x'.repeat(300) })).status, 200);
+  assert.equal((await call(null, 'POST', `/jobs/test/${token}`, { answer: 'y'.repeat(300) })).status, 400);
+
+  // The interview: emailed with the time and the candidate's link, which opens the call only around that time.
+  assert.equal((await call(admin, 'POST', `/pipeline/applicants/${id}/interview`, { interview_at: '2020-01-01T10:00' })).status, 400);
+  const soon = new Date(Date.now() + 5 * 60000).toISOString().slice(0, 16);
+  r = await call(admin, 'POST', `/pipeline/applicants/${id}/interview`, { interview_at: soon });
+  assert.equal(r.body.status, 'interview');
+  assert.match(outbox.at(-1).text, new RegExp(`/api/jobs/interview/${token}`));
+  const join = await fetch(`${base}/jobs/interview/${token}`, { redirect: 'manual' });
+  assert.equal(join.status, 302);
+  assert.match(join.headers.get('location'), /meet\.jit\.si\/PairMundo-/);
+  const mine = await call(admin, 'POST', `/pipeline/applicants/${id}/join`);
+  assert.equal(mine.body.url.split('#')[0], join.headers.get('location').split('#')[0]);
+  const later = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 16);
+  await call(admin, 'POST', `/pipeline/applicants/${id}/interview`, { interview_at: later });
+  assert.match(await (await fetch(`${base}/jobs/interview/${token}`)).text(), /opens the call from 15 minutes before/);
+
+  // Hire: a partner manager account at the rates entered.
+  r = await call(admin, 'POST', `/pipeline/applicants/${id}/hire`, { base: '450', signed: '40', activated: '80', revshare_pct: '7' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.status, 'hired');
+  assert.equal(r.body.member.base_cents, 45000);
+  assert.equal(testDb.prepare("SELECT role FROM users WHERE email = 'wanjiru@cand.test'").get().role, 'partner_manager');
+});

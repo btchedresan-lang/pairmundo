@@ -464,9 +464,8 @@ export function mountPipeline(api, { db, wrap, requireRole, HttpError, str, isDa
     return { ...out, revshare_pct: pct };
   };
 
-  // Adds a partner manager: an account that sees only the pipeline, and an email inviting them to set a password.
-  api.post('/pipeline/team', admin, wrap((req, res) => {
-    const b = req.body || {};
+  /** Adds a partner manager: an account that sees only the pipeline, and an email inviting them to set a password. */
+  const addTeamMember = (b) => {
     const email = normEmail(b.email);
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw bad('Enter a valid email.');
     const name = str(b.name, 120);
@@ -484,8 +483,12 @@ export function mountPipeline(api, { db, wrap, requireRole, HttpError, str, isDa
       revshare_pct = excluded.revshare_pct, active = 1`).run(user.id, r.base_cents, r.signed_cents, r.activated_cents, r.revshare_pct);
     db.prepare('UPDATE users SET suspended = 0 WHERE id = ?').run(user.id);
     Promise.resolve(mailer({ to: email, ...teamInviteEmail({ name, email, link: `${publicBase()}/#/forgot` }) })).catch((e) => console.error('Email failed:', e.message));
-    res.status(201);
     return { ...teamRow(user.id), name, email };
+  };
+  api.post('/pipeline/team', admin, wrap((req, res) => {
+    const out = addTeamMember(req.body || {});
+    res.status(201);
+    return out;
   }));
 
   // Changing rates applies to what is earned from now on. Pausing someone signs them out and stops their login.
@@ -501,5 +504,5 @@ export function mountPipeline(api, { db, wrap, requireRole, HttpError, str, isDa
     return teamRow(t.user_id);
   }));
 
-  return { syncActivations, suggest };
+  return { syncActivations, suggest, addTeamMember };
 }
