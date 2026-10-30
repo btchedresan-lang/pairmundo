@@ -145,11 +145,15 @@ async function refreshMe() {
 function renderNav() {
   const route = location.hash.split('/')[1] || '';
   const link = (href, label, count, icon) => `<a href="${href}" class="${href.split('/')[1] === route || (route === '' && href === '#/discover') ? 'active' : ''}">${icon ? `<span class="nav-icon">${icon}</span>` : ''}<span class="nav-label">${label}</span>${count ? `<span class="badge">${count}</span>` : ''}</a>`;
-  document.body.classList.toggle('has-tabs', !!me && !['admin', 'agency', 'ambassador'].includes(me.user.role));
+  document.body.classList.toggle('has-tabs', !!me && !['admin', 'agency', 'ambassador', 'partner_manager'].includes(me.user.role));
   if (!me) { $nav.innerHTML = link('#/programs', tr('Country programs')) + link('#/login', tr('Sign in')) + `<a class="btn sm" href="#/register">${tr('Join free')}</a>`; return; }
   const c = me.counts;
   if (me.user.role === 'admin') {
-    $nav.innerHTML = [link('#/admin', 'Admin'), link('#/placements', 'Placements'), link('#/programs', 'Programs'), link('#/notifications', '🔔', c.notifications), `<a href="#/logout">${tr('Sign out')}</a>`].join('');
+    $nav.innerHTML = [link('#/admin', 'Admin'), link('#/pipeline', 'Partnerships'), link('#/placements', 'Placements'), link('#/programs', 'Programs'), link('#/notifications', '🔔', c.notifications), `<a href="#/logout">${tr('Sign out')}</a>`].join('');
+    return;
+  }
+  if (me.user.role === 'partner_manager') {
+    $nav.innerHTML = [link('#/pipeline', 'Partnerships'), link('#/notifications', '🔔', c.notifications), `<a href="#/logout">${tr('Sign out')}</a>`].join('');
     return;
   }
   if (me.user.role === 'agency') {
@@ -177,7 +181,7 @@ const views = {};
 
 views.home = async () => {
   if (!me) return landing();
-  return go({ admin: '#/admin', agency: '#/agency', ambassador: '#/ambassador' }[me.user.role] || '#/discover');
+  return go({ admin: '#/admin', agency: '#/agency', ambassador: '#/ambassador', partner_manager: '#/pipeline' }[me.user.role] || '#/discover');
 };
 
 // ---------- photos ----------
@@ -2139,6 +2143,218 @@ async function adminAmbassadors(head, id, qs) {
     try { const a = await api('/admin/ambassadors', { method: 'POST', body: { ...formData(e.target), ...spaceFields(e.target) } }); toast(a.invite_email ? `Added. Invite sent to ${a.invite_email}` : `Added. Their link: ${a.link}`); go(`#/admin/ambassadors/${a.id}`); }
     catch (err) { toast(err.message); }
   };
+}
+
+// ---------- partnerships pipeline ----------
+// Agencies and partners from first research to active, worked by the admin and partner managers (staff accounts that
+// see only this). Staff pages are in English, like the admin.
+const STAGE_LABEL = { target: 'To contact', contacted: 'Contacted', replied: 'Replied', meeting: 'Meeting', agreement: 'Agreement sent', signed: 'Signed', active: 'Active', declined: 'Declined' };
+const LEAD_KIND = { host: 'Host agency', sending: 'Sending agency', sponsor: 'Sponsor', other: 'Other partner' };
+const ACT_KIND = { note: '📝 Note', email: '✉️ Email sent', reply: '↩️ They replied', call: '📞 Call', meeting: '📅 Meeting booked', stage: '➡️' };
+const opts = (obj, sel, blank) => (blank != null ? `<option value="">${esc(blank)}</option>` : '') + Object.entries(obj).map(([k, v]) => `<option value="${esc(k)}" ${String(k) === String(sel ?? '') ? 'selected' : ''}>${esc(v)}</option>`).join('');
+const stageChip = (s) => `<span class="chip ${s === 'active' || s === 'signed' ? 'ok' : s === 'declined' ? 'warn' : ''}">${STAGE_LABEL[s] || s}</span>`;
+const isStaff = () => ['admin', 'partner_manager'].includes(me?.user.role);
+const toCents = (v) => (v == null ? '' : (v / 100).toFixed(2).replace(/\.00$/, ''));
+
+views.pipeline = async ([tab = 'today', id], qs) => {
+  if (!isStaff()) return go('#/');
+  const admin = me.user.role === 'admin';
+  const tabs = { today: 'Today', leads: 'All partners', import: 'Import', report: 'Weekly report', pay: admin ? 'Pay & team' : 'Your pay' };
+  const head = `<h1>Partnerships</h1><div class="row" style="margin-bottom:16px">${Object.entries(tabs).map(([k, v]) =>
+    `<a class="btn ${k === tab || (tab === 'lead' && k === 'leads') ? '' : 'ghost'} sm" href="#/pipeline/${k}">${v}</a>`).join('')}</div>`;
+  if (tab === 'lead') return pipelineLead(head, id);
+  if (tab === 'import') return pipelineImport(head);
+  if (tab === 'report') return pipelineReport(head, qs);
+  if (tab === 'pay') return pipelinePay(head, qs);
+  const owner = qs.get('owner') ?? (admin ? '' : 'me');
+  const p = await api(`/pipeline?${new URLSearchParams({ ...(qs.get('stage') ? { stage: qs.get('stage') } : {}), ...(qs.get('q') ? { q: qs.get('q') } : {}), ...(owner ? { owner } : {}) })}`);
+  const funnel = `<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(120px,1fr));margin-bottom:16px">${p.stages.map((s) =>
+    `<a class="card" style="margin:0;text-decoration:none;color:inherit" href="#/pipeline/leads?stage=${s}"><div class="muted small">${STAGE_LABEL[s]}</div><div style="font-size:1.6rem;font-weight:800">${p.counts[s]}</div></a>`).join('')}</div>`;
+  const row = (l, check) => `<tr>${check ? `<td><input type="checkbox" data-pick="${l.id}" aria-label="Select ${esc(l.name)}"></td>` : ''}
+    <td><a href="#/pipeline/lead/${l.id}"><strong>${esc(l.name)}</strong></a><div class="muted small">${[cname(l.country), LEAD_KIND[l.kind], l.lang && langName(l.lang)].filter(Boolean).join(' · ')}</div></td>
+    <td>${stageChip(l.stage)}</td><td class="small">${l.next.due ? '⏰ ' : ''}${esc(l.next.text)}${l.next_action_on ? ` <span class="muted">(${fmtDate(l.next_action_on)})</span>` : ''}</td>
+    <td class="small">${esc(l.owner_name || '—')}</td></tr>`;
+  if (tab === 'today') {
+    render(`${head}${funnel}<div class="card table-wrap"><div class="spread"><h2>Due today (${p.due.length})</h2>
+      ${admin ? `<select id="ownerPick" style="width:auto">${opts(Object.fromEntries([['', 'Everyone'], ['me', 'Mine'], ...p.team.map((t) => [t.id, t.name])]), owner)}</select>` : ''}</div>
+      <p class="muted small">Follow-ups, replies to answer, meetings to prepare, agreements to chase and partners to onboard, with the furthest along first. When a partner says no, note why and come back with a new angle.</p>
+      <table><tr><th>Partner</th><th>Stage</th><th>Next step</th><th>Owner</th></tr>${p.due.map((l) => row(l)).join('') || '<tr><td colspan="4" class="muted">Nothing due. Add or import partners to contact.</td></tr>'}</table></div>`);
+    const pick = document.getElementById('ownerPick');
+    if (pick) pick.onchange = () => go(`#/pipeline/today?owner=${pick.value}`);
+    return;
+  }
+  render(`${head}${funnel}
+    <form class="card row" id="leadFilter"><input name="q" placeholder="Search name, email or country code" value="${esc(qs.get('q') || '')}" style="flex:1;min-width:180px">
+      <select name="stage" style="width:auto">${opts(STAGE_LABEL, qs.get('stage'), 'Every stage')}</select>
+      <select name="owner" style="width:auto">${opts(Object.fromEntries([['', 'Everyone'], ['me', 'Mine'], ...p.team.map((t) => [t.id, t.name])]), owner)}</select>
+      <button class="btn sm">Filter</button><a class="btn ghost sm" href="/api/pipeline.csv">⬇ CSV</a></form>
+    <div class="card table-wrap"><div class="row" style="margin-bottom:8px"><strong>${p.leads.length} partner${p.leads.length === 1 ? '' : 's'}</strong>
+      <span class="muted small">Selected:</span><button class="btn ghost sm" id="bulkContacted">Mark contacted (wave sent)</button>
+      <select id="bulkOwner" style="width:auto">${opts(Object.fromEntries([...(admin ? [['', 'Nobody']] : []), ...p.team.filter((t) => admin || t.id === me.user.id).map((t) => [t.id, t.name])]), null, 'Give to…')}</select></div>
+      <table><tr><th><input type="checkbox" id="pickAll" aria-label="Select all"></th><th>Partner</th><th>Stage</th><th>Next step</th><th>Owner</th></tr>
+      ${p.leads.map((l) => row(l, true)).join('') || '<tr><td colspan="5" class="muted">No partners match.</td></tr>'}</table></div>
+    <details class="card"><summary><strong>Add a partner</strong></summary><form id="leadNew" style="margin-top:12px">${leadFieldsHtml({}, p)}<button class="btn sm">Add</button></form></details>`);
+  document.getElementById('leadFilter').onsubmit = (e) => { e.preventDefault(); go(`#/pipeline/leads?${new URLSearchParams(formData(e.target))}`); };
+  const picked = () => [...document.querySelectorAll('[data-pick]:checked')].map((c) => Number(c.dataset.pick));
+  document.getElementById('pickAll').onchange = (e) => document.querySelectorAll('[data-pick]').forEach((c) => { c.checked = e.target.checked; });
+  document.getElementById('bulkContacted').onclick = async () => {
+    const ids = picked(); if (!ids.length) return toast('Select some partners first');
+    try { const r = await api('/pipeline/bulk', { method: 'POST', body: { ids, stage: 'contacted' } }); toast(`${r.changed} marked contacted. Follow-ups are due in 7 days.`); route(); } catch (err) { toast(err.message); }
+  };
+  document.getElementById('bulkOwner').onchange = async (e) => {
+    const ids = picked(); if (!ids.length) { e.target.value = ''; return toast('Select some partners first'); }
+    try { const r = await api('/pipeline/bulk', { method: 'POST', body: { ids, owner_id: e.target.value || null } }); toast(`${r.changed} handed over`); route(); } catch (err) { toast(err.message); }
+  };
+  document.getElementById('leadNew').onsubmit = async (e) => {
+    e.preventDefault();
+    try { const l = await api('/pipeline/leads', { method: 'POST', body: formData(e.target) }); toast('Added'); go(`#/pipeline/lead/${l.id}`); } catch (err) { toast(err.message); }
+  };
+};
+
+function leadFieldsHtml(l, p) {
+  const admin = me.user.role === 'admin';
+  return `<div class="form-grid"><div class="field"><label>Name</label><input name="name" required value="${esc(l.name)}"></div>
+      <div class="field"><label>Type</label><select name="kind">${opts(LEAD_KIND, l.kind || 'host')}</select></div></div>
+    <div class="form-grid"><div class="field"><label>Country</label><select name="country">${options(COUNTRIES, l.country || '', '—')}</select></div>
+      <div class="field"><label>Write to them in</label><select name="lang">${options(LANGS, l.lang || '', '—')}</select></div></div>
+    <div class="form-grid"><div class="field"><label>Email</label><input name="email" type="email" value="${esc(l.email)}"></div>
+      <div class="field"><label>Contact person</label><input name="contact_name" value="${esc(l.contact_name)}"></div></div>
+    <div class="form-grid"><div class="field"><label>Website</label><input name="website" value="${esc(l.website)}"></div>
+      <div class="field"><label>Phone or WhatsApp</label><input name="phone" value="${esc(l.phone)}"></div></div>
+    <div class="form-grid"><div class="field"><label>Source (for example wave2)</label><input name="source" value="${esc(l.source)}"></div>
+      <div class="field"><label>Owner (earns the commission)</label><select name="owner_id" ${admin ? '' : 'disabled'}>${opts(Object.fromEntries(p.team.map((t) => [t.id, t.name])), l.owner_id ?? (admin ? '' : me.user.id), admin ? 'Nobody yet' : null)}</select></div></div>`;
+}
+
+async function pipelineLead(head, id) {
+  const [l, p] = await Promise.all([api(`/pipeline/leads/${id}`), api('/pipeline?stage=active')]);
+  const admin = me.user.role === 'admin';
+  const locked = !admin && ['signed', 'active'].includes(l.stage);
+  const stageOpts = Object.fromEntries(Object.entries(STAGE_LABEL).filter(([k]) => admin || k === l.stage || !['signed', 'active'].includes(k)));
+  const pr = l.progress;
+  render(`${head}<p><a href="#/pipeline/leads">← All partners</a></p>
+    <div class="spread"><h2>${esc(l.name)} ${stageChip(l.stage)}</h2><span class="muted small">${[cname(l.country), LEAD_KIND[l.kind], l.owner_name && `Owner: ${esc(l.owner_name)}`].filter(Boolean).join(' · ')}</span></div>
+    <div class="card"><h3>${l.next.due ? '⏰ Next step (due)' : 'Next step'}</h3><p>${esc(l.next.text)}</p>
+      ${l.next_action && l.next_action !== l.next.suggested ? `<p class="muted small">Suggested: ${esc(l.next.suggested)}</p>` : ''}
+      <form id="nextForm" class="row"><input name="next_action" placeholder="Your own next step (optional)" value="${esc(l.next_action)}" style="flex:1;min-width:200px">
+        <input name="next_action_on" type="date" value="${esc(l.next_action_on)}" style="width:auto"><button class="btn sm">Save</button></form>
+      <form id="stageForm" class="row" style="margin-top:10px"><label>Stage</label><select name="stage" style="width:auto" ${locked ? 'disabled' : ''}>${opts(stageOpts, l.stage)}</select><button class="btn ghost sm" ${locked ? 'disabled' : ''}>Move</button>
+        ${admin ? '' : '<span class="muted small">Only Badji marks a partner signed, once the agreement is signed.</span>'}</form></div>
+    <form class="card" id="logForm"><h3>Log what happened</h3><div class="row"><select name="kind" style="width:auto">${opts({ email: ACT_KIND.email, reply: ACT_KIND.reply, call: ACT_KIND.call, meeting: ACT_KIND.meeting, note: ACT_KIND.note }, 'note')}</select>
+      <input name="body" required placeholder="What was said or sent" style="flex:1;min-width:200px"><button class="btn sm">Log</button></div>
+      <p class="muted small">Logging a reply moves a contacted partner to Replied; logging a meeting moves it to Meeting.</p></form>
+    <form class="card" id="dealForm"><h3>Meeting, objection and agreement</h3>
+      <div class="form-grid"><div class="field"><label>Meeting (date and time)</label><input name="meeting_at" type="datetime-local" value="${esc((l.meeting_at || '').replace(' ', 'T').slice(0, 16))}"></div>
+        <div class="field"><label>Their objection or pain point</label><input name="objection" value="${esc(l.objection)}" placeholder="For example: we already have our own matching system"></div></div>
+      <div class="form-grid"><div class="field"><label>Signed agreement (link to the PDF)</label><input name="agreement_url" value="${esc(l.agreement_url)}"></div>
+        <div class="field"><label>&nbsp;</label><label class="check"><input type="checkbox" name="onboarding_done" ${l.onboarding_done ? 'checked' : ''}> Onboarding call done</label></div></div>
+      <div class="form-grid"><div class="field"><label>Their agency code (for activation)</label><select name="ambassador_id">${opts(Object.fromEntries(p.codes.map((c) => [c.id, `${c.name} (${c.code})`])), l.ambassador_id, '—')}</select></div>
+        <div class="field"><label>Their referral offer (host agencies and sponsors)</label><select name="offer_id">${opts(Object.fromEntries(p.offers.map((o) => [o.id, o.name])), l.offer_id, '—')}</select></div></div>
+      <div class="field"><label>Notes</label><textarea name="notes" rows="3">${esc(l.notes)}</textarea></div>
+      <button class="btn sm">Save</button></form>
+    ${pr.code || l.offer_id ? `<div class="card"><h3>Activation</h3><p>${l.kind === 'sending' ? `🎓 ${pr.aupairs} of ${p.activation.sending_aupairs} au pairs joined with code <code>${esc(pr.code)}</code>.`
+      : `🧳 ${pr.placements + pr.referrals} referred au pair${pr.placements + pr.referrals === 1 ? '' : 's'} started.`} ${l.stage === 'active' ? '<strong>Active.</strong>' : l.stage === 'signed' ? 'It becomes active automatically when this is reached.' : ''}</p></div>` : ''}
+    <div class="card table-wrap"><h3>History</h3><table>${l.activity.map((a) => `<tr><td class="small muted" style="white-space:nowrap">${fmtTime(a.created_at)}</td><td>${ACT_KIND[a.kind] || ''} ${esc(a.body)}</td><td class="small muted">${esc(a.user_name || 'PairMundo')}</td></tr>`).join('')}</table></div>
+    ${l.commissions.length ? `<div class="card table-wrap"><h3>Commission</h3><table>${l.commissions.map((c) => `<tr><td>${esc(c.note || c.kind)}</td><td>${esc(c.user_name)}</td><td>${usd(c.amount_cents)}</td><td class="small">${c.paid_at ? 'Paid' : c.approved_at ? 'Approved' : 'To approve'}</td></tr>`).join('')}</table></div>` : ''}
+    <details class="card"><summary><strong>Contact details</strong></summary><form id="leadEdit" style="margin-top:12px">${leadFieldsHtml(l, p)}<button class="btn sm">Save</button>
+      ${admin ? '<button type="button" class="btn ghost sm" id="leadDel">Delete</button>' : ''}</form></details>`);
+  const save = async (body, msg = 'Saved') => { try { await api(`/pipeline/leads/${l.id}`, { method: 'PUT', body }); toast(msg); route(); } catch (err) { toast(err.message); } };
+  document.getElementById('nextForm').onsubmit = (e) => { e.preventDefault(); save(formData(e.target)); };
+  document.getElementById('stageForm').onsubmit = (e) => { e.preventDefault(); save({ stage: e.target.stage.value }, 'Moved'); };
+  document.getElementById('dealForm').onsubmit = (e) => { e.preventDefault(); save({ ...formData(e.target), onboarding_done: e.target.onboarding_done.checked }); };
+  document.getElementById('leadEdit').onsubmit = (e) => { e.preventDefault(); save(formData(e.target)); };
+  document.getElementById('logForm').onsubmit = async (e) => {
+    e.preventDefault();
+    try { await api(`/pipeline/leads/${l.id}/activity`, { method: 'POST', body: formData(e.target) }); toast('Logged'); route(); } catch (err) { toast(err.message); }
+  };
+  const del = document.getElementById('leadDel');
+  if (del) del.onclick = async () => {
+    if (!confirm(`Delete ${l.name} and its history?`)) return;
+    try { await api(`/pipeline/leads/${l.id}`, { method: 'DELETE' }); toast('Deleted'); go('#/pipeline/leads'); } catch (err) { toast(err.message); }
+  };
+}
+
+async function pipelineImport(head) {
+  const admin = me.user.role === 'admin';
+  const p = admin ? await api('/pipeline?stage=active') : null;
+  render(`${head}<form class="card" id="imp"><h2>Import partners from a spreadsheet</h2>
+    <p class="muted small">Save the sheet as CSV and choose the file, or paste it. Columns are found by their headers: Agency or Name (needed), Email, Country, Type, Language, Website, Contact, Phone, Source, Notes. Partners whose email is already in the pipeline are skipped.</p>
+    <div class="field"><label>CSV file</label><input type="file" id="impFile" accept=".csv,text/csv"></div>
+    <div class="field"><label>Or paste it here</label><textarea name="csv" rows="8" placeholder="Agency,Email,Country,Type,Language"></textarea></div>
+    <div class="form-grid"><div class="field"><label>Source, when the sheet has none (for example wave3)</label><input name="source"></div>
+      ${admin ? `<div class="field"><label>Owner</label><select name="owner_id">${opts(Object.fromEntries(p.team.map((t) => [t.id, t.name])), '', 'Nobody yet')}</select></div>` : ''}</div>
+    <label class="check"><input type="checkbox" name="contacted"> They already got the first email (mark them contacted, follow-up due in 7 days)</label>
+    <label class="check"><input type="checkbox" name="update"> For partners already in the pipeline, fill in details that are empty</label>
+    <button class="btn" style="margin-top:10px">Import</button><div id="impOut"></div></form>`);
+  document.getElementById('impFile').onchange = async (e) => { const f = e.target.files[0]; if (f) document.querySelector('#imp [name=csv]').value = await f.text(); };
+  document.getElementById('imp').onsubmit = async (e) => {
+    e.preventDefault();
+    const f = formData(e.target);
+    try {
+      const r = await api('/pipeline/import', { method: 'POST', body: { csv: f.csv, source: f.source, owner_id: f.owner_id, stage: e.target.contacted.checked ? 'contacted' : null, update: e.target.update.checked } });
+      document.getElementById('impOut').innerHTML = `<div class="alert ok">Added ${r.added}, updated ${r.updated}, skipped ${r.skipped}.</div>${r.errors.length ? `<div class="alert warning">${r.errors.map(esc).join('<br>')}</div>` : ''}`;
+    } catch (err) { document.getElementById('impOut').innerHTML = `<div class="alert error">${esc(err.message)}</div>`; }
+  };
+}
+
+async function pipelineReport(head, qs) {
+  const r = await api(`/pipeline/report?${new URLSearchParams([...qs.entries()])}`);
+  const n = r.numbers;
+  const tiles = [['First emails', n.contacted], ['Replies', n.replied], ['Reply rate', n.reply_rate == null ? '—' : `${n.reply_rate}%`], ['Meetings', n.meetings], ['Signed', n.signed], ['Activated', n.activated], ['Declined', n.declined], ['Added', n.added]];
+  render(`${head}<form class="card row" id="rep"><label>From</label><input type="date" name="from" value="${esc(r.from)}" style="width:auto"><label>to</label><input type="date" name="to" value="${esc(r.to)}" style="width:auto"><button class="btn sm">Show</button></form>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(130px,1fr))">${tiles.map(([k, v]) => `<div class="card"><div class="muted small">${k}</div><div style="font-size:1.6rem;font-weight:800">${v}</div></div>`).join('')}</div>
+    <div class="card"><div class="spread"><h3>The Friday update</h3><button class="btn sm" id="copyRep">Copy</button></div><textarea id="repText" rows="12" readonly>${esc(r.text)}</textarea></div>`);
+  document.getElementById('rep').onsubmit = (e) => { e.preventDefault(); go(`#/pipeline/report?${new URLSearchParams(formData(e.target))}`); };
+  document.getElementById('copyRep').onclick = async () => { try { await navigator.clipboard.writeText(r.text); } catch { document.getElementById('repText').select(); document.execCommand('copy'); } toast('Copied'); };
+}
+
+async function pipelinePay(head, qs) {
+  const admin = me.user.role === 'admin';
+  const month = qs.get('month') || new Date().toISOString().slice(0, 7);
+  const d = await api(`/pipeline/pay?month=${month}`);
+  const kindLabel = { signed: 'Signed partner', activated: 'Activated partner', revenue: 'Revenue share', bonus: 'Bonus', adjustment: 'Adjustment' };
+  const stmt = (s) => `<div class="card table-wrap"><div class="spread"><h3>${esc(s.name)} · ${esc(month)}</h3>
+      ${admin ? `<button class="btn sm" data-paid="${s.user_id}" ${s.unpaid_cents ? '' : 'disabled'}>Mark ${usd(s.unpaid_cents)} as paid</button>` : ''}</div>
+    ${s.rates ? `<p class="muted small">Rates: ${usd(s.rates.base_cents)} base a month, ${usd(s.rates.signed_cents)} per signed partner, ${usd(s.rates.activated_cents)} per activated partner, ${s.rates.revshare_pct}% revenue share in a partner's first year. Quarterly bonus progress: ${s.quarter_activated} activated this quarter.</p>` : ''}
+    <table><tr><td>Base</td><td></td><td>${usd(s.base_cents)}</td><td class="small">${s.base_paid ? 'Paid' : ''}</td></tr>
+    ${s.lines.map((c) => `<tr><td>${kindLabel[c.kind]}</td><td class="small">${esc(c.note || c.lead_name || '')}</td><td>${usd(c.amount_cents)}</td><td class="small">${c.paid_at ? 'Paid' : c.approved_at ? 'Approved' : 'To approve'}
+      ${admin && !c.paid_at && ['revenue', 'bonus', 'adjustment'].includes(c.kind) ? ` <a href="#" data-del-line="${c.id}">remove</a>` : ''}</td></tr>`).join('')}
+    <tr><th>Total</th><th></th><th>${usd(s.total_cents)}</th><th class="small">${s.pending_cents ? `+ ${usd(s.pending_cents)} to approve` : ''}</th></tr></table></div>`;
+  render(`${head}<div class="spread"><form id="payMonth" class="row"><label>Month</label><input type="month" name="month" value="${esc(month)}" style="width:auto"></form>
+      ${admin ? `<a class="btn ghost sm" href="/api/pipeline/pay.csv?month=${esc(month)}">⬇ Pay sheet (CSV)</a>` : ''}</div>
+    <p class="muted small">Commission is paid for outcomes only. Signed: the agreement is signed and the onboarding call is done. Activated: a sending agency has 10 au pairs who joined with its code, or a host agency's first referred au pair starts, within 6 months of signing. Badji approves each line before it's paid.</p>
+    ${admin && d.to_approve.length ? `<div class="card table-wrap"><div class="spread"><h3>To approve (${d.to_approve.length})</h3><button class="btn sm" id="approveAll">Approve all</button></div>
+      <table>${d.to_approve.map((c) => `<tr><td>${esc(c.user_name)}</td><td>${esc(c.note || c.lead_name)}</td><td>${usd(c.amount_cents)}</td><td><button class="btn ghost sm" data-approve="${c.id}">Approve</button></td></tr>`).join('')}</table></div>` : ''}
+    ${d.statements.map(stmt).join('') || '<div class="empty">No one on the team yet.</div>'}
+    ${admin ? `<form class="card" id="lineNew"><h3>Add revenue share, a bonus or a correction</h3>
+      <div class="form-grid"><div class="field"><label>Who</label><select name="user_id" required>${opts(Object.fromEntries(d.team.map((t) => [t.user_id, t.name])), '', '—')}</select></div>
+        <div class="field"><label>What</label><select name="kind">${opts({ revenue: 'Revenue share', bonus: 'Quarterly bonus', adjustment: 'Correction (can be negative)' }, 'revenue')}</select></div></div>
+      <div class="form-grid"><div class="field"><label>Amount (US$)</label><input name="amount" inputmode="decimal" required></div>
+        <div class="field"><label>Note</label><input name="note" placeholder="7% of €100 placement fee, Agency X"></div></div><button class="btn sm">Add</button></form>
+    <div class="card table-wrap"><h3>Team</h3><table><tr><th>Name</th><th>Base / month</th><th>Per signed</th><th>Per activated</th><th>Revenue share %</th><th>Active</th><th></th></tr>
+      ${d.team.map((t) => `<tr data-team="${t.user_id}"><td>${esc(t.name)}<div class="muted small">${esc(t.email)}</div></td>
+        <td><input name="base" value="${toCents(t.base_cents)}" size="6"></td><td><input name="signed" value="${toCents(t.signed_cents)}" size="5"></td><td><input name="activated" value="${toCents(t.activated_cents)}" size="5"></td>
+        <td><input name="revshare_pct" value="${t.revshare_pct}" size="4"></td><td><input type="checkbox" name="active" ${t.active ? 'checked' : ''}></td><td><button class="btn ghost sm" data-save-team="${t.user_id}">Save</button></td></tr>`).join('')
+      || '<tr><td colspan="7" class="muted">Nobody yet.</td></tr>'}</table><p class="muted small">New rates apply to what is earned from now on. Unticking Active signs them out and stops their login.</p></div>
+    <form class="card" id="teamNew"><h3>Add a partner manager</h3><p class="muted small">They get an account that sees only Partnerships and their pay, and an email explaining how to set their password.</p>
+      <div class="form-grid"><div class="field"><label>Name</label><input name="name" required></div><div class="field"><label>Work email</label><input name="email" type="email" required></div></div>
+      <div class="form-grid"><div class="field"><label>Base a month (US$)</label><input name="base" value="400"></div><div class="field"><label>Per signed partner (US$)</label><input name="signed" value="40"></div></div>
+      <div class="form-grid"><div class="field"><label>Per activated partner (US$)</label><input name="activated" value="80"></div><div class="field"><label>Revenue share (%)</label><input name="revshare_pct" value="7"></div></div>
+      <button class="btn sm">Add and send the invite</button></form>` : ''}`);
+  document.querySelector('#payMonth input').onchange = (e) => go(`#/pipeline/pay?month=${e.target.value}`);
+  const run = async (fn, msg) => { try { await fn(); toast(msg); route(); } catch (err) { toast(err.message); } };
+  document.querySelectorAll('[data-paid]').forEach((b) => { b.onclick = () => confirm(`Mark ${month} as paid for this person?`) && run(() => api('/pipeline/pay/paid', { method: 'POST', body: { user_id: b.dataset.paid, month } }), 'Marked as paid'); });
+  document.querySelectorAll('[data-approve]').forEach((b) => { b.onclick = () => run(() => api('/pipeline/pay/approve', { method: 'POST', body: { ids: [b.dataset.approve] } }), 'Approved'); });
+  const all = document.getElementById('approveAll');
+  if (all) all.onclick = () => run(() => api('/pipeline/pay/approve', { method: 'POST', body: { ids: d.to_approve.map((c) => c.id) } }), 'Approved');
+  document.querySelectorAll('[data-del-line]').forEach((a) => { a.onclick = (e) => { e.preventDefault(); if (confirm('Remove this line?')) run(() => api(`/pipeline/pay/lines/${a.dataset.delLine}`, { method: 'DELETE' }), 'Removed'); }; });
+  document.querySelectorAll('[data-save-team]').forEach((b) => { b.onclick = () => {
+    const tr_ = b.closest('tr'); const v = (n) => tr_.querySelector(`[name=${n}]`);
+    run(() => api(`/pipeline/team/${b.dataset.saveTeam}`, { method: 'PUT', body: { base: v('base').value, signed: v('signed').value, activated: v('activated').value, revshare_pct: v('revshare_pct').value, active: v('active').checked } }), 'Saved');
+  }; });
+  const line = document.getElementById('lineNew');
+  if (line) line.onsubmit = (e) => { e.preventDefault(); run(() => api('/pipeline/pay/lines', { method: 'POST', body: formData(e.target) }), 'Added'); };
+  const team = document.getElementById('teamNew');
+  if (team) team.onsubmit = (e) => { e.preventDefault(); run(() => api('/pipeline/team', { method: 'POST', body: formData(e.target) }), 'Added. Invite sent.'); };
 }
 
 // ---------- Family Pass ----------
