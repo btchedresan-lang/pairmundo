@@ -1364,7 +1364,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       if (!profileGaps(u).length) continue;
       const kind = Date.parse(u.created_at.replace(' ', 'T') + 'Z') <= Date.now() - 7 * 86400000 ? 'day7' : 'day2';
       // One nudge per kind; an account first seen after day 7 gets only the day-7 one.
-      if (kind === 'day2' && db.prepare('SELECT 1 FROM profile_nudges WHERE user_id = ?').get(u.id)) continue;
+      if (kind === 'day2' && db.prepare("SELECT 1 FROM profile_nudges WHERE user_id = ? AND kind IN ('day2', 'day7')").get(u.id)) continue;
       if (!db.prepare('INSERT OR IGNORE INTO profile_nudges (user_id, kind) VALUES (?,?)').run(u.id, kind).changes) continue;
       const message = PROFILE_NUDGES[u.role];
       notify(u.id, 'profile', message, {}, '#/profile');
@@ -1376,6 +1376,32 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     return sent;
   };
   app.sendProfileNudges = sendProfileNudges;
+
+  // Au pairs with a finished profile who haven't verified their ID get a reminder 3 days after signing up, and a last
+  // one a week after that, in the app, by push and by email. Verified profiles are the ones families message first,
+  // and an ambassador's reward only counts once the ID is verified. Not while a check is being processed.
+  const ID_NUDGE = "Families trust and message verified au pairs first. Verify your ID in Account and safety; it takes about 2 minutes with your passport or ID card and a selfie.";
+  const sendIdNudges = () => {
+    if (!identity) return 0;
+    const rows = db.prepare(`SELECT * FROM users u WHERE role = 'aupair' AND suspended = 0 AND email_verified = 1 AND id_verified = 0
+      AND created_at <= datetime('now', '-3 days')
+      AND NOT EXISTS (SELECT 1 FROM id_checks c WHERE c.user_id = u.id AND c.status IN ('processing', 'verified'))`).all();
+    let sent = 0;
+    for (const u of rows) {
+      if (!profileComplete(u)) continue;
+      const last = db.prepare("SELECT kind, sent_at FROM profile_nudges WHERE user_id = ? AND kind IN ('id1', 'id2') ORDER BY sent_at DESC, kind DESC LIMIT 1").get(u.id);
+      if (last?.kind === 'id2') continue;
+      if (last && Date.parse(last.sent_at.replace(' ', 'T') + 'Z') > Date.now() - 7 * 86400000) continue;
+      if (!db.prepare('INSERT OR IGNORE INTO profile_nudges (user_id, kind) VALUES (?,?)').run(u.id, last ? 'id2' : 'id1').changes) continue;
+      notify(u.id, 'profile', ID_NUDGE, {}, '#/account');
+      const subject = translate(u.lang, 'One last step: verify your ID');
+      const text = `${translate(u.lang, ID_NUDGE)}\n\n${translate(u.lang, 'Verify your ID here: {link}', { link: `${publicBase()}/#/account` })}`;
+      Promise.resolve(mailer({ to: u.email, subject, text })).catch((e) => console.error('ID nudge email failed:', e.message));
+      sent++;
+    }
+    return sent;
+  };
+  app.sendIdNudges = sendIdNudges;
   const mustHavePass = (u) => {
     if (needsPass(u)) throw new HttpError(402, 'Get the Family Pass to message au pairs.', 'pass_required');
   };
