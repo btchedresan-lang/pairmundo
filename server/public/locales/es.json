@@ -1148,5 +1148,16 @@
   "{aupair} looked after your children and is looking for a new host family on PairMundo. Families will see your answers and your first name, never your email.": "{aupair} cuidó a tus hijos y busca una nueva familia de acogida en PairMundo. Las familias verán tus respuestas y tu nombre de pila, nunca tu email.",
   "Your review is on {name}'s profile now. Thank you for helping a family choose well.": "Tu reseña ya está en el perfil de {name}. Gracias por ayudar a una familia a elegir bien.",
   "Looking for an au pair yourself? Your PairMundo account is ready.": "¿Buscas tú también un au pair? Tu cuenta de PairMundo está lista.",
-  "Open PairMundo": "Abrir PairMundo"
+  "Open PairMundo": "Abrir PairMundo",
+  "People who joined with your code": "Personas que se unieron con tu código",
+  "No one yet. When someone signs up with your link or code, they show here with the steps they still have to do.": "Todavía nadie. Cuando alguien se registre con tu enlace o código, aparecerá aquí con los pasos que le faltan.",
+  "Next: confirm their email with the 6-digit code we sent": "Siguiente: confirmar su correo con el código de 6 dígitos que le enviamos",
+  "Bought a Family Pass": "Compró un Family Pass",
+  "Joined, no Family Pass yet": "Registrada, aún sin Family Pass",
+  "Next: finish their profile (photo, about me, nationality, birth date, languages, start date)": "Siguiente: completar su perfil (foto, sobre mí, nacionalidad, fecha de nacimiento, idiomas, fecha de inicio)",
+  "Next: verify their ID in Account and safety": "Siguiente: verificar su identidad en Cuenta y seguridad",
+  "All done, counted for you": "Todo listo, cuenta para ti",
+  "All done (over this month's limit)": "Todo listo (por encima del límite de este mes)",
+  "ID": "Identidad",
+  "Family Pass": "Family Pass"
 }

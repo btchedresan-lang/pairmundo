@@ -981,6 +981,10 @@ test('ambassadors: referral codes at sign-up, rewards counted once, monthly cap,
   const mine = (await call(own.token, 'GET', '/me/ambassador')).body;
   assert.equal(mine.link, 'https://pairmundo.com/?ref=ANA-CO');
   assert.deepEqual([mine.this_month.aupairs, mine.this_month.profiles, mine.total.earned_cents], [1, 1, 200]);
+  // They see each person they brought and which step is left, by short name only.
+  assert.deepEqual(mine.people, [{ name: 'refap@test.io', role: 'aupair', country: 'CO', joined: mine.people[0].joined,
+    email_confirmed: true, profile_complete: true, id_verified: true, counted: true }]);
+  assert.ok(!JSON.stringify(mine.people).includes('"email"'));
   assert.equal((await call(ap.token, 'GET', '/me/ambassador')).status, 404);
   assert.equal((await call(ap.token, 'GET', '/admin/ambassadors')).status, 403);
 
