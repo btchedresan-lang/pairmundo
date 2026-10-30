@@ -849,7 +849,21 @@ function ambassadorCard(amb) {
     .map(([label, k]) => `<tr><td>${label}</td><td>${amb.this_month[k]}</td><td>${amb.total[k]}</td></tr>`).join('')}
       <tr><td><strong>${tr('Earned')}</strong></td><td><strong>${usd(amb.this_month.earned_cents)}</strong></td><td><strong>${usd(amb.total.earned_cents)}</strong></td></tr></table>
     <p>${tr('Not paid out yet')}: <strong>${usd(amb.total.owed_cents)}</strong></p>
-    <p class="muted small">${tr('You earn {profile} for each au pair who completes their profile and verifies their ID, {pass} when a family buys their first Family Pass, and {placement} when a stay starts. Only people who join with your link or code count.', { profile: usd(amb.rewards.profile), pass: usd(amb.rewards.pass), placement: usd(amb.rewards.placement) })}</p></div>`;
+    <p class="muted small">${tr('You earn {profile} for each au pair who completes their profile and verifies their ID, {pass} when a family buys their first Family Pass, and {placement} when a stay starts. Only people who join with your link or code count.', { profile: usd(amb.rewards.profile), pass: usd(amb.rewards.pass), placement: usd(amb.rewards.placement) })}</p>
+    <h3 style="margin-top:16px">${tr('People who joined with your code')}</h3>
+    ${amb.people?.length ? `<table>${amb.people.map((p) => `<tr><td>${flag(p.country)} ${esc(p.name)}<div class="muted small">${p.role === 'aupair' ? tr('Au pair') : tr('Family')} · ${esc(p.joined)}</div></td>
+      <td>${p.role === 'aupair' ? [[tr('Email'), p.email_confirmed], [tr('Profile'), p.profile_complete], [tr('ID'), p.id_verified]].map(([l, ok]) => `${ok ? '✅' : '⬜'} ${l}`).join(' ') : `${p.email_confirmed ? '✅' : '⬜'} ${tr('Email')} ${p.pass ? '✅' : '⬜'} ${tr('Family Pass')}`}
+      <div class="small">${esc(ambassadorNextStep(p))}</div></td></tr>`).join('')}</table>`
+    : `<p class="muted small">${tr('No one yet. When someone signs up with your link or code, they show here with the steps they still have to do.')}</p>`}</div>`;
+}
+
+/** What a person an ambassador brought still has to do, so the ambassador knows how to help. */
+function ambassadorNextStep(p) {
+  if (!p.email_confirmed) return tr('Next: confirm their email with the 6-digit code we sent');
+  if (p.role === 'family') return p.pass ? tr('Bought a Family Pass') : tr('Joined, no Family Pass yet');
+  if (!p.profile_complete) return tr('Next: finish their profile (photo, about me, nationality, birth date, languages, start date)');
+  if (!p.id_verified) return tr('Next: verify their ID in Account and safety');
+  return p.counted ? tr('All done, counted for you') : tr('All done (over this month\'s limit)');
 }
 
 /** Makes the Copy link button next to #ambLink copy the link. */

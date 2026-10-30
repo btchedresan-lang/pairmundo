@@ -410,10 +410,23 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   const checkProfileReward = (userId) => {
     const u = getUser(userId);
     if (u?.role !== 'aupair' || !u.ref_code || !u.email_verified || !u.id_verified) return;
+    if (profileComplete(u)) addReward(u.id, 'profile', AMBASSADOR_REWARDS.profile, 'Au pair profile complete');
+  };
+  const profileComplete = (u) => {
     const p = db.prepare('SELECT * FROM aupair_profiles WHERE user_id = ?').get(u.id);
-    if (photosOf(u).length && p?.bio && p.nationality && p.birth_date && json.parse(p.languages).length && p.available_from) {
-      addReward(u.id, 'profile', AMBASSADOR_REWARDS.profile, 'Au pair profile complete');
-    }
+    return !!(photosOf(u).length && p?.bio && p.nationality && p.birth_date && json.parse(p.languages).length && p.available_from);
+  };
+  /** The people who joined with an ambassador's code and how far each has got, so the ambassador knows whom to nudge.
+   *  Only the short name other members see anyway, never contact details. */
+  const ambassadorPeople = (a) => {
+    const rewarded = (uid, kind) => !!db.prepare('SELECT 1 FROM referral_rewards WHERE ambassador_id = ? AND user_id = ? AND kind = ?').get(a.id, uid, kind);
+    return db.prepare("SELECT * FROM users WHERE ref_code = ? AND id IS NOT ? AND role IN ('aupair', 'family') AND suspended = 0 ORDER BY created_at DESC, id DESC LIMIT 300")
+      .all(a.code, a.user_id).map((u) => ({
+        name: shortName(u.name), role: u.role, country: u.country, joined: String(u.created_at).slice(0, 10), email_confirmed: !!u.email_verified,
+        ...(u.role === 'aupair'
+          ? { profile_complete: profileComplete(u), id_verified: !!u.id_verified, counted: rewarded(u.id, 'profile') }
+          : { pass: rewarded(u.id, 'pass') }),
+      }));
   };
   /** What an ambassador's code brought in, for one month (YYYY-MM) or all time. owed_cents is everything not paid yet. */
   const ambassadorStats = (a, month = null) => {
@@ -2405,7 +2418,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
         sessions: flyerSessions(a).map(({ id, area, flyers, amount_ore, delivered_on, families, paid_at }) => ({ id, area, flyers, amount_ore, delivered_on, families, paid: !!paid_at })) };
     }
     return { kind: 'ambassador', code: a.code, name: a.name, link: referralLink(a), rewards: AMBASSADOR_REWARDS,
-      this_month: ambassadorStats(a, new Date().toISOString().slice(0, 7)), total: ambassadorStats(a) };
+      this_month: ambassadorStats(a, new Date().toISOString().slice(0, 7)), total: ambassadorStats(a), people: ambassadorPeople(a) };
   }));
 
   // ---------- admin ----------

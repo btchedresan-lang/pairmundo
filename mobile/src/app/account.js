@@ -6,7 +6,8 @@ import { api, getBase, setToken } from '../api';
 import { Alert, Button, Card, Chip, Chips, Field, Photo, Screen, T } from '../components/ui';
 import { LANGUAGES, tr, useLanguage } from '../i18n';
 import { confirmAsync } from '../components/dialogs';
-import { C } from '../theme';
+import { flag } from '../data';
+import { C, useTheme } from '../theme';
 
 export default function Account() {
   const { me, setMe, refresh } = useAuth();
@@ -146,6 +147,7 @@ const usd = (cents) => `US$${(cents / 100).toFixed(2).replace(/\.00$/, '')}`;
 
 /** An ambassador's code, link and what it has brought in. */
 function AmbassadorCard({ amb }) {
+  const t = useTheme();
   const rows = [[tr('On the waitlist'), 'waitlist'], [tr('Au pairs who joined'), 'aupairs'], [tr('Families who joined'), 'families'],
     [tr('Completed au pair profiles'), 'profiles'], [tr('Families who bought a Family Pass'), 'passes'], [tr('Stays that started'), 'placements']];
   const row = (label, a, b, bold) => (
@@ -165,6 +167,27 @@ function AmbassadorCard({ amb }) {
       <T>{tr('Not paid out yet')}: <T bold>{usd(amb.total.owed_cents)}</T></T>
       <T small muted>{tr("You earn {profile} for each au pair who completes their profile and verifies their ID, {pass} when a family buys their first Family Pass, and {placement} when a stay starts. Only people who join with your link or code count.",
         { profile: usd(amb.rewards.profile), pass: usd(amb.rewards.pass), placement: usd(amb.rewards.placement) })}</T>
+      <T bold style={{ marginTop: 8 }}>{tr('People who joined with your code')}</T>
+      {amb.people?.length ? amb.people.map((p, i) => {
+        const steps = p.role === 'aupair' ? [[tr('Email'), p.email_confirmed], [tr('Profile'), p.profile_complete], [tr('ID'), p.id_verified]]
+          : [[tr('Email'), p.email_confirmed], [tr('Family Pass'), p.pass]];
+        return (
+          <View key={i} style={{ borderTopWidth: 1, borderTopColor: t.line, paddingTop: 6 }}>
+            <T small bold>{flag(p.country)} {p.name} <T small muted>· {p.role === 'aupair' ? tr('Au pair') : tr('Family')} · {p.joined}</T></T>
+            <T small>{steps.map(([l, ok]) => `${ok ? '✅' : '⬜'} ${l}`).join('  ')}</T>
+            <T small muted>{nextStep(p)}</T>
+          </View>
+        );
+      }) : <T small muted>{tr('No one yet. When someone signs up with your link or code, they show here with the steps they still have to do.')}</T>}
     </Card>
   );
+}
+
+/** What a person an ambassador brought still has to do, so the ambassador knows how to help. */
+function nextStep(p) {
+  if (!p.email_confirmed) return tr('Next: confirm their email with the 6-digit code we sent');
+  if (p.role === 'family') return p.pass ? tr('Bought a Family Pass') : tr('Joined, no Family Pass yet');
+  if (!p.profile_complete) return tr('Next: finish their profile (photo, about me, nationality, birth date, languages, start date)');
+  if (!p.id_verified) return tr('Next: verify their ID in Account and safety');
+  return p.counted ? tr('All done, counted for you') : tr("All done (over this month's limit)");
 }

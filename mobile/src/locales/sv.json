@@ -976,5 +976,16 @@
   "PairMundo emailed these families and they answered themselves. Reviews from placements made on PairMundo are under Reviews.": "PairMundo mejlade de här familjerna och de svarade själva. Omdömen från placeringar gjorda på PairMundo finns under Omdömen.",
   "You already have a PairMundo account. Sign in to leave your review.": "Du har redan ett PairMundo-konto. Logga in för att lämna ditt omdöme.",
   "Make your free account or sign in to send your review.": "Skapa ditt kostnadsfria konto eller logga in för att skicka ditt omdöme.",
-  "Sign in with the email this invitation was sent to.": "Logga in med e-postadressen som inbjudan skickades till."
+  "Sign in with the email this invitation was sent to.": "Logga in med e-postadressen som inbjudan skickades till.",
+  "People who joined with your code": "Personer som gick med med din kod",
+  "No one yet. When someone signs up with your link or code, they show here with the steps they still have to do.": "Ingen än. När någon registrerar sig med din länk eller kod visas de här, med stegen de har kvar.",
+  "Next: confirm their email with the 6-digit code we sent": "Nästa steg: bekräfta e-posten med den 6-siffriga koden vi skickade",
+  "Bought a Family Pass": "Har köpt ett Family Pass",
+  "Joined, no Family Pass yet": "Registrerad, inget Family Pass än",
+  "Next: finish their profile (photo, about me, nationality, birth date, languages, start date)": "Nästa steg: fylla i profilen (foto, om mig, nationalitet, födelsedatum, språk, startdatum)",
+  "Next: verify their ID in Account and safety": "Nästa steg: verifiera ID under Konto och säkerhet",
+  "All done, counted for you": "Klart, räknas för dig",
+  "All done (over this month's limit)": "Klart (över månadens gräns)",
+  "ID": "ID",
+  "Family Pass": "Family Pass"
 }

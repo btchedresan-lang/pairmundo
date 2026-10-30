@@ -1265,5 +1265,16 @@
   "they send and host": "de skickar och tar emot",
   "they send au pairs": "de skickar au pairer",
   "{a} au pairs · {f} families": "{a} au pairer · {f} familjer",
-  "{org} member": "Medlem i {org}"
+  "{org} member": "Medlem i {org}",
+  "People who joined with your code": "Personer som gick med med din kod",
+  "No one yet. When someone signs up with your link or code, they show here with the steps they still have to do.": "Ingen än. När någon registrerar sig med din länk eller kod visas de här, med stegen de har kvar.",
+  "Next: confirm their email with the 6-digit code we sent": "Nästa steg: bekräfta e-posten med den 6-siffriga koden vi skickade",
+  "Bought a Family Pass": "Har köpt ett Family Pass",
+  "Joined, no Family Pass yet": "Registrerad, inget Family Pass än",
+  "Next: finish their profile (photo, about me, nationality, birth date, languages, start date)": "Nästa steg: fylla i profilen (foto, om mig, nationalitet, födelsedatum, språk, startdatum)",
+  "Next: verify their ID in Account and safety": "Nästa steg: verifiera ID under Konto och säkerhet",
+  "All done, counted for you": "Klart, räknas för dig",
+  "All done (over this month's limit)": "Klart (över månadens gräns)",
+  "ID": "ID",
+  "Family Pass": "Family Pass"
 }
