@@ -282,6 +282,17 @@ export const DICT = {
   "Finish your profile here: {link}": {
     es: "Completa tu perfil aquí: {link}", fr: "Complétez votre profil ici : {link}",
     de: "Vervollständige dein Profil hier: {link}", pt: "Complete seu perfil aqui: {link}" },
+  "Families trust and message verified au pairs first. Verify your ID in Account and safety; it takes about 2 minutes with your passport or ID card and a selfie.": {
+    es: "Las familias confían más en las au pairs verificadas y les escriben primero. Verifica tu identidad en Cuenta y seguridad; son unos 2 minutos con tu pasaporte o documento de identidad y una selfie.",
+    fr: "Les familles font davantage confiance aux au pairs vérifiés et leur écrivent en premier. Vérifiez votre identité dans Compte et sécurité ; cela prend environ 2 minutes avec votre passeport ou carte d'identité et un selfie.",
+    de: "Familien vertrauen verifizierten Au-pairs mehr und schreiben ihnen zuerst. Lass deinen Ausweis unter Konto und Sicherheit prüfen; das dauert etwa 2 Minuten mit Reisepass oder Personalausweis und einem Selfie.",
+    pt: "As famílias confiam mais em au pairs verificadas e escrevem para elas primeiro. Verifique sua identidade em Conta e segurança; leva uns 2 minutos com seu passaporte ou documento de identidade e uma selfie." },
+  "One last step: verify your ID": {
+    es: "Un último paso: verifica tu identidad", fr: "Une dernière étape : vérifiez votre identité",
+    de: "Ein letzter Schritt: Lass deinen Ausweis prüfen", pt: "Um último passo: verifique sua identidade" },
+  "Verify your ID here: {link}": {
+    es: "Verifica tu identidad aquí: {link}", fr: "Vérifiez votre identité ici : {link}",
+    de: "Lass deinen Ausweis hier prüfen: {link}", pt: "Verifique sua identidade aqui: {link}" },
 };
 
 // Swedish lives in its own file, keyed by the same English text.

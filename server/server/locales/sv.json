@@ -100,5 +100,8 @@
   "{agency} stopped working with your agency on PairMundo. Placements you already agreed stay as they are.": "{agency} har slutat samarbeta med er byrå på PairMundo. Placeringar ni redan kommit överens om står kvar.",
   "{agency} says it is a member of {org}. Check it under Affiliations.": "{agency} säger att de är medlem i {org}. Kontrollera det under Affiliations.",
   "PairMundo checked your {org} membership. Its badge now shows on your agency and your au pairs' profiles.": "PairMundo har kontrollerat ert medlemskap i {org}. Märket syns nu på er byrå och på era au pairers profiler.",
-  "We couldn't confirm your {org} membership. Open your partner page to see why.": "Vi kunde inte bekräfta ert medlemskap i {org}. Öppna er partnersida för att se varför."
+  "We couldn't confirm your {org} membership. Open your partner page to see why.": "Vi kunde inte bekräfta ert medlemskap i {org}. Öppna er partnersida för att se varför.",
+  "Families trust and message verified au pairs first. Verify your ID in Account and safety; it takes about 2 minutes with your passport or ID card and a selfie.": "Familjer litar mer på verifierade au pairer och skriver till dem först. Verifiera ditt ID under Konto och säkerhet; det tar ungefär 2 minuter med pass eller ID-kort och en selfie.",
+  "One last step: verify your ID": "Ett sista steg: verifiera ditt ID",
+  "Verify your ID here: {link}": "Verifiera ditt ID här: {link}"
 }

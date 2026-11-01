@@ -1894,6 +1894,44 @@ test('profile nudges: accounts without a photo or bio are nudged 2 and 7 days af
   assert.equal(nudgesFor(fam.id), 2);
 });
 
+test('ID nudges: au pairs with a finished profile but no ID check are reminded twice, a week apart', async () => {
+  const ap = await register('idnudge@test.io', 'aupair', 'CO', 'Ida Nudge');
+  const half = await register('idnudge-half@test.io', 'aupair', 'CO', 'Half Done');
+  const busy = await register('idnudge-busy@test.io', 'aupair', 'CO', 'Busy Check');
+  const profile = { bio: 'Hola', nationality: 'CO', birth_date: '2003-01-01', languages: [{ code: 'es', level: 'C2' }], available_from: '2027-01-01' };
+  await call(ap.token, 'PUT', '/me', { profile });
+  await call(busy.token, 'PUT', '/me', { profile });
+  testDb.prepare("INSERT INTO id_checks (session_id, user_id, status) VALUES ('vs_busy', ?, 'processing')").run(busy.id);
+  const nudgesFor = (id) => testDb.prepare("SELECT COUNT(*) n FROM notifications WHERE user_id = ? AND link = '#/account'").get(id).n;
+  // Without Stripe set up there is no ID check to send people to.
+  assert.equal(app.sendIdNudges(), 0);
+  const withId = createApp(testDb, { mailer: async (m) => { outbox.push(m); }, pusher: async (m) => m.map(() => ({ status: 'ok' })), identity: {} });
+  withId.sendIdNudges();
+  assert.equal(nudgesFor(ap.id), 0, 'not in the first 3 days');
+  testDb.prepare("UPDATE users SET created_at = datetime('now', '-4 days') WHERE id IN (?, ?, ?)").run(ap.id, half.id, busy.id);
+  outbox.length = 0;
+  withId.sendIdNudges();
+  assert.equal(nudgesFor(ap.id), 1);
+  assert.equal(nudgesFor(half.id), 0, 'an unfinished profile gets the profile nudge instead');
+  assert.equal(nudgesFor(busy.id), 0, 'a check being processed gets nothing');
+  const mail = outbox.find((m) => m.to === 'idnudge@test.io');
+  assert.equal(mail.subject, 'One last step: verify your ID');
+  assert.match(mail.text, /#\/account/);
+  withId.sendIdNudges();
+  assert.equal(nudgesFor(ap.id), 1, 'not again within a week');
+  testDb.prepare("UPDATE profile_nudges SET sent_at = datetime('now', '-8 days') WHERE user_id = ?").run(ap.id);
+  withId.sendIdNudges();
+  assert.equal(nudgesFor(ap.id), 2);
+  testDb.prepare("UPDATE profile_nudges SET sent_at = datetime('now', '-8 days') WHERE user_id = ?").run(ap.id);
+  withId.sendIdNudges();
+  assert.equal(nudgesFor(ap.id), 2, 'two reminders at most');
+  // Verified au pairs get nothing more.
+  testDb.prepare('UPDATE users SET id_verified = 1 WHERE id = ?').run(busy.id);
+  testDb.prepare("UPDATE id_checks SET status = 'verified' WHERE user_id = ?").run(busy.id);
+  withId.sendIdNudges();
+  assert.equal(nudgesFor(busy.id), 0);
+});
+
 test('visa step: who needs a visa, how long it takes and when to start, per country and nationality', () => {
   const prog = (code) => PROGRAMS.find((p) => p.code === code);
   assert.equal(visaRoute(prog('DE'), 'PL').kind, 'none');
