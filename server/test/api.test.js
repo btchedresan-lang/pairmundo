@@ -12,6 +12,7 @@ let photoVerdict = null;
 const lastCode = (to) => [...outbox].reverse().find((m) => m.to === to)?.text.match(/\b(\d{6})\b/)[1];
 before(async () => {
   process.env.AUTH_RATE_LIMIT = '1000';
+  process.env.APPLY_RATE_LIMIT = '50';
   process.env.UPLOAD_DIR = (await import('node:fs')).mkdtempSync((await import('node:os')).tmpdir() + '/aupair-test-');
   testDb = openDb(':memory:');
   app = createApp(testDb, { mailer: async (m) => { outbox.push(m); }, pusher: async (msgs) => { pushed.push(...msgs); return pushReply ? msgs.map(pushReply) : msgs.map(() => ({ status: 'ok' })); },
@@ -2338,6 +2339,9 @@ test('hiring: job page, application with CV, test task, interview on PairMundo v
   assert.equal(r.status, 200);
   assert.match(r.body.title, /Partnerships Onboarding Manager/);
   assert.equal(r.body.test, undefined);
+  assert.equal(r.body.pay, undefined, 'market-specific pay stays private');
+  assert.doesNotMatch(JSON.stringify(r.body), /US\$4\d\d/);
+  assert.ok(r.body.pay_public.length);
   assert.equal((await call(null, 'GET', '/jobs/nope')).status, 404);
 
   const pdf = `data:application/pdf;base64,${Buffer.from('%PDF-1.4 test cv').toString('base64')}`;
@@ -2396,4 +2400,28 @@ test('hiring: job page, application with CV, test task, interview on PairMundo v
   assert.equal(r.body.status, 'hired');
   assert.equal(r.body.member.base_cents, 45000);
   assert.equal(testDb.prepare("SELECT role FROM users WHERE email = 'wanjiru@cand.test'").get().role, 'partner_manager');
+});
+
+test('careers: the ambassador role links to sign-up, and flyer distributors apply with a short form', async () => {
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
+  const jobs = (await call(null, 'GET', '/jobs')).body.jobs;
+  assert.deepEqual(['ambassador', 'flyer-distributor'].map((s) => jobs.find((j) => j.slug === s)?.apply), ['signup', 'short']);
+  let r = await call(null, 'GET', '/jobs/ambassador');
+  assert.equal(r.body.signup_url, '#/ambassador-signup');
+  assert.equal((await call(null, 'POST', '/jobs/ambassador/apply', { name: 'A', email: 'a@amb.test' })).status, 400);
+
+  const form = { name: 'Erik Flyer', email: 'erik@flyer.test', country: 'se', phone: '+46 70 000 00 00',
+    campaign_answer: 'Täby and Danderyd, near where I live.', objection_answer: 'Weekends and Wednesday afternoons. I delivered newspapers for a year.' };
+  assert.equal((await call(null, 'POST', '/jobs/flyer-distributor/apply', { ...form, phone: '' })).status, 400);
+  r = await call(null, 'POST', '/jobs/flyer-distributor/apply', form);
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  const id = testDb.prepare("SELECT id FROM job_applications WHERE email = 'erik@flyer.test'").get().id;
+  r = await call(admin, 'GET', `/pipeline/applicants/${id}`);
+  assert.equal(r.body.apply, 'short');
+  assert.deepEqual(r.body.flags, []);
+  assert.equal(r.body.questions.length, 2);
+  assert.equal((await call(admin, 'POST', `/pipeline/applicants/${id}/test`)).status, 400);
+  r = await call(admin, 'POST', `/pipeline/applicants/${id}/hire`, {});
+  assert.equal(r.body.status, 'hired');
+  assert.match(r.body.next, /^#\/admin\/ambassadors\?new=distributor&name=Erik\+Flyer&email=erik%40flyer\.test&country=SE$/);
 });

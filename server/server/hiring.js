@@ -3,7 +3,9 @@
 // a Hire button that turns the candidate into a partner manager.
 import { randomBytes } from 'node:crypto';
 
-/** Open roles, shown at pairmundo.com/#/jobs/<slug>. Set open to false to stop new applications. */
+/** Open roles, shown at pairmundo.com/#/careers and #/jobs/<slug>. Set open to false to stop new applications.
+ *  apply: 'full' (default: CV, screening questions, test task, interview), 'short' (contact details and the job's own
+ *  questions) or 'signup' (no application: the page links to signup_url). pay is private: never sent to the public page. */
 export const JOBS = {
   'partnerships-onboarding-manager': {
     open: true,
@@ -27,6 +29,12 @@ export const JOBS = {
       'Reliable internet and power backup',
       'A plus: Spanish, or experience in education, travel, recruitment or the au pair industry',
     ],
+    // Shown on the public page. The numbers below are for the Philippines only, so they stay
+    // private: the admin sees them on each applicant and shares the range for the applicant's country.
+    pay_public: [
+      'A monthly base, plus uncapped commission on every partner you sign and activate, and a share of the revenue they bring in',
+      'We share the pay range for your country once you apply. Independent contractor, fully remote, with a path to full time',
+    ],
     pay: [
       'Base: US$400 to US$500 a month, depending on experience',
       'Commission: US$40 per signed partner, US$80 per activated partner, 7% revenue share on partners you sign (first 12 months), and a US$150 quarterly bonus for 12+ activated partners',
@@ -39,6 +47,60 @@ export const JOBS = {
       'That agency replies: "Thanks, but we work with a few platforms already and our team is too busy to add another one." Write your answer.',
     ],
     test_pay: 'US$30',
+    sign_off: 'Badji Tchedre-San, Co-founder & Partnerships, PairMundo',
+  },
+  // Ambassadors sign themselves up: the job page explains the role and links to the ambassador sign-up.
+  ambassador: {
+    open: true,
+    apply: 'signup',
+    signup_url: '#/ambassador-signup',
+    title: 'PairMundo Ambassador',
+    meta: 'Anywhere · Flexible, on your own time · Rewards for each person you bring',
+    about: 'PairMundo is an app where au pairs and host families find each other, with ID checks and two-way reviews. We are a small, early-stage US company.',
+    role: 'You know au pairs, host families or people thinking about it. You share your personal PairMundo link with them, and you earn a reward for each person who joins with it and gets going.',
+    tasks: [
+      'Share your personal link or code with au pairs, host families and the people around them',
+      'Help the people you bring finish their profile, so they get matched faster',
+      'Follow who joined with your code and what you earned on your own ambassador page',
+    ],
+    needs: [
+      'You are connected to au pairs, host families, students, language schools or parents\' groups',
+      'Active on social media, WhatsApp or community groups, or simply good at word of mouth',
+      'Honest about what PairMundo is: no spam and no promises we can\'t keep',
+    ],
+    pay_public: [
+      'A reward for each au pair who completes a verified profile, each family who buys a Family Pass, and each stay that starts with someone you brought',
+      'Your page shows the exact rewards and what you have earned. No targets, no fees, stop anytime',
+    ],
+    sign_off: 'Badji Tchedre-San, Co-founder & Partnerships, PairMundo',
+  },
+  // Flyer distributors apply with a short form. Hiring one opens the admin's flyer distributor form, prefilled.
+  'flyer-distributor': {
+    open: true,
+    apply: 'short',
+    hire: 'distributor',
+    title: 'Flyer Distributor',
+    meta: 'Local, where we run flyer campaigns (currently the Stockholm area) · Flexible hours · Paid per flyer',
+    about: 'PairMundo is an app where au pairs and host families find each other, with ID checks and two-way reviews. We are a small, early-stage US company.',
+    role: 'You deliver PairMundo flyers door to door in the neighbourhoods we choose with you, so families nearby hear about us. You log nothing yourself: we add each delivery, and your page shows your sessions, the families who joined from your areas and your pay.',
+    tasks: [
+      'Collect flyers and deliver them to letterboxes in your agreed areas',
+      'Tell us after each session where you went and how many flyers you delivered',
+      'Respect "no advertising" signs and local rules',
+    ],
+    needs: [
+      'You live in or near an area where we run flyer campaigns',
+      'Reliable, independent and happy to walk a few hours at a time',
+      'A few free hours a week, on days that suit you',
+    ],
+    pay_public: [
+      'Paid per flyer delivered, plus a bonus for each family who joins from your areas soon after a delivery',
+      'We share the rates for your area once you apply. Paid monthly, as an independent contractor',
+    ],
+    questions: [
+      { key: 'campaign_answer', label: 'Which city and neighbourhoods could you cover?' },
+      { key: 'objection_answer', label: 'When are you free to deliver, and have you done flyer, newspaper or similar work before?' },
+    ],
     sign_off: 'Badji Tchedre-San, Co-founder & Partnerships, PairMundo',
   },
 };
@@ -61,6 +123,12 @@ export function mountHiring(api, { db, wrap, requireRole, rateLimit, HttpError, 
   /** A quick first read of an application, before anyone opens it: what it is missing, and a 0-100 head start. */
   const screen = (a) => {
     const flags = [];
+    // Short applications only have the job's own two questions to go on.
+    if ((JOBS[a.job]?.apply || 'full') !== 'full') {
+      if (!a.phone) flags.push('No phone number');
+      if (String(a.campaign_answer ?? '').length < 20 || String(a.objection_answer ?? '').length < 20) flags.push('Short answers');
+      return { flags, prescore: Math.max(0, 100 - flags.length * 25) };
+    }
     if ((a.years_b2b ?? 0) < 2) flags.push('Less than 2 years of B2B outreach');
     if (!a.hours_ok) flags.push("Can't work the hours");
     if (!a.video_url) flags.push('No video');
@@ -92,11 +160,11 @@ export function mountHiring(api, { db, wrap, requireRole, rateLimit, HttpError, 
 
   // ---------- public ----------
   // The careers page: every open role.
-  api.get('/jobs', wrap(() => ({ jobs: Object.entries(JOBS).filter(([, j]) => j.open).map(([slug, j]) => ({ slug, title: j.title, meta: j.meta, role: j.role })) })));
+  api.get('/jobs', wrap(() => ({ jobs: Object.entries(JOBS).filter(([, j]) => j.open).map(([slug, j]) => ({ slug, title: j.title, meta: j.meta, role: j.role, apply: j.apply || 'full' })) })));
   api.get('/jobs/:slug', wrap((req) => {
     const j = jobOf(req.params.slug);
-    const { test: _test, ...pub } = j;
-    return { slug: req.params.slug, ...pub };
+    const { test: _test, pay: _pay, ...pub } = j;
+    return { slug: req.params.slug, ...pub, apply: j.apply || 'full' };
   }));
 
   api.post('/jobs/:slug/apply', applyLimit, wrap((req, res) => {
@@ -107,14 +175,17 @@ export function mountHiring(api, { db, wrap, requireRole, rateLimit, HttpError, 
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw bad('Enter a valid email.');
     const name = str(b.name, 120);
     if (!name) throw bad('Your name is required.');
-    const years = Number(b.years_b2b);
-    if (!Number.isFinite(years) || years < 0 || years > 50) throw bad('Enter your years of B2B outreach experience as a number.');
-    const video = str(b.video_url, 500);
+    if (j.apply === 'signup') throw bad('This role has no application: sign up on the role\'s page instead.');
+    const full = (j.apply || 'full') === 'full';
+    const years = full ? Number(b.years_b2b) : null;
+    if (full && (!Number.isFinite(years) || years < 0 || years > 50)) throw bad('Enter your years of B2B outreach experience as a number.');
+    const video = full ? str(b.video_url, 500) : null;
     if (video && !/^https:\/\/\S+$/.test(video)) throw bad('The video link should start with https://');
     const campaign = str(b.campaign_answer, 3000); const objection = str(b.objection_answer, 3000);
     if (!campaign || !objection) throw bad('Answer both questions.');
+    if (!full && !str(b.phone, 60)) throw bad('Add a phone number we can reach you on.');
     let cv = null;
-    if (b.cv) {
+    if (full && b.cv) {
       const m = /^data:application\/pdf;base64,([A-Za-z0-9+/=]+)$/.exec(String(b.cv));
       if (!m) throw bad('Upload your CV as a PDF.');
       const buf = Buffer.from(m[1], 'base64');
@@ -128,7 +199,8 @@ export function mountHiring(api, { db, wrap, requireRole, rateLimit, HttpError, 
       str(b.linkedin, 300) || null, years, b.hours_ok && b.hours_ok !== 'false' ? 1 : 0, str(b.languages, 200) || null, video || null, campaign, objection,
       cv ? 'application/pdf' : null, cv, randomBytes(16).toString('hex'));
     send(email, `We received your application: ${j.title}`, [`Hello ${name},`, '',
-      `Thank you for applying to be PairMundo's ${j.title}. We read every application and reply to shortlisted candidates within about a week, with a short paid test task.`, '',
+      full ? `Thank you for applying to be PairMundo's ${j.title}. We read every application and reply to shortlisted candidates within about a week, with a short paid test task.`
+        : `Thank you for applying to be PairMundo's ${j.title}. We read every application and get back to you within about a week.`, '',
       j.sign_off].join('\n'));
     for (const a of db.prepare("SELECT id FROM users WHERE role = 'admin'").all()) notify(a.id, 'hiring', 'New application for {job}: {name}.', { job: j.title, name }, `#/pipeline/hiring/${r.lastInsertRowid}`);
     res.status(201);
@@ -177,7 +249,7 @@ export function mountHiring(api, { db, wrap, requireRole, rateLimit, HttpError, 
     const a = getApp(req.params.id);
     if (!a) throw notFound();
     const j = JOBS[a.job];
-    return { ...view(a, true), job_title: j?.title, objection: j?.objection, test: j?.test, scores_list: SCORES };
+    return { ...view(a, true), job_title: j?.title, apply: j?.apply || 'full', questions: j?.questions, hire: j?.hire || 'partner_manager', pay: j?.pay, objection: j?.objection, test: j?.test, scores_list: SCORES };
   }));
   api.get('/pipeline/applicants/:id/cv', admin, (req, res) => {
     const a = getApp(req.params.id);
@@ -209,6 +281,7 @@ export function mountHiring(api, { db, wrap, requireRole, rateLimit, HttpError, 
     const a = getApp(req.params.id);
     if (!a) throw notFound();
     const j = jobOf(a.job);
+    if (!j.test) throw bad('This role has no test task.');
     db.prepare("UPDATE job_applications SET status = 'test', test_sent_at = COALESCE(test_sent_at, datetime('now')), updated_at = datetime('now') WHERE id = ?").run(a.id);
     send(a.email, `Next step for the ${j.title} role: a short paid test task`, [`Hello ${a.name},`, '',
       `Thank you for applying. We'd like you to do a short test task: about 2 hours, paid ${j.test_pay} whatever the result.`, '',
@@ -245,6 +318,12 @@ export function mountHiring(api, { db, wrap, requireRole, rateLimit, HttpError, 
   api.post('/pipeline/applicants/:id/hire', admin, wrap((req) => {
     const a = getApp(req.params.id);
     if (!a) throw notFound();
+    // A flyer distributor is set up as one on the Ambassadors page: mark them hired and send the admin there, prefilled.
+    if (JOBS[a.job]?.hire === 'distributor') {
+      db.prepare("UPDATE job_applications SET status = 'hired', updated_at = datetime('now') WHERE id = ?").run(a.id);
+      const q = new URLSearchParams({ new: 'distributor', name: a.name, email: a.email, ...(a.country ? { country: a.country } : {}) });
+      return { ...view(getApp(a.id), true), next: `#/admin/ambassadors?${q}` };
+    }
     const member = addTeamMember({ ...(req.body || {}), name: a.name, email: req.body?.email || a.email, country: a.country });
     db.prepare("UPDATE job_applications SET status = 'hired', user_id = ?, updated_at = datetime('now') WHERE id = ?").run(member.user_id, a.id);
     return { ...view(getApp(a.id), true), member };
