@@ -5,12 +5,14 @@ import { randomBytes } from 'node:crypto';
 
 /** Open roles, shown at pairmundo.com/#/careers and #/jobs/<slug>. Set open to false to stop new applications.
  *  apply: 'full' (default: CV, screening questions, test task, interview), 'short' (contact details and the job's own
- *  questions) or 'signup' (no application: the page links to signup_url). pay is private: never sent to the public page. */
+ *  questions) or 'signup' (no application: the page links to signup_url). pay is private: never sent to the public page.
+ *  Every role belongs to one of our markets: country is where applicants must live, region how the page names it. */
 export const JOBS = {
   'partnerships-onboarding-manager': {
     open: true,
+    country: 'PH', region: 'the Philippines',
     title: 'Partnerships Onboarding Manager',
-    meta: 'Remote · Part-time (20 hours a week) · Base + commission',
+    meta: 'Remote from the Philippines · Part-time (20 hours a week) · Base + commission',
     about: 'PairMundo is an app where au pairs and host families find each other, with ID checks and two-way reviews. We work with au pair agencies worldwide: sending agencies list their au pairs for free, and host agencies get referrals when families want full service. We are a small, early-stage US company.',
     role: 'You run our agency partnerships end to end, in every country: finding agencies, emailing them, following up, booking calls and onboarding the ones who say yes. You work in our own partnerships system, which shows your follow-ups each day and tracks your commission.',
     tasks: [
@@ -54,10 +56,11 @@ export const JOBS = {
     open: true,
     apply: 'signup',
     signup_url: '#/ambassador-signup',
+    country: 'CO', region: 'Colombia',
     title: 'PairMundo Ambassador',
-    meta: 'Anywhere · Flexible, on your own time · Rewards for each person you bring',
+    meta: 'Colombia · Flexible, on your own time · Rewards for each person you bring',
     about: 'PairMundo is an app where au pairs and host families find each other, with ID checks and two-way reviews. We are a small, early-stage US company.',
-    role: 'You know au pairs, host families or people thinking about it. You share your personal PairMundo link with them, and you earn a reward for each person who joins with it and gets going.',
+    role: 'You live in Colombia and know future au pairs, or people thinking about it. You share your personal PairMundo link with them, and you earn a reward for each person who joins with it and gets going.',
     tasks: [
       'Share your personal link or code with au pairs, host families and the people around them',
       'Help the people you bring finish their profile, so they get matched faster',
@@ -79,8 +82,9 @@ export const JOBS = {
     open: true,
     apply: 'short',
     hire: 'distributor',
+    country: 'SE', region: 'Sweden',
     title: 'Flyer Distributor',
-    meta: 'Local, where we run flyer campaigns (currently the Stockholm area) · Flexible hours · Paid per flyer',
+    meta: 'Stockholm area, Sweden · Flexible hours · Paid per flyer',
     about: 'PairMundo is an app where au pairs and host families find each other, with ID checks and two-way reviews. We are a small, early-stage US company.',
     role: 'You deliver PairMundo flyers door to door in the neighbourhoods we choose with you, so families nearby hear about us. You log nothing yourself: we add each delivery, and your page shows your sessions, the families who joined from your areas and your pay.',
     tasks: [
@@ -89,7 +93,7 @@ export const JOBS = {
       'Respect "no advertising" signs and local rules',
     ],
     needs: [
-      'You live in or near an area where we run flyer campaigns',
+      'You live in or near the Stockholm area',
       'Reliable, independent and happy to walk a few hours at a time',
       'A few free hours a week, on days that suit you',
     ],
@@ -160,7 +164,7 @@ export function mountHiring(api, { db, wrap, requireRole, rateLimit, HttpError, 
 
   // ---------- public ----------
   // The careers page: every open role.
-  api.get('/jobs', wrap(() => ({ jobs: Object.entries(JOBS).filter(([, j]) => j.open).map(([slug, j]) => ({ slug, title: j.title, meta: j.meta, role: j.role, apply: j.apply || 'full' })) })));
+  api.get('/jobs', wrap(() => ({ jobs: Object.entries(JOBS).filter(([, j]) => j.open).map(([slug, j]) => ({ slug, title: j.title, meta: j.meta, role: j.role, apply: j.apply || 'full', country: j.country, region: j.region })) })));
   api.get('/jobs/:slug', wrap((req) => {
     const j = jobOf(req.params.slug);
     const { test: _test, pay: _pay, ...pub } = j;
@@ -177,6 +181,8 @@ export function mountHiring(api, { db, wrap, requireRole, rateLimit, HttpError, 
     if (!name) throw bad('Your name is required.');
     if (j.apply === 'signup') throw bad('This role has no application: sign up on the role\'s page instead.');
     const full = (j.apply || 'full') === 'full';
+    const country = str(b.country, 2)?.toUpperCase() || null;
+    if (j.country && country !== j.country) throw bad(`This role is only open to people living in ${j.region}.`);
     const years = full ? Number(b.years_b2b) : null;
     if (full && (!Number.isFinite(years) || years < 0 || years > 50)) throw bad('Enter your years of B2B outreach experience as a number.');
     const video = full ? str(b.video_url, 500) : null;
@@ -195,7 +201,7 @@ export function mountHiring(api, { db, wrap, requireRole, rateLimit, HttpError, 
     }
     if (db.prepare('SELECT 1 FROM job_applications WHERE job = ? AND email = ?').get(req.params.slug, email)) throw new HttpError(409, "You've already applied with this email. We'll be in touch.");
     const r = db.prepare(`INSERT INTO job_applications (job, name, email, country, phone, linkedin, years_b2b, hours_ok, languages, video_url, campaign_answer, objection_answer, cv_mime, cv_data, token)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(req.params.slug, name, email, str(b.country, 2)?.toUpperCase() || null, str(b.phone, 60) || null,
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(req.params.slug, name, email, country, str(b.phone, 60) || null,
       str(b.linkedin, 300) || null, years, b.hours_ok && b.hours_ok !== 'false' ? 1 : 0, str(b.languages, 200) || null, video || null, campaign, objection,
       cv ? 'application/pdf' : null, cv, randomBytes(16).toString('hex'));
     send(email, `We received your application: ${j.title}`, [`Hello ${name},`, '',

@@ -2379,7 +2379,7 @@ views.careers = async () => {
   const { jobs } = await api('/jobs');
   render(`<div style="max-width:760px;margin:24px auto"><h1>Careers at PairMundo</h1>
     <p class="muted">We're a small, remote team helping au pairs and host families find each other safely, all over the world.</p>
-    ${jobs.map((j) => `<a class="card" style="display:block;text-decoration:none;color:inherit" href="#/jobs/${esc(j.slug)}"><h2>${esc(j.title)}</h2><p class="muted small">${esc(j.meta)}</p><p>${esc(j.role)}</p><span class="btn sm">${j.apply === 'signup' ? 'See the role and sign up' : 'See the role and apply'}</span></a>`).join('')
+    ${jobs.map((j) => `<a class="card" style="display:block;text-decoration:none;color:inherit" href="#/jobs/${esc(j.slug)}"><h2>${esc(j.title)}</h2><p class="muted small">${esc(j.meta)}</p><p>${esc(j.role)}</p>${j.region ? `<p class="small">📍 For people living in ${esc(j.region)}</p>` : ''}<span class="btn sm">${j.apply === 'signup' ? 'See the role and sign up' : 'See the role and apply'}</span></a>`).join('')
       || '<div class="card"><p>No open roles right now. Check back soon.</p></div>'}</div>`);
 };
 
@@ -2388,7 +2388,11 @@ views.jobs = async ([slug], qs) => {
   if (slug === 'test') return jobTest(qs.get('t'));
   const j = await api(`/jobs/${encodeURIComponent(slug)}`);
   const list = (items) => `<ul>${items.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>`;
+  // Each role is for one of our markets: the country is fixed, and the server refuses anyone living elsewhere.
+  const countryField = j.country ? `<input value="${esc(cname(j.country))}" disabled><input type="hidden" name="country" value="${esc(j.country)}">`
+    : `<select name="country" required>${options(COUNTRIES, '', '—')}</select>`;
   render(`<p style="max-width:760px;margin:16px auto 0"><a href="#/careers">← All jobs</a></p><div class="card" style="max-width:760px;margin:12px auto 24px"><h1>${esc(j.title)}</h1><p class="muted">${esc(j.meta)}</p>
+    ${j.region ? `<div class="alert">📍 This role is only open to people living in ${esc(j.region)}.</div>` : ''}
     <p>${esc(j.about)}</p><p>${esc(j.role)}</p>
     <h3>What you'll do</h3>${list(j.tasks)}<h3>What we're looking for</h3>${list(j.needs)}<h3>Pay</h3>${list(j.pay_public || [])}</div>
     ${!j.open ? '<div class="card" style="max-width:760px;margin:0 auto"><p>This role is closed to new applications.</p></div>'
@@ -2396,7 +2400,7 @@ views.jobs = async ([slug], qs) => {
     : j.apply === 'short' ? `<form class="card" id="apply" style="max-width:760px;margin:0 auto 24px"><h2>Apply</h2>
       <div class="form-grid"><div class="field"><label>Full name</label><input name="name" required autocomplete="name"></div>
         <div class="field"><label>Email</label><input name="email" type="email" required autocomplete="email"></div></div>
-      <div class="form-grid"><div class="field"><label>Country you live in</label><select name="country" required>${options(COUNTRIES, '', '—')}</select></div>
+      <div class="form-grid"><div class="field"><label>Country you live in</label>${countryField}</div>
         <div class="field"><label>Phone or WhatsApp</label><input name="phone" required autocomplete="tel"></div></div>
       ${(j.questions || []).map((q) => `<div class="field"><label>${esc(q.label)}</label><textarea name="${esc(q.key)}" rows="3" required></textarea></div>`).join('')}
       <p class="muted small">We use your application only to consider you for this role, and delete it if you ask us to.</p>
@@ -2404,7 +2408,7 @@ views.jobs = async ([slug], qs) => {
     : `<form class="card" id="apply" style="max-width:760px;margin:0 auto 24px"><h2>Apply</h2>
       <div class="form-grid"><div class="field"><label>Full name</label><input name="name" required autocomplete="name"></div>
         <div class="field"><label>Email</label><input name="email" type="email" required autocomplete="email"></div></div>
-      <div class="form-grid"><div class="field"><label>Country you live in</label><select name="country" required>${options(COUNTRIES, '', '—')}</select></div>
+      <div class="form-grid"><div class="field"><label>Country you live in</label>${countryField}</div>
         <div class="field"><label>Phone or WhatsApp</label><input name="phone" autocomplete="tel"></div></div>
       <div class="form-grid"><div class="field"><label>LinkedIn profile (optional)</label><input name="linkedin" placeholder="https://linkedin.com/in/…"></div>
         <div class="field"><label>Years of B2B outreach, lead generation or partnerships</label><input name="years_b2b" type="number" min="0" max="50" step="0.5" required></div></div>

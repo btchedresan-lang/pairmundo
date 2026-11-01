@@ -2345,11 +2345,14 @@ test('hiring: job page, application with CV, test task, interview on PairMundo v
   assert.equal((await call(null, 'GET', '/jobs/nope')).status, 404);
 
   const pdf = `data:application/pdf;base64,${Buffer.from('%PDF-1.4 test cv').toString('base64')}`;
-  const form = { name: 'Wanjiru Kamau', email: 'Wanjiru@cand.test', country: 'ke', years_b2b: 3, hours_ok: true, languages: 'English, Swahili',
+  const form = { name: 'Maria Santos', email: 'Maria@cand.test', country: 'ph', years_b2b: 3, hours_ok: true, languages: 'English, Tagalog',
     video_url: 'https://loom.com/share/abc', campaign_answer: 'I emailed 800 HR managers for a SaaS client over 6 weeks. Reply rate went from 2% to 7% after I shortened the first email and added a one-line case study. Booked 34 meetings.',
     objection_answer: 'Understood. PairMundo is not another system to run: your au pairs keep working with you, and families find them through us for free.', cv: pdf };
   assert.equal((await call(null, 'POST', `/jobs/${slug}/apply`, { ...form, cv: 'data:application/pdf;base64,aGVsbG8=' })).status, 400);
   assert.equal((await call(null, 'POST', `/jobs/${slug}/apply`, { ...form, campaign_answer: '' })).status, 400);
+  r = await call(null, 'POST', `/jobs/${slug}/apply`, { ...form, country: 'us' });
+  assert.equal(r.status, 400);
+  assert.match(r.body.error, /only open to people living in the Philippines/);
   r = await call(null, 'POST', `/jobs/${slug}/apply`, form);
   assert.equal(r.status, 201, JSON.stringify(r.body));
   assert.match(outbox.at(-1).text, /Badji Tchedre-San, Co-founder & Partnerships, PairMundo/);
@@ -2359,7 +2362,7 @@ test('hiring: job page, application with CV, test task, interview on PairMundo v
   // Only the admin sees applicants; the strong one ranks first, the weak one is flagged.
   assert.equal((await call(null, 'GET', '/pipeline/applicants')).status, 401);
   let list = (await call(admin, 'GET', '/pipeline/applicants')).body;
-  assert.equal(list.applicants[0].email, 'wanjiru@cand.test');
+  assert.equal(list.applicants[0].email, 'maria@cand.test');
   assert.equal(list.applicants[0].flags.length, 0);
   assert.ok(list.applicants[1].flags.includes('No video'));
   assert.equal(list.applicants[0].cv_data, undefined);
@@ -2399,7 +2402,7 @@ test('hiring: job page, application with CV, test task, interview on PairMundo v
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(r.body.status, 'hired');
   assert.equal(r.body.member.base_cents, 45000);
-  assert.equal(testDb.prepare("SELECT role FROM users WHERE email = 'wanjiru@cand.test'").get().role, 'partner_manager');
+  assert.equal(testDb.prepare("SELECT role FROM users WHERE email = 'maria@cand.test'").get().role, 'partner_manager');
 });
 
 test('careers: the ambassador role links to sign-up, and flyer distributors apply with a short form', async () => {
@@ -2413,6 +2416,8 @@ test('careers: the ambassador role links to sign-up, and flyer distributors appl
   const form = { name: 'Erik Flyer', email: 'erik@flyer.test', country: 'se', phone: '+46 70 000 00 00',
     campaign_answer: 'Täby and Danderyd, near where I live.', objection_answer: 'Weekends and Wednesday afternoons. I delivered newspapers for a year.' };
   assert.equal((await call(null, 'POST', '/jobs/flyer-distributor/apply', { ...form, phone: '' })).status, 400);
+  assert.equal((await call(null, 'POST', '/jobs/flyer-distributor/apply', { ...form, country: 'ph' })).status, 400);
+  assert.deepEqual(jobs.map((j) => j.country), ['PH', 'CO', 'SE']);
   r = await call(null, 'POST', '/jobs/flyer-distributor/apply', form);
   assert.equal(r.status, 201, JSON.stringify(r.body));
   const id = testDb.prepare("SELECT id FROM job_applications WHERE email = 'erik@flyer.test'").get().id;
