@@ -486,8 +486,7 @@ function landing() {
       <div class="row" style="justify-content:center"><a class="btn" href="#/register?role=family">${tr("I'm a host family")}</a>
       <a class="btn secondary" href="#/register?role=aupair">${tr('I want to be an au pair')}</a>
       <a class="btn secondary" href="#/agency-signup">${tr("I'm an au pair agency")}</a></div>
-      <p class="small muted" style="margin-top:12px">${tr('Free for au pairs. Swiping and matching are free for everyone.')}</p>
-      <p class="small" style="margin-top:4px">${tr('Know families or au pairs?')} <a href="#/ambassador-signup">${tr('Become an ambassador and earn for each person you bring')}</a></p></div>
+      <p class="small muted" style="margin-top:12px">${tr('Free for au pairs. Swiping and matching are free for everyone.')}</p></div>
       <div class="phone" aria-hidden="true"><video id="heroLoop" muted loop playsinline preload="none" poster="/media/hero-loop-poster.webp" width="540" height="1170"></video></div>
     </section>
     <section class="card wait-card"><div id="invited"></div><h2>${tr('Be the first to get the app')}</h2>
@@ -2149,8 +2148,9 @@ async function adminAmbassadors(head, id, qs) {
       ${waiting.map((u) => `<tr><td>${esc(u.name)} <span class="chip">${u.role === 'agency' ? 'Agency' : 'Ambassador'}</span></td><td>${esc(u.email)}</td><td>${cname(u.country) || '—'}</td><td>${fmtTime(u.created_at)}</td></tr>`).join('')}</table></div>` : ''}
     <form class="card" id="ambNew"><h3>Add an ambassador, partner agency or flyer distributor</h3>
       <div class="field"><label>Referral code (letters, numbers and dashes; it can't change later)</label><input name="code" required placeholder="ANA-CO" autocapitalize="characters"></div>
-      ${fields()}<button class="btn sm">Add</button></form>`);
+      ${fields(qs?.get('new') ? { kind: qs.get('new'), name: qs.get('name'), country: qs.get('country'), account_email: qs.get('email') } : {})}<button class="btn sm">Add</button></form>`);
   wireKind(document.getElementById('ambNew'));
+  if (qs?.get('new')) document.getElementById('ambNew').scrollIntoView({ block: 'start' });
   document.querySelector('#monthPick input').onchange = (e) => go(`#/admin/ambassadors?month=${e.target.value}`);
   document.getElementById('ambNew').onsubmit = async (e) => {
     e.preventDefault();
@@ -2379,7 +2379,7 @@ views.careers = async () => {
   const { jobs } = await api('/jobs');
   render(`<div style="max-width:760px;margin:24px auto"><h1>Careers at PairMundo</h1>
     <p class="muted">We're a small, remote team helping au pairs and host families find each other safely, all over the world.</p>
-    ${jobs.map((j) => `<a class="card" style="display:block;text-decoration:none;color:inherit" href="#/jobs/${esc(j.slug)}"><h2>${esc(j.title)}</h2><p class="muted small">${esc(j.meta)}</p><p>${esc(j.role)}</p><span class="btn sm">See the role and apply</span></a>`).join('')
+    ${jobs.map((j) => `<a class="card" style="display:block;text-decoration:none;color:inherit" href="#/jobs/${esc(j.slug)}"><h2>${esc(j.title)}</h2><p class="muted small">${esc(j.meta)}</p><p>${esc(j.role)}</p>${j.region ? `<p class="small">📍 For people living in ${esc(j.region)}</p>` : ''}<span class="btn sm">${j.apply === 'signup' ? 'See the role and sign up' : 'See the role and apply'}</span></a>`).join('')
       || '<div class="card"><p>No open roles right now. Check back soon.</p></div>'}</div>`);
 };
 
@@ -2388,34 +2388,48 @@ views.jobs = async ([slug], qs) => {
   if (slug === 'test') return jobTest(qs.get('t'));
   const j = await api(`/jobs/${encodeURIComponent(slug)}`);
   const list = (items) => `<ul>${items.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>`;
+  // Each role is for one of our markets: the country is fixed, and the server refuses anyone living elsewhere.
+  const countryField = j.country ? `<input value="${esc(cname(j.country))}" disabled><input type="hidden" name="country" value="${esc(j.country)}">`
+    : `<select name="country" required>${options(COUNTRIES, '', '—')}</select>`;
   render(`<p style="max-width:760px;margin:16px auto 0"><a href="#/careers">← All jobs</a></p><div class="card" style="max-width:760px;margin:12px auto 24px"><h1>${esc(j.title)}</h1><p class="muted">${esc(j.meta)}</p>
+    ${j.region ? `<div class="alert">📍 This role is only open to people living in ${esc(j.region)}.</div>` : ''}
     <p>${esc(j.about)}</p><p>${esc(j.role)}</p>
-    <h3>What you'll do</h3>${list(j.tasks)}<h3>What we're looking for</h3>${list(j.needs)}<h3>Pay</h3>${list(j.pay)}</div>
-    ${j.open ? `<form class="card" id="apply" style="max-width:760px;margin:0 auto 24px"><h2>Apply</h2>
+    <h3>What you'll do</h3>${list(j.tasks)}<h3>What we're looking for</h3>${list(j.needs)}<h3>Pay</h3>${list(j.pay_public || [])}</div>
+    ${!j.open ? '<div class="card" style="max-width:760px;margin:0 auto"><p>This role is closed to new applications.</p></div>'
+    : j.apply === 'signup' ? `<div class="card" style="max-width:760px;margin:0 auto 24px"><h2>Join</h2><p>There's no application: create your account and you get your personal link and code by email.</p><a class="btn" href="${esc(j.signup_url)}">Sign up</a></div>`
+    : j.apply === 'short' ? `<form class="card" id="apply" style="max-width:760px;margin:0 auto 24px"><h2>Apply</h2>
       <div class="form-grid"><div class="field"><label>Full name</label><input name="name" required autocomplete="name"></div>
         <div class="field"><label>Email</label><input name="email" type="email" required autocomplete="email"></div></div>
-      <div class="form-grid"><div class="field"><label>Country you live in</label><select name="country" required>${options(COUNTRIES, '', '—')}</select></div>
+      <div class="form-grid"><div class="field"><label>Country you live in</label>${countryField}</div>
+        <div class="field"><label>Phone or WhatsApp</label><input name="phone" required autocomplete="tel"></div></div>
+      ${(j.questions || []).map((q) => `<div class="field"><label>${esc(q.label)}</label><textarea name="${esc(q.key)}" rows="3" required></textarea></div>`).join('')}
+      <p class="muted small">We use your application only to consider you for this role, and delete it if you ask us to.</p>
+      <button class="btn">Send application</button><div id="err"></div></form>`
+    : `<form class="card" id="apply" style="max-width:760px;margin:0 auto 24px"><h2>Apply</h2>
+      <div class="form-grid"><div class="field"><label>Full name</label><input name="name" required autocomplete="name"></div>
+        <div class="field"><label>Email</label><input name="email" type="email" required autocomplete="email"></div></div>
+      <div class="form-grid"><div class="field"><label>Country you live in</label>${countryField}</div>
         <div class="field"><label>Phone or WhatsApp</label><input name="phone" autocomplete="tel"></div></div>
       <div class="form-grid"><div class="field"><label>LinkedIn profile (optional)</label><input name="linkedin" placeholder="https://linkedin.com/in/…"></div>
         <div class="field"><label>Years of B2B outreach, lead generation or partnerships</label><input name="years_b2b" type="number" min="0" max="50" step="0.5" required></div></div>
       <div class="field"><label>Languages you work in</label><input name="languages" placeholder="English, Spanish…"></div>
-      <label class="check"><input type="checkbox" name="hours_ok"> I can work 4 hours a day, Monday to Friday, between 09:00 and 17:00 Central European Time</label>
+      <label class="check"><input type="checkbox" name="hours_ok"> I can work 4 hours a day, Monday to Friday, and be online 15:00 to 17:00 Central European Time (10 PM to midnight in Manila)</label>
       <div class="field"><label>Link to a 2-minute video introducing yourself (Loom, YouTube unlisted or Google Drive)</label><input name="video_url" type="url" placeholder="https://"></div>
       <div class="field"><label>Tell us about an outreach campaign you ran: how many people you contacted, the reply rate, and what you changed to improve it.</label><textarea name="campaign_answer" rows="5" required></textarea></div>
       <div class="field"><label>An agency replies: "${esc(j.objection)}" What do you write back?</label><textarea name="objection_answer" rows="5" required></textarea></div>
       <div class="field"><label>Your CV (PDF, under 4 MB)</label><input type="file" id="cvFile" accept="application/pdf"></div>
       <p class="muted small">We use your application only to consider you for this role, and delete it if you ask us to.</p>
-      <button class="btn">Send application</button><div id="err"></div></form>` : '<div class="card" style="max-width:760px;margin:0 auto"><p>This role is closed to new applications.</p></div>'}`);
+      <button class="btn">Send application</button><div id="err"></div></form>`}`);
   const form = document.getElementById('apply');
   if (!form) return;
   form.onsubmit = async (e) => {
     e.preventDefault();
-    const f = form.querySelector('#cvFile').files[0];
+    const f = form.querySelector('#cvFile')?.files[0];
     if (f && f.size > 4 * 1024 * 1024) return errBox(new Error('Your CV must be under 4 MB.'));
     const cv = f ? await new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = no; r.readAsDataURL(f); }) : null;
     try {
-      await api(`/jobs/${encodeURIComponent(slug)}/apply`, { method: 'POST', body: { ...formData(form), hours_ok: form.hours_ok.checked, cv } });
-      render(`<div class="card" style="max-width:560px;margin:40px auto;text-align:center"><h1>Thank you!</h1><p>We received your application and sent a confirmation to your email. Shortlisted candidates hear from us within about a week.</p></div>`);
+      await api(`/jobs/${encodeURIComponent(slug)}/apply`, { method: 'POST', body: { ...formData(form), hours_ok: !!form.hours_ok?.checked, cv } });
+      render(`<div class="card" style="max-width:560px;margin:40px auto;text-align:center"><h1>Thank you!</h1><p>We received your application and sent a confirmation to your email. ${j.apply === 'short' ? 'We get back to you within about a week.' : 'Shortlisted candidates hear from us within about a week.'}</p></div>`);
     } catch (err) { errBox(err); }
   };
 };
@@ -2458,27 +2472,32 @@ async function pipelineHiring(head, id, qs) {
 async function pipelineApplicant(head, id) {
   const a = await api(`/pipeline/applicants/${id}`);
   const localInput = (utc) => { if (!utc) return ''; const d = new Date(`${utc.replace(' ', 'T')}Z`); return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); };
+  const full = a.apply === 'full';
   render(`${head}<p><a href="#/pipeline/hiring">← All candidates</a></p>
     <div class="spread"><h2>${esc(a.name)} <span class="chip">${APP_STATUS[a.status]}</span></h2><span class="muted small">${esc(a.job_title)} · applied ${fmtDate(a.created_at)}</span></div>
-    <div class="card"><p>${[esc(a.email), a.phone && esc(a.phone), cname(a.country), `${a.years_b2b} years of B2B outreach`, a.languages && esc(a.languages), a.hours_ok ? '✓ Can work the hours' : '✗ Not sure about the hours'].filter(Boolean).join(' · ')}</p>
-      <p>${a.linkedin ? `<a href="${esc(a.linkedin)}" target="_blank" rel="noopener">LinkedIn</a> · ` : ''}${a.video_url ? `<a href="${esc(a.video_url)}" target="_blank" rel="noopener">▶ Watch their video</a> · ` : 'No video · '}${a.has_cv ? '<a href="#" id="openCv">📄 Open CV</a>' : 'No CV'}</p>
-      ${a.flags.length ? `<div class="alert warning">First read: ${a.flags.map(esc).join(', ')}.</div>` : '<div class="alert ok">First read: nothing missing.</div>'}</div>
-    <div class="card"><h3>Their campaign</h3><p style="white-space:pre-wrap">${esc(a.campaign_answer)}</p>
-      <h3>Objection: "${esc(a.objection)}"</h3><p style="white-space:pre-wrap">${esc(a.objection_answer)}</p>
+    <div class="card"><p>${[esc(a.email), a.phone && esc(a.phone), cname(a.country), full && `${a.years_b2b} years of B2B outreach`, a.languages && esc(a.languages), full && (a.hours_ok ? '✓ Can work the hours' : '✗ Not sure about the hours')].filter(Boolean).join(' · ')}</p>
+      ${full ? `<p>${a.linkedin ? `<a href="${esc(a.linkedin)}" target="_blank" rel="noopener">LinkedIn</a> · ` : ''}${a.video_url ? `<a href="${esc(a.video_url)}" target="_blank" rel="noopener">▶ Watch their video</a> · ` : 'No video · '}${a.has_cv ? '<a href="#" id="openCv">📄 Open CV</a>' : 'No CV'}</p>` : ''}
+      ${a.flags.length ? `<div class="alert warning">First read: ${a.flags.map(esc).join(', ')}.</div>` : '<div class="alert ok">First read: nothing missing.</div>'}
+      ${a.pay?.length ? `<details><summary class="small">Pay for the Philippines (private, adjust for their country)</summary><ul class="small">${a.pay.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></details>` : ''}</div>
+    <div class="card">${full ? `<h3>Their campaign</h3><p style="white-space:pre-wrap">${esc(a.campaign_answer)}</p>
+      <h3>Objection: "${esc(a.objection)}"</h3><p style="white-space:pre-wrap">${esc(a.objection_answer)}</p>`
+      : (a.questions || []).map((q) => `<h3>${esc(q.label)}</h3><p style="white-space:pre-wrap">${esc(a[q.key])}</p>`).join('')}
       ${a.test_answer ? `<h3>Test task (sent ${fmtDate(a.test_submitted_at)})</h3><pre style="white-space:pre-wrap">${esc(a.test_answer)}</pre>` : a.test_sent_at ? `<p class="muted">Test task sent ${fmtDate(a.test_sent_at)}, not answered yet.</p>` : ''}</div>
-    <form class="card" id="scoreForm"><h3>Scorecard (1 to 5)</h3><div class="form-grid">${a.scores_list.map((k) => `<div class="field"><label>${SCORE_LABEL[k]}</label>
+    ${full ? `<form class="card" id="scoreForm"><h3>Scorecard (1 to 5)</h3><div class="form-grid">${a.scores_list.map((k) => `<div class="field"><label>${SCORE_LABEL[k]}</label>
       <select name="${k}">${opts({ 1: '1', 2: '2', 3: '3', 4: '4', 5: '5' }, a.scores[k], '—')}</select></div>`).join('')}</div>
       <div class="field"><label>Notes</label><textarea name="notes" rows="3">${esc(a.notes)}</textarea></div>
-      <div class="row"><button class="btn sm">Save</button><span class="muted small">Total: ${a.score_total}/30</span></div></form>
+      <div class="row"><button class="btn sm">Save</button><span class="muted small">Total: ${a.score_total}/30</span></div></form>` : `<form class="card" id="scoreForm"><div class="field"><label>Notes</label><textarea name="notes" rows="3">${esc(a.notes)}</textarea></div><button class="btn sm">Save</button></form>`}
     <div class="card"><h3>Next step</h3><div class="row">
       ${a.status === 'new' ? '<button class="btn ghost sm" data-status="shortlisted">Shortlist</button>' : ''}
-      <button class="btn ghost sm" id="sendTest">${a.test_sent_at ? 'Send the test task again' : `Send the paid test task`}</button>
+      ${a.test ? `<button class="btn ghost sm" id="sendTest">${a.test_sent_at ? 'Send the test task again' : 'Send the paid test task'}</button>` : ''}
       ${a.status !== 'rejected' && a.status !== 'hired' ? '<button class="btn ghost sm" id="reject">Reject</button>' : ''}</div>
       <form id="interviewForm" class="row" style="margin-top:12px"><label>Interview on PairMundo video (your local time)</label><input type="datetime-local" name="at" value="${esc(localInput(a.interview_at))}" required style="width:auto">
         <button class="btn ghost sm">${a.interview_at ? 'Move the interview' : 'Book the interview'}</button></form>
       ${a.interview_at ? `<p class="small">📅 ${fmtTime(a.interview_at)} · candidate's link: <code>${esc(a.interview_link)}</code></p><button class="btn sm" id="joinCall">📹 Join the interview</button>` : ''}
       <p class="muted small">Booking emails the candidate the time (in Central European Time and UTC) and their link. The call opens 15 minutes before.</p></div>
-    ${a.status !== 'hired' ? `<form class="card" id="hireForm"><h3>Hire ${esc(a.name)}</h3><p class="muted small">Creates their partner manager login at these rates and emails them how to set their password.</p>
+    ${a.status !== 'hired' && a.hire === 'distributor' ? `<form class="card" id="hireForm"><h3>Hire ${esc(a.name)}</h3><p class="muted small">Marks them hired and opens the flyer distributor form on Ambassadors, filled in with their details, to set their areas and rates and send their invite.</p><button class="btn sm">Hire</button></form>`
+      : a.status === 'hired' && a.hire === 'distributor' ? '<div class="card"><p>✓ Hired. Set them up as a flyer distributor under Admin, Ambassadors.</p></div>'
+      : a.status !== 'hired' ? `<form class="card" id="hireForm"><h3>Hire ${esc(a.name)}</h3><p class="muted small">Creates their partner manager login at these rates and emails them how to set their password.</p>
       <div class="form-grid"><div class="field"><label>Work email</label><input name="email" type="email" value="${esc(a.email)}"></div><div class="field"><label>Base a month (US$)</label><input name="base" value="400"></div></div>
       <div class="form-grid"><div class="field"><label>Per signed partner (US$)</label><input name="signed" value="40"></div><div class="field"><label>Per activated partner (US$)</label><input name="activated" value="80"></div></div>
       <div class="field"><label>Revenue share (%)</label><input name="revshare_pct" value="7"></div><button class="btn sm">Hire and send the invite</button></form>` : '<div class="card"><p>✓ Hired. They are on the team under Pay & team.</p></div>'}`);
@@ -2493,10 +2512,11 @@ async function pipelineApplicant(head, id) {
   document.getElementById('scoreForm').onsubmit = (e) => {
     e.preventDefault();
     const f = formData(e.target);
-    run(() => api(`/pipeline/applicants/${a.id}`, { method: 'PUT', body: { scores: Object.fromEntries(a.scores_list.map((k) => [k, f[k]])), notes: f.notes } }), 'Saved');
+    run(() => api(`/pipeline/applicants/${a.id}`, { method: 'PUT', body: full ? { scores: Object.fromEntries(a.scores_list.map((k) => [k, f[k]])), notes: f.notes } : { notes: f.notes } }), 'Saved');
   };
   document.querySelectorAll('[data-status]').forEach((b) => { b.onclick = () => run(() => api(`/pipeline/applicants/${a.id}`, { method: 'PUT', body: { status: b.dataset.status } }), 'Saved'); });
-  document.getElementById('sendTest').onclick = () => confirm(`Email ${a.name} the paid test task?`) && run(() => api(`/pipeline/applicants/${a.id}/test`, { method: 'POST' }), 'Test task sent');
+  const sendTest = document.getElementById('sendTest');
+  if (sendTest) sendTest.onclick = () => confirm(`Email ${a.name} the paid test task?`) && run(() => api(`/pipeline/applicants/${a.id}/test`, { method: 'POST' }), 'Test task sent');
   const rej = document.getElementById('reject');
   if (rej) rej.onclick = () => {
     const email = confirm(`Reject ${a.name}? Press OK to also send them a polite email, or Cancel to reject without one.`);
@@ -2510,7 +2530,15 @@ async function pipelineApplicant(head, id) {
   const join = document.getElementById('joinCall');
   if (join) join.onclick = async () => { try { const r = await api(`/pipeline/applicants/${a.id}/join`, { method: 'POST' }); window.open(r.url, '_blank'); } catch (err) { toast(err.message); } };
   const hire = document.getElementById('hireForm');
-  if (hire) hire.onsubmit = (e) => { e.preventDefault(); confirm(`Hire ${a.name}?`) && run(() => api(`/pipeline/applicants/${a.id}/hire`, { method: 'POST', body: formData(e.target) }), 'Hired. Invite sent.'); };
+  if (hire) hire.onsubmit = async (e) => {
+    e.preventDefault();
+    if (!confirm(`Hire ${a.name}?`)) return;
+    try {
+      const r = await api(`/pipeline/applicants/${a.id}/hire`, { method: 'POST', body: formData(e.target) });
+      if (r.next) { toast('Hired. Now set up their flyer distributor account.'); return go(r.next); }
+      toast('Hired. Invite sent.'); route();
+    } catch (err) { toast(err.message); }
+  };
 }
 
 // ---------- Family Pass ----------
