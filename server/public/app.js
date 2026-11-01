@@ -2399,7 +2399,7 @@ views.jobs = async ([slug], qs) => {
       <div class="form-grid"><div class="field"><label>LinkedIn profile (optional)</label><input name="linkedin" placeholder="https://linkedin.com/in/…"></div>
         <div class="field"><label>Years of B2B outreach, lead generation or partnerships</label><input name="years_b2b" type="number" min="0" max="50" step="0.5" required></div></div>
       <div class="field"><label>Languages you work in</label><input name="languages" placeholder="English, Spanish…"></div>
-      <label class="check"><input type="checkbox" name="hours_ok"> I can work 4 hours a day, Monday to Friday, between 09:00 and 17:00 Central European Time</label>
+      <label class="check"><input type="checkbox" name="hours_ok"> I can work 4 hours a day, Monday to Friday, and be online 15:00 to 17:00 Central European Time (10 PM to midnight in Manila)</label>
       <div class="field"><label>Link to a 2-minute video introducing yourself (Loom, YouTube unlisted or Google Drive)</label><input name="video_url" type="url" placeholder="https://"></div>
       <div class="field"><label>Tell us about an outreach campaign you ran: how many people you contacted, the reply rate, and what you changed to improve it.</label><textarea name="campaign_answer" rows="5" required></textarea></div>
       <div class="field"><label>An agency replies: "${esc(j.objection)}" What do you write back?</label><textarea name="objection_answer" rows="5" required></textarea></div>

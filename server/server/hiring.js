@@ -23,7 +23,7 @@ export const JOBS = {
       '2+ years in B2B email outreach, lead generation, appointment setting or partnerships',
       'Excellent written and spoken English',
       'Comfortable with spreadsheets, CRMs, mail-merge tools and video calls',
-      'Available Monday to Friday, 4 hours a day during European business hours (between 09:00 and 17:00 Central European Time, which is 11:00 to 19:00 in Nairobi)',
+      'Available 4 hours a day, Monday to Friday. Most of the work (research, emails, follow-ups) is done on your own schedule; you are online for replies and calls 2 hours a day, between 15:00 and 17:00 Central European Time (10 PM to midnight in Manila)',
       'Reliable internet and power backup',
       'A plus: Spanish, or experience in education, travel, recruitment or the au pair industry',
     ],
