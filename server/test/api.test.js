@@ -2528,3 +2528,34 @@ test('careers: the ambassador role links to sign-up, and flyer distributors appl
   assert.equal(r.body.status, 'hired');
   assert.match(r.body.next, /^#\/admin\/ambassadors\?new=distributor&name=Erik\+Flyer&email=erik%40flyer\.test&country=SE$/);
 });
+
+test('agency update email: the admin previews who gets it and the text, then sends it once; agencies are not changed', async () => {
+  const { hashPassword } = await import('../server/auth.js');
+  const db2 = openDb(':memory:');
+  const pw = hashPassword('password123');
+  const boss = db2.prepare("INSERT INTO users (email, password_hash, role, name, email_verified) VALUES ('boss@old.test', ?, 'agency', 'Old Boss', 1)").run(pw).lastInsertRowid;
+  db2.prepare("INSERT INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@old.test', ?, 'admin', 'Admin', 1)").run(pw);
+  db2.prepare("INSERT INTO ambassadors (code, name, kind, active, user_id) VALUES ('OLDAG', 'Old Agency', 'agency', 1, ?)").run(boss);
+  db2.prepare("INSERT INTO ambassadors (code, name, kind, active) VALUES ('NOMAIL', 'No Mail Agency', 'agency', 1)").run();
+  db2.prepare("INSERT INTO ambassadors (code, name, kind, active) VALUES ('AMBX', 'An Ambassador', 'ambassador', 1)").run();
+  const mails = [];
+  const app2 = createApp(db2, { mailer: async (m) => { mails.push(m); } });
+  const a = db2.prepare("SELECT * FROM ambassadors WHERE code = 'OLDAG'").get();
+  assert.deepEqual([a.mask_contacts, a.approve_families, a.covers_pass, a.closed_network], [0, 0, 0, 0], 'nothing switched');
+  assert.equal(mails.length, 0, 'nobody emailed on deploy');
+  const srv = await new Promise((r) => { const s = app2.listen(0, () => r(s)); });
+  const b2 = `http://127.0.0.1:${srv.address().port}/api`;
+  try {
+    const tok = (await (await fetch(`${b2}/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'admin@old.test', password: 'password123' }) })).json()).token;
+    const h = { Authorization: `Bearer ${tok}` };
+    const preview = await (await fetch(`${b2}/admin/agency-update`, { headers: h })).json();
+    assert.deepEqual(preview.recipients.map((r) => [r.code, r.to]), [['NOMAIL', null], ['OLDAG', 'boss@old.test']]);
+    assert.ok(preview.sample.text.includes('Badji Tchedre-San') && preview.sample.text.includes('24 November') && preview.sample.text.includes('ref=OLDAG'));
+    assert.ok(!preview.sample.text.includes('€'), 'no prices in the update');
+    const sent = await (await fetch(`${b2}/admin/agency-update`, { method: 'POST', headers: h })).json();
+    assert.deepEqual(sent, { sent: 1, missing: ['No Mail Agency'] });
+    assert.deepEqual(mails.map((m) => m.to), ['boss@old.test']);
+    assert.ok((await import('node:fs')).existsSync(mails[0].attachments[0].path), 'the profile guide is attached');
+    assert.equal((await (await fetch(`${b2}/admin/agency-update`, { method: 'POST', headers: h })).json()).sent, 0, 'sent once');
+  } finally { srv.close(); }
+});

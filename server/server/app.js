@@ -7,7 +7,7 @@ import { hashPassword, verifyPassword, createSession, sessionMiddleware, require
 import { scoreMatch, checkCompliance, ageOn } from './matching.js';
 import { PROGRAMS, REVIEW_CRITERIA, familyDocuments, placementTaskList, visaRoute } from './programs.js';
 import { buildAgreement, buildHostLetter, cleanTerms, defaultTerms, REQUIRED_TERMS } from './agreement.js';
-import { createMailer, agencyFamilyInviteEmail, agencyLeadEmail, agencyNetworkInviteEmail, ambassadorInviteEmail, codeEmail, launchEmail, profileInviteEmail, referenceEmail, teamInviteEmail, waitlistEmail } from './mailer.js';
+import { createMailer, agencyFamilyInviteEmail, agencyUpdateEmail, agencyLeadEmail, agencyNetworkInviteEmail, ambassadorInviteEmail, codeEmail, launchEmail, profileInviteEmail, referenceEmail, teamInviteEmail, waitlistEmail } from './mailer.js';
 import { mountPipeline } from './pipeline.js';
 import { mountHiring } from './hiring.js';
 import { countryName, pickLang, t as translate } from './i18n.js';
@@ -2933,6 +2933,33 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       if (rp.review_id && 'hide_review' in req.body) db.prepare('UPDATE reviews SET hidden = ? WHERE id = ?').run(req.body.hide_review ? 1 : 0, rp.review_id);
     });
     return { ok: true };
+  }));
+
+  // The November 2026 update email to every active agency: the admin sees who gets it and the text, then sends it once.
+  const agencyUpdateMail = (a) => {
+    const to = (a.user_id && db.prepare('SELECT email FROM users WHERE id = ?').get(a.user_id)?.email) || a.invite_email || null;
+    const link = a.user_id ? `${publicBase()}/#/agency` : `${publicBase()}/#/agency-signup?email=${encodeURIComponent(to || '')}`;
+    return { to, ...agencyUpdateEmail({ name: a.name, link, code: a.user_id ? a.code : null }),
+      attachments: [{ path: join(PUBLIC_DIR, 'media', 'PairMundo-profile-guide-for-agencies.pdf') }] };
+  };
+  const agencyUpdatePending = () => db.prepare("SELECT * FROM ambassadors WHERE kind = 'agency' AND active = 1 AND update_emailed_at IS NULL ORDER BY name").all();
+  api.get('/admin/agency-update', requireRole('admin'), wrap(() => {
+    const rows = agencyUpdatePending().map((a) => ({ id: a.id, code: a.code, name: a.name, ...agencyUpdateMail(a) }));
+    const sample = rows.find((r) => r.to);
+    return { recipients: rows.map(({ id, code, name, to }) => ({ id, code, name, to })),
+      sample: sample ? { to: sample.to, subject: sample.subject, text: sample.text, attachment: '/media/PairMundo-profile-guide-for-agencies.pdf' } : null };
+  }));
+  api.post('/admin/agency-update', requireRole('admin'), wrap(() => {
+    let sent = 0;
+    const missing = [];
+    for (const a of agencyUpdatePending()) {
+      const m = agencyUpdateMail(a);
+      if (!m.to) { missing.push(a.name); continue; }
+      db.prepare("UPDATE ambassadors SET update_emailed_at = datetime('now') WHERE id = ?").run(a.id);
+      Promise.resolve(mailer(m)).catch((e) => console.error('Email failed:', e.message));
+      sent++;
+    }
+    return { sent, missing };
   }));
 
   app.use('/api', api);

@@ -2,6 +2,8 @@
 // With RESEND_API_KEY and MAIL_FROM set it sends through Resend (resend.com); otherwise it prints the email
 // to the server console, which is enough for local testing.
 
+import { readFileSync } from 'node:fs';
+import { basename } from 'node:path';
 import { t } from './i18n.js';
 
 const APP_NAME = process.env.APP_NAME || 'PairMundo';
@@ -10,15 +12,17 @@ export function createMailer() {
   const key = process.env.RESEND_API_KEY;
   const from = process.env.MAIL_FROM;
   if (!key || !from) {
-    return async ({ to, subject, text }) => {
-      console.log(`\n--- Email to ${to} (not sent: set RESEND_API_KEY and MAIL_FROM to send real email) ---\n${subject}\n\n${text}\n---\n`);
+    return async ({ to, subject, text, attachments }) => {
+      console.log(`\n--- Email to ${to} (not sent: set RESEND_API_KEY and MAIL_FROM to send real email) ---\n${subject}\n\n${text}\n${(attachments || []).map((a) => `[attached: ${basename(a.path)}]\n`).join('')}---\n`);
     };
   }
-  return async ({ to, subject, text }) => {
+  // attachments: [{ path }], files on this server, sent as base64.
+  return async ({ to, subject, text, attachments }) => {
+    const files = (attachments || []).map((a) => ({ filename: a.filename || basename(a.path), content: readFileSync(a.path).toString('base64') }));
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from, to, subject, text }),
+      body: JSON.stringify({ from, to, subject, text, ...(files.length ? { attachments: files } : {}) }),
     });
     if (!res.ok) throw new Error(`Email send failed (${res.status}): ${await res.text()}`);
   };
@@ -133,6 +137,26 @@ export const teamInviteEmail = ({ name, email, link }) => ({
     'To sign in the first time, set your password here. Choose "Forgot password", enter this email address and use the code we send you:', link, '',
     `Your sign-in email: ${email}`, '',
     'Badji Tchedre-San, Co-founder & Partnerships, PairMundo'].join('\n'),
+});
+
+/** Tells an agency what's new on its agency page and asks it to invite its families and au pairs before the
+ *  24 November launch (November 2026). In English, like the other partner emails; signed by Badji. */
+export const agencyUpdateEmail = ({ name, link, code }) => ({
+  subject: `Invite your families and au pairs to ${APP_NAME} now, so they're ready for launch on 24 November`,
+  text: [`Hello ${name} team,`, '',
+    `The ${APP_NAME} apps launch in the App Store and Google Play on 24 November. Android and the website are already open, and your agency page has new tools to get your families and au pairs ready before then.`, '',
+    'Please invite them this week. Families and au pairs with a finished profile on launch day can start matching straight away.', '',
+    'What you can do now:',
+    '- Invite families and au pairs by email from your agency page. They get a link to a free account and join your agency when they sign up with that email. You see who has joined.',
+    code ? `- Or share your link: ${link.split('/#')[0]}/?ref=${code}` : null,
+    '- Choose who sees whom. By default everyone sees everyone. You can limit which au pairs your families see (nationality, age, languages, ID check, driving licence, childcare experience) and which families see your au pairs (host country, ID check, private room, non-smoking home, weekly hours). Your own families and au pairs always see each other.',
+    '- Follow each of your families from new enquiry to placed, with private notes and whether your fee is paid.',
+    '- Keep a record of every first match between your families and your au pairs.', '',
+    "I've attached a one-page guide to the best way to set up au pair and family profiles. Feel free to forward it to them.", '',
+    'We can also hide contact details in chats until you confirm a placement, let you approve each new family first, and include the Family Pass for your families. Just reply to this email if you want any of these.', '',
+    'Open your agency page:', link, '',
+    'Questions? Just reply to this email.', '',
+    'Best regards,', 'Badji Tchedre-San', `Co-founder & Partnerships, ${APP_NAME}`].filter((x) => x != null).join('\n'),
 });
 
 /** An agency invites one of its host families to join it on PairMundo. In English, like ambassadorInviteEmail. */
