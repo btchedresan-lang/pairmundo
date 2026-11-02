@@ -85,7 +85,7 @@ async function setLanguage(code) {
 }
 function renderFooter() {
   const $foot = document.getElementById('foot'); if (!$foot) return;
-  $foot.innerHTML = `<a href="/privacy" target="_blank">${tr('Privacy Policy')}</a> · <a href="/terms" target="_blank">${tr('Terms of Use')}</a> · <a href="#/partners">${tr('Our partners')}</a> · <a href="#/careers">${tr('Careers')}</a>
+  $foot.innerHTML = `<a href="/privacy" target="_blank">${tr('Privacy Policy')}</a> · <a href="/terms" target="_blank">${tr('Terms of Use')}</a> · <a href="#/partners">${tr('Our partners')}</a> · <a href="#/guides">${tr('Guides')}</a> · <a href="#/careers">${tr('Careers')}</a>
     <label style="margin-left:12px">🌐 <select id="langPick" aria-label="${tr('Language')}">${Object.entries(LANGUAGES).map(([k, v]) => `<option value="${k}" ${k === LANG ? 'selected' : ''}>${v}</option>`).join('')}</select></label>`;
   document.getElementById('langPick').onchange = (e) => setLanguage(e.target.value);
 }
@@ -158,7 +158,7 @@ function renderNav() {
   }
   if (me.user.role === 'agency') {
     $nav.innerHTML = [link('#/agency', tr('Your agency')), me.agency_network && me.ambassador ? link('#/network', tr('Partner agencies')) : '',
-      link('#/account', tr('Account')), `<a href="#/logout">${tr('Sign out')}</a>`].join('');
+      link('#/guides', tr('Guides')), link('#/account', tr('Account')), `<a href="#/logout">${tr('Sign out')}</a>`].join('');
     return;
   }
   if (me.user.role === 'ambassador') {
@@ -1289,7 +1289,7 @@ views.profile = async () => {
   const u = me.user; const p = me.profile || {};
   const isAp = u.role === 'aupair';
   const pass = me.pass;
-  render(`<div class="spread"><h1>${tr('My profile')}</h1><span><a href="#/account">🔒 ${tr('Account and safety')}</a> · <button type="button" class="btn secondary sm" id="preview">👁 ${tr('Preview my profile')}</button></span></div>
+  render(`<div class="spread"><h1>${tr('My profile')}</h1><span><a href="#/guides">🎬 ${tr('Profile guide')}</a> · <a href="#/account">🔒 ${tr('Account and safety')}</a> · <button type="button" class="btn secondary sm" id="preview">👁 ${tr('Preview my profile')}</button></span></div>
   ${u.role === 'family' && pass && (pass.required || pass.active) ? `<div class="card spread"><span>💛 <strong>Family Pass</strong> · ${pass.active ? tr('active until {date}', { date: fmtDate(pass.ends_at) }) : tr('not active')}</span>
     <a class="btn sm" href="#/family-pass">${pass.active ? tr('Details') : tr('Get it')}</a></div>` : ''}
   ${!u.verification?.id ? `<a class="alert info nudge" href="#/account">🪪 ${tr('Verify your ID to get the ID verified badge on your profile.')}</a>` : ''}
@@ -1839,6 +1839,40 @@ views.partners = async () => {
     <p class="muted">${tr('Some checklist steps show an offer from a partner, such as insurance or a language course. If you buy through a partner link, PairMundo may earn a fee. It costs you nothing extra, and we never share your details with a partner unless you ask us to.')}</p>
     <div class="card">${partners.length ? `<table>${partners.map((x) => `<tr><td><strong>${esc(x.name)}</strong></td><td>${slotLabel[x.slot] || esc(x.slot)}</td><td class="muted small">${esc(x.blurb || '')}</td></tr>`).join('')}</table>`
     : `<div class="empty">${tr('No partners yet.')}</div>`}</div>`);
+};
+
+// ---------- guides ----------
+// Short training videos (in English, captions burned in) for each audience, linked from the footer, the agency menu and
+// the profile page. Files live in /media/guides; chapters are seconds into the video.
+const GUIDES = [
+  { slug: 'agencies', icon: '🏢', title: 'For agencies', file: 'pairmundo-guide-agencies', minutes: 4,
+    about: 'Your agency space, your code and link, inviting families and au pairs by email, who sees whom, and Closed Loop.',
+    chapters: [[12, 'What PairMundo is'], [25, 'Your agency page'], [35, 'Your code and link'], [65, 'Inviting families and au pairs'], [88, 'Your families and introduction log'],
+      [102, 'Who sees whom'], [164, 'Closed Loop'], [200, 'Your next step']] },
+  { slug: 'au-pairs', icon: '🎒', title: 'For au pairs', file: 'pairmundo-guide-au-pairs', minutes: 3,
+    about: 'Create your free account, build a profile host families love, verify your ID and start matching.',
+    chapters: [[10, 'Create your account'], [35, 'Photos'], [54, 'About me'], [68, 'The basics and languages'], [93, 'Certificates'],
+      [120, 'References from past families'], [133, 'ID check'], [157, 'Start matching']] },
+  { slug: 'families', icon: '🏡', title: 'For host families', file: 'pairmundo-guide-families', minutes: 2,
+    about: 'Create your free account, show your family and the au pair\'s room, make your offer and start matching.',
+    chapters: [[11, 'Create your account'], [35, 'Photos'], [48, 'About our family'], [57, 'Children and your offer'], [71, 'Your home and languages'], [83, 'ID check'], [101, 'Start matching']] },
+];
+views.guides = async ([slug]) => {
+  const mine = { agency: 'agencies', aupair: 'au-pairs', family: 'families' }[me?.user?.role];
+  const g = GUIDES.find((x) => x.slug === slug) || GUIDES.find((x) => x.slug === mine) || GUIDES[0];
+  const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+  render(`<div class="guides"><h1>${tr('Guides')}</h1>
+    <p class="muted">${tr('Short videos that show you how to get the most out of PairMundo. The videos are in English, with captions.')}</p>
+    <div class="guide-tabs" role="tablist">${GUIDES.map((x) => `<a role="tab" aria-selected="${x === g}" class="guide-tab ${x === g ? 'on' : ''}" href="#/guides/${x.slug}">
+      <span class="guide-icon">${x.icon}</span><span><strong>${tr(x.title)}</strong><br><span class="muted small">${tr('{n} min', { n: x.minutes })}</span></span></a>`).join('')}</div>
+    <div class="card guide-player"><video id="guideVideo" controls playsinline preload="metadata" poster="/media/guides/${g.file}.jpg">
+      <source src="/media/guides/${g.file}.mp4" type="video/mp4"></video>
+      <h2>${tr(g.title)}</h2><p>${tr(g.about)}</p>
+      ${g.chapters.length ? `<ol class="guide-chapters">${g.chapters.map(([t, label]) => `<li><button type="button" class="link" data-t="${t}"><span class="muted">${mmss(t)}</span> ${tr(label)}</button></li>`).join('')}</ol>` : ''}
+      ${g.slug === 'agencies' ? `<p class="small">📄 <a href="/media/PairMundo-profile-guide-for-agencies.pdf" target="_blank">${tr('Profile set-up guide to send your families and au pairs (PDF)')}</a></p>` : ''}
+    </div></div>`);
+  const v = document.getElementById('guideVideo');
+  document.querySelectorAll('.guide-chapters [data-t]').forEach((b) => { b.onclick = () => { v.currentTime = Number(b.dataset.t); v.play().catch(() => {}); v.scrollIntoView({ behavior: 'smooth', block: 'center' }); }; });
 };
 
 // ---------- notifications ----------
@@ -2844,7 +2878,7 @@ function afterLogin() {
   try { next = sessionStorage.getItem('next'); sessionStorage.removeItem('next'); } catch { /* private mode */ }
   go(next && next !== '#/login' ? next : '#/');
 }
-const PUBLIC = new Set(['home', 'login', 'register', 'agency-signup', 'ambassador-signup', 'programs', 'forgot', 'reference', 'partners', 'jobs', 'careers']);
+const PUBLIC = new Set(['home', 'login', 'register', 'agency-signup', 'ambassador-signup', 'programs', 'forgot', 'reference', 'partners', 'jobs', 'careers', 'guides']);
 views.messages = ((orig) => (args) => (args[0] ? orig(args) : go('#/matches')))(views.messages);
 async function route() {
   clearInterval(pollTimer);
