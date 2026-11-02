@@ -1847,15 +1847,15 @@ views.partners = async () => {
 const GUIDES = [
   { slug: 'agencies', icon: '🏢', title: 'For agencies', file: 'pairmundo-guide-agencies', minutes: 4,
     about: 'Your agency space, your code and link, inviting families and au pairs by email, who sees whom, and Closed Loop.',
-    chapters: [[12, 'What PairMundo is'], [25, 'Your agency page'], [35, 'Your code and link'], [65, 'Inviting families and au pairs'], [88, 'Your families and introduction log'],
-      [102, 'Who sees whom'], [164, 'Closed Loop'], [200, 'Your next step']] },
+    chapters: [[9, 'What PairMundo is'], [23, 'Your agency page'], [32, 'Your code and link'], [63, 'Inviting families and au pairs'], [85, 'Your families and introduction log'],
+      [100, 'Who sees whom'], [161, 'Closed Loop'], [192, 'Your next step']] },
   { slug: 'au-pairs', icon: '🎒', title: 'For au pairs', file: 'pairmundo-guide-au-pairs', minutes: 3,
     about: 'Create your free account, build a profile host families love, verify your ID and start matching.',
-    chapters: [[10, 'Create your account'], [35, 'Photos'], [54, 'About me'], [68, 'The basics and languages'], [93, 'Certificates'],
-      [120, 'References from past families'], [133, 'ID check'], [157, 'Start matching']] },
+    chapters: [[9, 'Create your account'], [33, 'Photos'], [52, 'About me'], [67, 'The basics and languages'], [91, 'Certificates'],
+      [118, 'References from past families'], [131, 'ID check'], [154, 'Start matching']] },
   { slug: 'families', icon: '🏡', title: 'For host families', file: 'pairmundo-guide-families', minutes: 2,
     about: 'Create your free account, show your family and the au pair\'s room, make your offer and start matching.',
-    chapters: [[11, 'Create your account'], [35, 'Photos'], [48, 'About our family'], [57, 'Children and your offer'], [71, 'Your home and languages'], [83, 'ID check'], [101, 'Start matching']] },
+    chapters: [[9, 'Create your account'], [33, 'Photos'], [46, 'About our family'], [55, 'Children and your offer'], [69, 'Your home and languages'], [81, 'ID check'], [99, 'Start matching']] },
 ];
 views.guides = async ([slug]) => {
   const mine = { agency: 'agencies', aupair: 'au-pairs', family: 'families' }[me?.user?.role];
@@ -1869,7 +1869,6 @@ views.guides = async ([slug]) => {
       <source src="/media/guides/${g.file}.mp4" type="video/mp4"></video>
       <h2>${tr(g.title)}</h2><p>${tr(g.about)}</p>
       ${g.chapters.length ? `<ol class="guide-chapters">${g.chapters.map(([t, label]) => `<li><button type="button" class="link" data-t="${t}"><span class="muted">${mmss(t)}</span> ${tr(label)}</button></li>`).join('')}</ol>` : ''}
-      ${g.slug === 'agencies' ? `<p class="small">📄 <a href="/media/PairMundo-profile-guide-for-agencies.pdf" target="_blank">${tr('Profile set-up guide to send your families and au pairs (PDF)')}</a></p>` : ''}
     </div></div>`);
   const v = document.getElementById('guideVideo');
   document.querySelectorAll('.guide-chapters [data-t]').forEach((b) => { b.onclick = () => { v.currentTime = Number(b.dataset.t); v.play().catch(() => {}); v.scrollIntoView({ behavior: 'smooth', block: 'center' }); }; });
