@@ -182,7 +182,8 @@ CREATE TABLE IF NOT EXISTS reviews (
   placement_id INTEGER NOT NULL REFERENCES placements(id) ON DELETE CASCADE,
   reviewer_id INTEGER NOT NULL REFERENCES users(id),
   reviewee_id INTEGER NOT NULL REFERENCES users(id),
-  overall INTEGER NOT NULL CHECK (overall BETWEEN 1 AND 5),
+  overall INTEGER NOT NULL CHECK (overall BETWEEN 1 AND 5), -- whole stars; the score rounded, or the old single rating
+  score REAL,                                    -- average of the factors (NULL on reviews from before factors were required)
   criteria TEXT NOT NULL DEFAULT '{}',           -- JSON {criterion: 1..5}
   comment TEXT,
   response TEXT,
@@ -758,6 +759,8 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
   if (!db.prepare('PRAGMA table_info(partner_offers)').all().some((c) => c.name === 'lead_email')) db.exec('ALTER TABLE partner_offers ADD COLUMN lead_email TEXT');
   // The family's street address, for the visa invitation letter.
   if (!db.prepare('PRAGMA table_info(placements)').all().some((c) => c.name === 'host_address')) db.exec('ALTER TABLE placements ADD COLUMN host_address TEXT');
+  // Reviews are scored from their factors now; older reviews keep their single overall rating.
+  if (!db.prepare('PRAGMA table_info(reviews)').all().some((c) => c.name === 'score')) db.exec('ALTER TABLE reviews ADD COLUMN score REAL');
   // Past-family references are answered from an account now; this is the account that answered.
   if (!db.prepare('PRAGMA table_info(reference_checks)').all().some((c) => c.name === 'reviewer_id')) db.exec('ALTER TABLE reference_checks ADD COLUMN reviewer_id INTEGER REFERENCES users(id) ON DELETE SET NULL');
   const pcols = db.prepare('PRAGMA table_info(country_programs)').all().map((c) => c.name);

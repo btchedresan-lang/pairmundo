@@ -5,7 +5,7 @@ import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto
 import { json, tx } from './db.js';
 import { hashPassword, verifyPassword, createSession, sessionMiddleware, requireAuth, requireRole, rateLimit } from './auth.js';
 import { scoreMatch, checkCompliance, ageOn } from './matching.js';
-import { PROGRAMS, REVIEW_CRITERIA, familyDocuments, placementTaskList, visaRoute } from './programs.js';
+import { LEGACY_CRITERIA, PROGRAMS, REVIEW_CRITERIA, familyDocuments, reviewScore, placementTaskList, visaRoute } from './programs.js';
 import { buildAgreement, buildHostLetter, cleanTerms, defaultTerms, REQUIRED_TERMS } from './agreement.js';
 import { createMailer, agencyFamilyInviteEmail, agencyUpdateEmail, agencyLeadEmail, agencyNetworkInviteEmail, ambassadorInviteEmail, codeEmail, launchEmail, profileInviteEmail, referenceEmail, teamInviteEmail, waitlistEmail } from './mailer.js';
 import { mountPipeline } from './pipeline.js';
@@ -314,21 +314,24 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       EXISTS (SELECT 1 FROM reviews r2 WHERE r2.placement_id = r.placement_id AND r2.reviewer_id = r.reviewee_id)
       OR date(p.end_date, '+${REVIEW_REVEAL_DAYS} days') <= date('now'))`;
 
+  // A profile's score is the average of its review scores; each factor's average is shown under it, current factors first.
   const ratingSummary = (userId) => {
-    const rows = db.prepare(`SELECT r.overall, r.criteria FROM reviews r JOIN placements p ON p.id = r.placement_id
+    const rows = db.prepare(`SELECT r.overall, r.score, r.criteria FROM reviews r JOIN placements p ON p.id = r.placement_id
                              WHERE r.reviewee_id = ? AND ${visibleReviewsSql}`).all(userId);
     if (!rows.length) return { avg: null, count: 0, criteria: {} };
     const crit = {};
     for (const r of rows) {
       for (const [k, v] of Object.entries(json.parse(r.criteria, {}))) {
-        (crit[k] ||= []).push(v);
+        (crit[LEGACY_CRITERIA[k] || k] ||= []).push(v);
       }
     }
     const avg = (a) => Math.round((a.reduce((s, x) => s + x, 0) / a.length) * 10) / 10;
+    const order = [...new Set([...REVIEW_CRITERIA.aupair, ...REVIEW_CRITERIA.family])];
+    const rank = (k) => (order.includes(k) ? order.indexOf(k) : order.length);
     return {
-      avg: avg(rows.map((r) => r.overall)),
+      avg: avg(rows.map((r) => r.score ?? r.overall)),
       count: rows.length,
-      criteria: Object.fromEntries(Object.entries(crit).map(([k, v]) => [k, avg(v)])),
+      criteria: Object.fromEntries(Object.keys(crit).sort((a, b) => rank(a) - rank(b)).map((k) => [k, avg(crit[k])])),
     };
   };
 
@@ -813,7 +816,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const iBlocked = !!db.prepare('SELECT 1 FROM blocks WHERE user_id = ? AND target_id = ?').get(req.user.id, u.id);
     if (!iBlocked && blockedBetween(req.user.id, u.id)) throw notFound('Profile not found.');
     if (req.user.role !== 'admin' && req.user.id !== u.id && closedApart(req.user, u)) throw notFound('Profile not found.');
-    const reviews = db.prepare(`SELECT r.id, r.overall, r.criteria, r.comment, r.response, r.created_at,
+    const reviews = db.prepare(`SELECT r.id, r.overall, r.score, r.criteria, r.comment, r.response, r.created_at,
           p.start_date, p.end_date, p.country, ru.id reviewer_id, ru.name reviewer_name, ru.role reviewer_role
         FROM reviews r JOIN placements p ON p.id = r.placement_id JOIN users ru ON ru.id = r.reviewer_id
         WHERE r.reviewee_id = ? AND ${visibleReviewsSql} ORDER BY r.created_at DESC`).all(u.id)
@@ -2147,25 +2150,33 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const p = loadPlacement(req);
     if (!['active', 'completed'].includes(p.status)) throw bad('Reviews open once the placement has started.');
     const b = req.body || {};
-    const overall = Number(b.overall);
-    if (!Number.isInteger(overall) || overall < 1 || overall > 5) throw bad('Overall rating must be 1 to 5 stars.');
     const revieweeIsAupair = req.user.id === p.family_id;
-    const allowed = REVIEW_CRITERIA[revieweeIsAupair ? 'aupair' : 'family'];
+    const factors = REVIEW_CRITERIA[revieweeIsAupair ? 'aupair' : 'family'];
     const criteria = {};
-    for (const k of allowed) {
-      const v = Number(b.criteria?.[k]);
-      if (b.criteria?.[k] != null) {
-        if (!Number.isInteger(v) || v < 1 || v > 5) throw bad(`${k} must be 1 to 5.`);
-        criteria[k] = v;
-      }
+    for (const k of factors) {
+      if (b.criteria?.[k] == null) continue;
+      const v = Number(b.criteria[k]);
+      if (!Number.isInteger(v) || v < 1 || v > 5) throw bad(`${k} must be 1 to 5.`);
+      criteria[k] = v;
     }
+    // The score comes from the factors, so every factor needs a rating. App versions from before factors were
+    // required still send their own overall rating with some factors; that is kept as it was.
+    let score = null;
+    let overall;
+    if (Object.keys(criteria).length === factors.length) {
+      score = reviewScore(criteria);
+      overall = Math.min(5, Math.max(1, Math.round(score)));
+    } else if (b.overall != null) {
+      overall = Number(b.overall);
+      if (!Number.isInteger(overall) || overall < 1 || overall > 5) throw bad('Overall rating must be 1 to 5 stars.');
+    } else throw bad('Rate every part of the stay from 1 to 5 stars.');
     if (db.prepare('SELECT 1 FROM reviews WHERE placement_id = ? AND reviewer_id = ?').get(p.id, req.user.id)) throw new HttpError(409, 'You already reviewed this placement.');
     const reviewee = revieweeIsAupair ? p.aupair_id : p.family_id;
-    const r = db.prepare('INSERT INTO reviews (placement_id, reviewer_id, reviewee_id, overall, criteria, comment) VALUES (?,?,?,?,?,?)')
-      .run(p.id, req.user.id, reviewee, overall, JSON.stringify(criteria), str(b.comment, 3000));
+    const r = db.prepare('INSERT INTO reviews (placement_id, reviewer_id, reviewee_id, overall, score, criteria, comment) VALUES (?,?,?,?,?,?,?)')
+      .run(p.id, req.user.id, reviewee, overall, score, JSON.stringify(criteria), str(b.comment, 3000));
     notify(reviewee, 'review', '{name} left you a review. It appears once you review them too, or {days} days after the placement ends.', { name: shortName(req.user.name), days: REVIEW_REVEAL_DAYS }, `#/placements/${p.id}`);
     res.status(201);
-    return { id: Number(r.lastInsertRowid) };
+    return { id: Number(r.lastInsertRowid), score: score ?? overall };
   }));
 
   api.post('/reviews/:id/response', requireAuth, wrap((req) => {

@@ -156,12 +156,22 @@ export const PROGRAMS = [
 export const EU_EEA = new Set(['AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR', 'HU', 'IE', 'IT', 'LV', 'LT', 'LU', 'MT', 'NL',
   'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE', 'IS', 'LI', 'NO', 'CH']);
 
+// The factors each side rates, 1 to 5 stars each. A review's score is the average of its factors (like Airbnb's
+// category ratings), and a profile's score is the average of its review scores. The apps hold the labels and hints.
 export const REVIEW_CRITERIA = {
   // What a family rates an au pair on
-  aupair: ['reliability', 'childcare', 'communication', 'household', 'adaptability'],
+  aupair: ['childcare', 'reliability', 'communication', 'household', 'adaptability', 'accuracy'],
   // What an au pair rates a family on
-  family: ['respect', 'accommodation', 'communication', 'fair_hours', 'support'],
+  family: ['respect', 'agreement', 'accommodation', 'support', 'communication', 'accuracy'],
 };
+// Factors from the first version that map onto a current one when averaging old reviews.
+export const LEGACY_CRITERIA = { fair_hours: 'agreement' };
+
+/** A review's score: the average of its factors to one decimal, rounded half up. */
+export function reviewScore(criteria) {
+  const v = Object.values(criteria || {});
+  return v.length ? Math.round((v.reduce((s, x) => s + x, 0) / v.length) * 10) / 10 : null;
+}
 
 /** Standard placement checklist; dates are relative to start (days). */
 export const PLACEMENT_TASKS = [
