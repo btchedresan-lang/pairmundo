@@ -102,16 +102,33 @@ test('end-to-end: register, match, message, placement, compliance, two-way revie
   assert.equal((await call(fam.token, 'POST', `/placements/${pid}/status`, { status: 'proposed' })).status, 400);
 
   // Double-blind reviews: hidden until both have reviewed
-  assert.equal((await call(fam.token, 'POST', `/placements/${pid}/review`, { overall: 5, criteria: { reliability: 5, childcare: 4 }, comment: 'Great' })).status, 201);
+  // The score is the average of the factors, so a review needs every factor; an overall rating sent with them is ignored.
+  assert.deepEqual((await call(fam.token, 'GET', `/placements/${pid}`)).body.review_criteria,
+    ['childcare', 'reliability', 'communication', 'household', 'adaptability', 'accuracy']);
+  assert.equal((await call(fam.token, 'POST', `/placements/${pid}/review`, { criteria: { childcare: 5, reliability: 5 }, comment: 'Great' })).status, 400);
+  assert.equal((await call(fam.token, 'POST', `/placements/${pid}/review`, { criteria: { childcare: 5, reliability: 5, communication: 5, household: 4, adaptability: 5, accuracy: 6 } })).status, 400);
+  const famReview = await call(fam.token, 'POST', `/placements/${pid}/review`,
+    { overall: 1, criteria: { childcare: 4, reliability: 5, communication: 5, household: 4, adaptability: 5, accuracy: 5 }, comment: 'Great' });
+  assert.equal(famReview.status, 201);
+  assert.equal(famReview.body.score, 4.7);
   assert.equal((await call(fam.token, 'POST', `/placements/${pid}/review`, { overall: 4 })).status, 409);
   assert.equal((await call(fam.token, 'POST', `/placements/${pid}/review`, { overall: 9 })).status, 400);
   let prof = (await call(fam.token, 'GET', `/users/${ap.id}`)).body;
   assert.equal(prof.rating.count, 0);
-  assert.equal((await call(ap.token, 'POST', `/placements/${pid}/review`, { overall: 4, criteria: { respect: 4 }, comment: 'Kind family' })).status, 201);
+  // Au pairs rate the family on their own factors; family factors are refused on a family's review and the other way round.
+  assert.equal((await call(ap.token, 'POST', `/placements/${pid}/review`, { criteria: { childcare: 4, reliability: 4, communication: 4, household: 4, adaptability: 4, accuracy: 4 } })).status, 400);
+  assert.equal((await call(ap.token, 'POST', `/placements/${pid}/review`,
+    { criteria: { respect: 5, agreement: 3, accommodation: 4, support: 4, communication: 4, accuracy: 4 }, comment: 'Kind family' })).status, 201);
   prof = (await call(fam.token, 'GET', `/users/${ap.id}`)).body;
-  assert.equal(prof.rating.avg, 5);
+  assert.equal(prof.rating.avg, 4.7);
+  assert.equal(prof.reviews[0].score, 4.7);
+  assert.equal(prof.reviews[0].overall, 5);
+  assert.deepEqual(Object.keys(prof.rating.criteria), ['childcare', 'reliability', 'communication', 'household', 'adaptability', 'accuracy']);
   assert.equal(prof.rating.criteria.childcare, 4);
-  assert.equal((await call(fam.token, 'GET', `/users/${fam.id}`)).body.rating.avg, 4);
+  const famRating = (await call(fam.token, 'GET', `/users/${fam.id}`)).body.rating;
+  assert.equal(famRating.avg, 4);
+  assert.equal(famRating.criteria.agreement, 3);
+  assert.equal((await call(fam.token, 'GET', `/placements/${pid}`)).body.my_review.score, 4.7);
 
   // Reviewee may respond once
   const rid = prof.reviews[0].id;
@@ -124,6 +141,36 @@ test('end-to-end: register, match, message, placement, compliance, two-way revie
   assert.equal((await call(stranger.token, 'GET', `/placements/${pid}`)).status, 404);
   assert.equal((await call(stranger.token, 'GET', `/conversations/${conv}/messages`)).status, 404);
   assert.equal((await call(stranger.token, 'GET', '/admin/stats')).status, 403);
+});
+
+test('reviews: older app versions can still send a single overall rating, and old reviews keep their score', async () => {
+  const fam = await register('legacy-fam@test.io', 'family', 'DE', 'Familie Alt');
+  const ap = await register('legacy-ap@test.io', 'aupair', 'PL', 'Ewa Alt');
+  const placement = (status, start, end) => Number(testDb.prepare(`INSERT INTO placements (aupair_id, family_id, country, start_date, end_date,
+      weekly_hours, pocket_money, status, aupair_confirmed, family_confirmed, created_by) VALUES (?,?,'DE',?,?,30,280,?,1,1,?)`)
+    .run(ap.id, fam.id, start, end, status, fam.id).lastInsertRowid);
+  // A review from before factors were required, on a placement that ended long ago, so it is visible on its own.
+  const old = placement('completed', '2024-01-01', '2024-12-31');
+  testDb.prepare('INSERT INTO reviews (placement_id, reviewer_id, reviewee_id, overall, criteria, comment) VALUES (?,?,?,?,?,?)')
+    .run(old, ap.id, fam.id, 3, JSON.stringify({ respect: 4, fair_hours: 2 }), 'Long hours');
+  let rating = (await call(ap.token, 'GET', `/users/${fam.id}`)).body.rating;
+  assert.deepEqual(rating, { avg: 3, count: 1, criteria: { respect: 4, agreement: 2 } });
+
+  // An app version from before sends its overall rating with only some factors: kept as it was, with no factor score.
+  const now = placement('active', '2026-01-01', '2026-12-31');
+  const r = await call(ap.token, 'POST', `/placements/${now}/review`, { overall: 5, criteria: { respect: 5, fair_hours: 1 }, comment: 'Lovely' });
+  assert.equal(r.status, 201);
+  assert.equal(r.body.score, 5);
+  const row = testDb.prepare('SELECT overall, score, criteria FROM reviews WHERE id = ?').get(r.body.id);
+  assert.deepEqual({ ...row, criteria: JSON.parse(row.criteria) }, { overall: 5, score: null, criteria: { respect: 5 } });
+  // Hidden until the family reviews too; then the profile score averages both reviews.
+  assert.equal((await call(ap.token, 'GET', `/users/${fam.id}`)).body.rating.count, 1);
+  assert.equal((await call(fam.token, 'POST', `/placements/${now}/review`,
+    { criteria: { childcare: 3, reliability: 3, communication: 4, household: 4, adaptability: 4, accuracy: 4 } })).status, 201);
+  rating = (await call(ap.token, 'GET', `/users/${fam.id}`)).body.rating;
+  assert.equal(rating.count, 2);
+  assert.equal(rating.avg, 4);
+  assert.equal((await call(fam.token, 'GET', `/users/${ap.id}`)).body.rating.avg, 3.7);
 });
 
 test('names: others see first name and last initial; the full name only after a confirmed placement', async () => {

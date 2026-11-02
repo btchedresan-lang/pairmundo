@@ -51,8 +51,17 @@ export const CERTS = { language: ['🗣️', 'Language certificate', 'For exampl
 /** Language levels on the CEFR scale, best first. */
 export const LEVELS = ['native', 'C2', 'C1', 'B2', 'B1', 'A2', 'A1'];
 export const levelName = (l) => (l === 'native' ? tr('native') : l);
-export const CRIT_LABEL = { reliability: 'Reliability', childcare: 'Childcare', communication: 'Communication', household: 'Household help',
-  adaptability: 'Adaptability', respect: 'Respect', accommodation: 'Accommodation', fair_hours: 'Fair hours', support: 'Support' };
+// The review factors (the server lists which ones each side rates). Fair hours is from the first version of reviews.
+export const CRIT_LABEL = { childcare: 'Childcare & safety', reliability: 'Reliability & punctuality', communication: 'Communication', household: 'Household help',
+  adaptability: 'Adaptability & openness', accuracy: 'As described', respect: 'Respect & kindness', agreement: 'Agreement kept',
+  accommodation: 'Room & living conditions', support: 'Support & inclusion', fair_hours: 'Fair hours' };
+export const CRIT_HINT = { childcare: 'Attentive, safe and caring with the children', reliability: 'On time, and kept to the schedule and to promises',
+  communication: 'Clear, honest and easy to talk to', household: 'Did the agreed light housework and kept shared spaces tidy',
+  adaptability: "Settled in and was open to the family's culture and routines", accuracy: 'Matched what the profile said',
+  respect: 'Treated you as part of the family, not as staff', agreement: 'Hours, duties and pocket money as agreed',
+  accommodation: 'Private room, meals and a comfortable home', support: 'Helped you settle in, with your language course and family life' };
+/** A review's score from its factors: the average, to one decimal. */
+export const factorScore = (vals) => (vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : null);
 
 export const flag = (cc) => (cc && cc.length === 2 ? String.fromCodePoint(...[...cc.toUpperCase()].map((c) => 127397 + c.charCodeAt(0))) : '');
 /** Country, language and other labels in the app's language. */

@@ -54,8 +54,17 @@ const CERTS = { language: ['🗣️', 'Language certificate', 'For example: IELT
   childcare: ['🧸', 'Childcare or teaching qualification', 'For example: early childhood education diploma'],
   swimming: ['🏊', 'Lifeguard or swimming instructor', 'For example: pool lifeguard, 2024'],
   police: ['📄', 'Police clearance certificate', 'For example: issued March 2026'] };
-const CRIT_LABEL = { reliability: 'Reliability', childcare: 'Childcare', communication: 'Communication', household: 'Household help',
-  adaptability: 'Adaptability', respect: 'Respect', accommodation: 'Accommodation', fair_hours: 'Fair hours', support: 'Support & inclusion' };
+// The review factors (the server lists which ones each side rates). Fair hours is from the first version of reviews.
+const CRIT_LABEL = { childcare: 'Childcare & safety', reliability: 'Reliability & punctuality', communication: 'Communication', household: 'Household help',
+  adaptability: 'Adaptability & openness', accuracy: 'As described', respect: 'Respect & kindness', agreement: 'Agreement kept',
+  accommodation: 'Room & living conditions', support: 'Support & inclusion', fair_hours: 'Fair hours' };
+const CRIT_HINT = { childcare: 'Attentive, safe and caring with the children', reliability: 'On time, and kept to the schedule and to promises',
+  communication: 'Clear, honest and easy to talk to', household: 'Did the agreed light housework and kept shared spaces tidy',
+  adaptability: "Settled in and was open to the family's culture and routines", accuracy: 'Matched what the profile said',
+  respect: 'Treated you as part of the family, not as staff', agreement: 'Hours, duties and pocket money as agreed',
+  accommodation: 'Private room, meals and a comfortable home', support: 'Helped you settle in, with your language course and family life' };
+/** A review's score from its factors: the average, to one decimal. */
+const factorScore = (vals) => (vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : null);
 
 // ---------- languages ----------
 // Text is written in English and wrapped in tr(); /locales/<lang>.json maps it to a translation.
@@ -1174,12 +1183,13 @@ views.u = async ([id]) => {
 
 function ratingBreakdown(r) {
   if (!r.count) return '';
-  return `<div class="form-grid" style="margin-bottom:12px">${Object.entries(r.criteria).map(([k, v]) => `<div class="small">
+  const head = r.avg != null ? `<div class="rating-head"><span class="stars">★</span> ${r.avg} · ${trn(r.count, '{n} review', '{n} reviews')}</div>` : '';
+  return `${head}<div class="form-grid" style="margin-bottom:12px">${Object.entries(r.criteria).map(([k, v]) => `<div class="small">
     <div class="spread"><span>${CRIT_LABEL[k] ? tr(CRIT_LABEL[k]) : k}</span><strong>${v}</strong></div><div class="bar"><span style="width:${v * 20}%"></span></div></div>`).join('')}</div>`;
 }
 function reviewItem(r, canRespond) {
   return `<div style="border-top:1px solid var(--line);padding:12px 0">
-    <div class="spread"><div>${stars(r.overall)} <span class="muted small">${tr('by {name}', { name: `<a href="#/u/${r.reviewer_id}">${esc(r.reviewer_name)}</a>` })} · ${cname(r.country)} · ${fmtDate(r.start_date)} – ${fmtDate(r.end_date)}</span></div>
+    <div class="spread"><div>${stars(r.score ?? r.overall)} <span class="muted small">${tr('by {name}', { name: `<a href="#/u/${r.reviewer_id}">${esc(r.reviewer_name)}</a>` })} · ${cname(r.country)} · ${fmtDate(r.start_date)} – ${fmtDate(r.end_date)}</span></div>
       <button class="btn ghost sm" data-report-review="${r.id}">${tr('Report')}</button></div>
     <p style="white-space:pre-wrap;margin:6px 0">${esc(r.comment)}</p>
     ${r.response ? `<div class="alert info small"><strong>${tr('Response:')}</strong> ${esc(r.response)}</div>`
@@ -1558,11 +1568,13 @@ async function placementDetail(id) {
         <span class="muted small" style="min-width:90px;text-align:right">${fmtDate(t.due_date)}</span></label>`).join('')}</div>
     ${p.can_review ? `<form class="card" id="review"><h2>${tr('Review {name}', { name: esc(other.name) })}</h2>
       <p class="muted small">${tr('Your review stays hidden until {name} reviews you too, or 14 days after the placement ends.', { name: esc(other.name) })}</p>
-      <div class="field"><label>${tr('Overall')}</label>${starInput('overall')}</div>
-      <div class="form-grid">${p.review_criteria.map((c) => `<div class="field"><label>${CRIT_LABEL[c] ? tr(CRIT_LABEL[c]) : c}</label>${starInput(c)}</div>`).join('')}</div>
+      <p class="small">${tr('Rate each part of the stay. Your overall score is the average.')}</p>
+      <div class="form-grid">${p.review_criteria.map((c) => `<div class="field"><label>${CRIT_LABEL[c] ? tr(CRIT_LABEL[c]) : c}</label>
+        ${CRIT_HINT[c] ? `<div class="muted small">${tr(CRIT_HINT[c])}</div>` : ''}${starInput(c)}</div>`).join('')}</div>
+      <div class="review-score" id="review-score"></div>
       <div class="field"><label>${tr('Your experience')}</label><textarea name="comment" required placeholder="${tr('What went well? What should others know?')}"></textarea></div>
       <div id="err"></div><button class="btn">${tr('Submit review')}</button></form>`
-    : p.my_review ? `<div class="card"><h2>${tr('Your review')}</h2>${stars(p.my_review.overall)}<p style="white-space:pre-wrap">${esc(p.my_review.comment)}</p></div>` : ''}
+    : p.my_review ? `<div class="card"><h2>${tr('Your review')}</h2>${stars(p.my_review.score ?? p.my_review.overall)}${ratingBreakdown({ count: 1, criteria: p.my_review.criteria })}<p style="white-space:pre-wrap">${esc(p.my_review.comment)}</p></div>` : ''}
   </div></div>`);
   const reload = () => placementDetail(id);
   const c = document.getElementById('confirm');
@@ -1575,15 +1587,26 @@ async function placementDetail(id) {
     await api(`/placements/${id}/tasks/${cb.dataset.task}`, { method: 'PATCH', body: { done: cb.checked } });
     cb.closest('.task').classList.toggle('done', cb.checked);
   }; });
-  bindStarInputs();
-  bindReferrals(id);
   const rf = document.getElementById('review');
+  const val = (n) => Number(rf.querySelector(`[data-stars="${n}"]`).dataset.value) || undefined;
+  const showScore = () => {
+    const rated = p.review_criteria.map(val).filter(Boolean);
+    const score = factorScore(rated);
+    document.getElementById('review-score').innerHTML = score == null ? ''
+      : `${tr('Overall score')}: ${stars(score)} <span class="muted small">${tr('{done} of {total} rated', { done: rated.length, total: p.review_criteria.length })}</span>`;
+  };
+  bindStarInputs(rf ? showScore : null);
+  bindReferrals(id);
   if (rf) rf.onsubmit = async (e) => {
     e.preventDefault();
-    const val = (n) => Number(rf.querySelector(`[data-stars="${n}"]`).dataset.value) || undefined;
+    const missing = p.review_criteria.filter((k) => !val(k));
+    if (missing.length) {
+      document.getElementById('err').innerHTML = `<div class="alert error">${esc(tr('Please rate: {list}', { list: missing.map((k) => tr(CRIT_LABEL[k] || k)).join(', ') }))}</div>`;
+      return;
+    }
     try {
-      await api(`/placements/${id}/review`, { method: 'POST', body: { overall: val('overall'), comment: rf.comment.value,
-        criteria: Object.fromEntries(p.review_criteria.map((k) => [k, val(k)]).filter(([, v]) => v)) } });
+      await api(`/placements/${id}/review`, { method: 'POST', body: { comment: rf.comment.value,
+        criteria: Object.fromEntries(p.review_criteria.map((k) => [k, val(k)])) } });
       toast(tr('Thanks for your review!')); reload();
     } catch (err) { document.getElementById('err').innerHTML = `<div class="alert error">${esc(err.message)}</div>`; }
   };
@@ -1708,10 +1731,11 @@ async function agreementPage(id) {
 }
 
 const starInput = (name) => `<span class="star-input" data-stars="${name}" data-value="">${[1, 2, 3, 4, 5].map((n) => `<button type="button" data-n="${n}" aria-label="${trn(n, '{n} star', '{n} stars')}">★</button>`).join('')}</span>`;
-function bindStarInputs() {
+function bindStarInputs(onChange) {
   document.querySelectorAll('.star-input').forEach((g) => g.querySelectorAll('button').forEach((b) => { b.onclick = () => {
     g.dataset.value = b.dataset.n;
     g.querySelectorAll('button').forEach((x) => x.classList.toggle('on', Number(x.dataset.n) <= Number(b.dataset.n)));
+    onChange?.();
   }; }));
 }
 

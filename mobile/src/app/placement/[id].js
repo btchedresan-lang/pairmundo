@@ -4,7 +4,7 @@ import { Text } from '../../components/Text';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { api, getBase } from '../../api';
 import { useAuth } from '../../auth';
-import { cname, country, CRIT_LABEL, fmtDate, statusLabel, statusTone } from '../../data';
+import { cname, country, CRIT_HINT, CRIT_LABEL, factorScore, fmtDate, statusLabel, statusTone } from '../../data';
 import { tr } from '../../i18n';
 import { Alert, Button, Card, Chip, ComplianceBox, Field, Loading, Screen, StarInput, Stars, T } from '../../components/ui';
 import { C, useTheme } from '../../theme';
@@ -18,7 +18,7 @@ export default function Placement() {
   const t = useTheme();
   const [p, setP] = useState(null);
   const [error, setError] = useState(null);
-  const [review, setReview] = useState({ overall: 0, criteria: {}, comment: '' });
+  const [review, setReview] = useState({ criteria: {}, comment: '' });
   const load = useCallback(() => api(`/placements/${id}`).then(setP).catch((e) => setError(e.message)), [id]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
   const act = async (fn) => { try { setError(null); const r = await fn(); if (r?.id) setP(r); else await load(); } catch (e) { setError(e.message); } };
@@ -28,6 +28,7 @@ export default function Placement() {
   const other = isAp ? p.family : p.aupair;
   const myConfirmed = isAp ? p.aupair_confirmed : p.family_confirmed;
   const done = p.tasks.filter((x) => x.done).length;
+  const rated = (p.review_criteria || []).map((c) => review.criteria[c]).filter(Boolean);
   return (
     <Screen>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -95,19 +96,27 @@ export default function Placement() {
         <Card>
           <T bold>{tr('Review {name}', { name: other.name })}</T>
           <T small muted>{tr('Your review stays hidden until {name} reviews you too, or 14 days after the placement ends.', { name: other.name })}</T>
-          <T small bold>{tr('Overall')}</T>
-          <StarInput value={review.overall} onChange={(n) => setReview((r) => ({ ...r, overall: n }))} />
+          <T small>{tr('Rate each part of the stay. Your overall score is the average.')}</T>
           {p.review_criteria.map((c) => (
-            <View key={c} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <T small>{CRIT_LABEL[c] ? tr(CRIT_LABEL[c]) : c}</T>
+            <View key={c} style={{ gap: 2 }}>
+              <T small bold>{CRIT_LABEL[c] ? tr(CRIT_LABEL[c]) : c}</T>
+              {CRIT_HINT[c] ? <T small muted>{tr(CRIT_HINT[c])}</T> : null}
               <StarInput value={review.criteria[c]} onChange={(n) => setReview((r) => ({ ...r, criteria: { ...r.criteria, [c]: n } }))} />
             </View>
           ))}
+          {rated.length ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <T small bold>{tr('Overall score')}</T><Stars value={factorScore(rated)} />
+              <T small muted>{tr('{done} of {total} rated', { done: rated.length, total: p.review_criteria.length })}</T>
+            </View>
+          ) : null}
           <Field label={tr('Your experience')} multiline value={review.comment} onChangeText={(v) => setReview((r) => ({ ...r, comment: v }))} placeholder={tr('What went well? What should others know?')} />
-          <Button title={tr('Submit review')} disabled={!review.overall} onPress={() => act(() => api(`/placements/${id}/review`, { method: 'POST', body: review }))} />
+          <Button title={tr('Submit review')} disabled={rated.length < p.review_criteria.length} onPress={() => act(() => api(`/placements/${id}/review`, { method: 'POST', body: review }))} />
         </Card>
       ) : p.my_review ? (
-        <Card><T bold>{tr('Your review')}</T><Stars value={p.my_review.overall} /><T>{p.my_review.comment}</T></Card>
+        <Card><T bold>{tr('Your review')}</T><Stars value={p.my_review.score ?? p.my_review.overall} />
+          {Object.entries(p.my_review.criteria || {}).map(([k, v]) => <T key={k} small>{CRIT_LABEL[k] ? tr(CRIT_LABEL[k]) : k}: <T small bold>{v}</T></T>)}
+          <T>{p.my_review.comment}</T></Card>
       ) : null}
     </Screen>
   );

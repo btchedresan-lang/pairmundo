@@ -179,13 +179,21 @@ export default function UserProfile() {
         <Card>
           <T bold>{tr('Reviews')}</T>
           {d.rating.count ? (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', rowGap: 6 }}>
-              {Object.entries(d.rating.criteria).map(([k, v]) => <T key={k} small style={{ width: '50%' }}>{CRIT_LABEL[k] ? tr(CRIT_LABEL[k]) : k}: <T small bold>{v}</T></T>)}
+            <View style={{ gap: 8 }}>
+              <T h2>★ {d.rating.avg} · {trn(d.rating.count, '{n} review', '{n} reviews')}</T>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', rowGap: 10, justifyContent: 'space-between' }}>
+                {Object.entries(d.rating.criteria).map(([k, v]) => (
+                  <View key={k} style={{ width: '48%', gap: 3 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T small style={{ flex: 1 }}>{CRIT_LABEL[k] ? tr(CRIT_LABEL[k]) : k}</T><T small bold>{v}</T></View>
+                    <View style={{ height: 6, borderRadius: 3, backgroundColor: '#e4e7ec', overflow: 'hidden' }}><View style={{ width: `${v * 20}%`, height: '100%', backgroundColor: C.primary }} /></View>
+                  </View>
+                ))}
+              </View>
             </View>
           ) : null}
           {d.reviews.length ? d.reviews.map((r) => (
             <View key={r.id} style={{ borderTopWidth: 1, borderColor: '#e4e7ec', paddingTop: 10, gap: 4 }}>
-              <Stars value={r.overall} />
+              <Stars value={r.score ?? r.overall} />
               <T small muted>{tr('by {name}', { name: r.reviewer_name })} · {fmtDate(r.start_date)} – {fmtDate(r.end_date)}</T>
               <T>{r.comment}</T>
               {r.response ? <Alert level="info" text={`${tr('Response')}: ${r.response}`} /> : null}

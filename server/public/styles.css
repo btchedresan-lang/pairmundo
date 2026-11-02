@@ -74,6 +74,8 @@ textarea { min-height: 90px; resize: vertical; }
 .verify { font-size: .8rem; color: var(--ok); }
 .bar { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
 .bar > span { display: block; height: 100%; background: var(--brand); }
+.rating-head { font-size: 1.35rem; font-weight: 800; margin: 4px 0 12px; }
+.review-score { margin: 4px 0 12px; }
 
 .alert { padding: 10px 14px; border-radius: 8px; margin-bottom: 8px; font-size: .92rem; }
 .alert.error { background: var(--err-soft); color: var(--err); }

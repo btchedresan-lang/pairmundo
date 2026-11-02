@@ -18,7 +18,7 @@ const site = web.slice(0, web.indexOf('// ---------- admin ----------')) + web.s
 for (const m of site.matchAll(new RegExp(String.raw`\btr\(\s*(?:${literal})`, 'g'))) add(unq(m));
 for (const m of site.matchAll(new RegExp(String.raw`\btrn\([^,]+,\s*(?:${literal})\s*,\s*(?:${literal})`, 'g'))) { add(unq(m, 1)); add(unq(m, 3)); }
 // Labels in data maps and in option lists, translated where they are shown.
-for (const block of web.matchAll(/const (COUNTRIES|LANGS|AGE_GROUPS|SKILLS|TRAITS|HOBBIES|CRIT_LABEL|STATUSES) = \{([\s\S]*?)\};/g)) {
+for (const block of web.matchAll(/const (COUNTRIES|LANGS|AGE_GROUPS|SKILLS|TRAITS|HOBBIES|CRIT_LABEL|CRIT_HINT|STATUSES) = \{([\s\S]*?)\};/g)) {
   // Most maps are key: 'Label'; HOBBIES is key: ['emoji', 'Label'].
   for (const m of block[2].matchAll(new RegExp(String.raw`:\s*(?:\[(?:${literal}),\s*)?(?:${literal})`, 'g'))) add(unq(m, 3));
 }

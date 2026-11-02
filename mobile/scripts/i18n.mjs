@@ -22,7 +22,7 @@ for (const f of walk('src')) {
 }
 // Labels kept in data maps and brand.json, translated where they are shown.
 const data = read('src/data.js');
-for (const block of data.matchAll(/export const (COUNTRIES|LANGS|AGE_GROUPS|SKILLS|TRAITS|HOBBIES|CRIT_LABEL|STATUSES) = \{([\s\S]*?)\};/g)) {
+for (const block of data.matchAll(/export const (COUNTRIES|LANGS|AGE_GROUPS|SKILLS|TRAITS|HOBBIES|CRIT_LABEL|CRIT_HINT|STATUSES) = \{([\s\S]*?)\};/g)) {
   // Most maps are key: 'Label'; HOBBIES is key: ['emoji', 'Label'].
   for (const m of block[2].matchAll(new RegExp(String.raw`:\s*(?:\[(?:${literal}),\s*)?(?:${literal})`, 'g'))) add(unq(m, 3));
 }
