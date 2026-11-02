@@ -475,6 +475,18 @@ CREATE TABLE IF NOT EXISTS agency_invites (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (from_id, email)
 );
+-- Families an agency invited by email to join its space. A family who signs up with that email joins the agency,
+-- with or without the link.
+CREATE TABLE IF NOT EXISTS agency_family_invites (
+  id INTEGER PRIMARY KEY,
+  ambassador_id INTEGER NOT NULL REFERENCES ambassadors(id) ON DELETE CASCADE,
+  email TEXT NOT NULL,
+  name TEXT,
+  message TEXT,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (ambassador_id, email)
+);
 -- Memberships an agency claims, like IAPA. Only the ones PairMundo checked show as a badge.
 CREATE TABLE IF NOT EXISTS agency_affiliations (
   id INTEGER PRIMARY KEY,

@@ -7,7 +7,7 @@ import { hashPassword, verifyPassword, createSession, sessionMiddleware, require
 import { scoreMatch, checkCompliance, ageOn } from './matching.js';
 import { PROGRAMS, REVIEW_CRITERIA, familyDocuments, placementTaskList, visaRoute } from './programs.js';
 import { buildAgreement, buildHostLetter, cleanTerms, defaultTerms, REQUIRED_TERMS } from './agreement.js';
-import { createMailer, agencyLeadEmail, agencyNetworkInviteEmail, ambassadorInviteEmail, codeEmail, launchEmail, profileInviteEmail, referenceEmail, teamInviteEmail, waitlistEmail } from './mailer.js';
+import { createMailer, agencyFamilyInviteEmail, agencyLeadEmail, agencyNetworkInviteEmail, ambassadorInviteEmail, codeEmail, launchEmail, profileInviteEmail, referenceEmail, teamInviteEmail, waitlistEmail } from './mailer.js';
 import { mountPipeline } from './pipeline.js';
 import { mountHiring } from './hiring.js';
 import { countryName, pickLang, t as translate } from './i18n.js';
@@ -604,9 +604,14 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     // that ambassador and source, so a referral made before launch still counts.
     const waited = db.prepare('SELECT source, ref_code FROM waitlist WHERE email = ?').get(email);
     if (!partner) ambassador ??= ambassadorByCode(waited?.ref_code);
+    // A family an agency invited by email joins that agency, even without the link.
+    const invitedBy = role === 'family' ? db.prepare(`SELECT x.code FROM agency_family_invites i JOIN ambassadors x ON x.id = i.ambassador_id
+      WHERE i.email = ? AND i.user_id IS NULL AND x.active = 1 ORDER BY i.id DESC LIMIT 1`).get(email) : null;
+    if (!partner) ambassador ??= ambassadorByCode(invitedBy?.code);
     const source = str(req.body?.source, 60)?.toLowerCase() ?? waited?.source ?? null;
     if (db.prepare('SELECT 1 FROM users WHERE lower(trim(email)) = ?').get(email)) throw new HttpError(409, 'An account with this email already exists.');
     const user = createMember({ email, password, role, name, country, city, lang: pickLang(req.get('accept-language')), source, ambassador });
+    if (role === 'family') db.prepare('UPDATE agency_family_invites SET user_id = ? WHERE email = ? AND user_id IS NULL').run(user.id, email);
     issueCode(user, 'verify');
     const s = createSession(db, user.id);
     setCookie(res, s.token);
@@ -2187,6 +2192,28 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       matches: db.prepare("SELECT COUNT(*) n FROM match_requests WHERE status = 'accepted' AND (from_user = ? OR to_user = ?)").get(u.id, u.id).n,
       placement: placement ?? null, ...familyStage(u, a) };
   };
+  // Families the agency invited by email, and whether they joined.
+  api.get('/agency/family-invites', requireRole('agency'), wrap((req) => {
+    const a = myAgency(req);
+    return { invites: db.prepare(`SELECT i.email, i.name, i.created_at, i.user_id IS NOT NULL joined FROM agency_family_invites i
+      WHERE i.ambassador_id = ? ORDER BY i.created_at DESC, i.id DESC LIMIT 500`).all(a.id).map((i) => ({ ...i, joined: !!i.joined })) };
+  }));
+  // The agency invites one of its families by email. The family joins the agency when it signs up with that email.
+  api.post('/agency/family-invites', requireRole('agency'), wrap((req) => {
+    const a = myAgency(req);
+    const email = normEmail(req.body?.email);
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw bad('Enter a valid email.');
+    if (db.prepare("SELECT COUNT(*) n FROM agency_family_invites WHERE ambassador_id = ? AND created_at > datetime('now', '-1 day')").get(a.id).n >= 50) {
+      throw new HttpError(429, 'You can invite up to 50 families a day. Try again tomorrow.');
+    }
+    if (db.prepare('SELECT 1 FROM agency_family_invites WHERE ambassador_id = ? AND email = ?').get(a.id, email)) return { invited: true, already: true };
+    const name = str(req.body?.name, 120) || null;
+    const message = str(req.body?.message, 1000) || null;
+    db.prepare('INSERT INTO agency_family_invites (ambassador_id, email, name, message) VALUES (?,?,?,?)').run(a.id, email, name, message);
+    const link = `${referralLink(a)}#/register?role=family&email=${encodeURIComponent(email)}`;
+    Promise.resolve(mailer({ to: email, ...agencyFamilyInviteEmail({ from: a.name, name, message, link, email }) })).catch((e) => console.error('Email failed:', e.message));
+    return { invited: true };
+  }));
   // Every family who joined with the agency's code, with where they are and the agency's own notes.
   api.get('/agency/families', requireRole('agency'), wrap((req) => {
     const a = myAgency(req);

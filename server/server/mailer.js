@@ -135,6 +135,17 @@ export const teamInviteEmail = ({ name, email, link }) => ({
     'Badji Tchedre-San, Co-founder & Partnerships, PairMundo'].join('\n'),
 });
 
+/** An agency invites one of its host families to join it on PairMundo. In English, like ambassadorInviteEmail. */
+export const agencyFamilyInviteEmail = ({ from, name, message, link, email }) => ({
+  subject: `${from} invites you to find your au pair on ${APP_NAME}`,
+  text: [name ? `Hello ${name},` : 'Hello,', '',
+    `${from} uses ${APP_NAME} to match its host families with au pairs, and invites you to join.`, '',
+    message ? `Their message:\n${message}\n` : null,
+    `Create your free family account here:`, link, '',
+    `Sign up with this email address (${email}) and you'll join ${from} automatically. You'll see the au pairs ${from} works with, and ${from} stays with you from the first chat to the start of the stay.`, '',
+    `The ${APP_NAME} team`].filter((x) => x != null).join('\n'),
+});
+
 /** An agency on PairMundo invites another agency to join and work with it. In English, like ambassadorInviteEmail. */
 export const agencyNetworkInviteEmail = ({ from, name, message, signup, email }) => ({
   subject: `${from} invites ${name} to work together on ${APP_NAME}`,

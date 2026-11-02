@@ -637,12 +637,27 @@ views.agency = async () => {
     [amb.space.mask_contacts, tr('Contact details are hidden in chats until a placement is confirmed.')],
     [amb.space.covers_pass, tr("Your families don't pay PairMundo for the Family Pass.")], [amb.space.approve_families, tr('You approve each family before they see your au pairs.')]].map(([on, label]) => `<li>${on ? '✓' : '–'} ${label}</li>`).join('')}</ul>
       <p class="muted small">${tr('To change these, email PairMundo.')}</p></div>
+    <div class="card"><h2>${tr('Invite families')}</h2>
+      <p class="muted small">${tr('We email them a link to create a free family account. When they sign up with that email, they join {agency}.', { agency: esc(amb.name) })}</p>
+      <form id="famInvite"><div class="form-grid"><div class="field"><label>${tr('Family email')}</label><input name="email" type="email" required></div>
+        <div class="field"><label>${tr('Family name (optional)')}</label><input name="name" maxlength="120"></div></div>
+        <div class="field"><label>${tr('Your message (optional)')}</label><textarea name="message" rows="2" maxlength="1000"></textarea></div>
+        <div id="famInviteErr"></div><button class="btn sm">${tr('Send invitation')}</button></form>
+      <div id="famInvites"></div></div>
     <div class="card"><h2>${tr('Your families')}</h2><div id="agencyFamilies"><p class="muted">${tr('Loading…')}</p></div></div>
     <div class="card"><h2>${tr('Introduction log')}</h2><p class="muted small">${tr('When one of your families and one of your au pairs first matched. Keep it as a record for your family contracts.')}</p>
       ${amb.introductions.length ? `<div class="table-wrap"><table><tr><th>${tr('When')}</th><th>${tr('Family')}</th><th>${tr('Au pair')}</th>${amb.introductions.some((i) => i.partner_name) ? `<th>${tr('With partner')}</th>` : ''}</tr>
       ${amb.introductions.map((i) => `<tr><td>${esc(i.created_at.slice(0, 16))}</td><td>${esc(i.family_name)}</td><td>${esc(i.aupair_name)}</td>${amb.introductions.some((x) => x.partner_name) ? `<td>${esc(i.partner_name || '')}</td>` : ''}</tr>`).join('')}</table></div>` : `<p class="muted">${tr('No matches yet.')}</p>`}</div>
     ${amb.flags.length ? `<div class="card"><h2>${tr('Flagged')}</h2><table>${amb.flags.map((f) => `<tr><td>${esc(f.created_at.slice(0, 16))}</td><td>${esc(f.user_name)}</td><td>${tr('Tried to share contact details before a confirmed placement. They were hidden.')}</td></tr>`).join('')}</table></div>` : ''}` : ''}`);
-  if (amb.space) loadAgencyFamilies();
+  if (amb.space) { loadAgencyFamilies(); loadFamilyInvites(); }
+  const inv = document.getElementById('famInvite');
+  if (inv) inv.onsubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const r = await api('/agency/family-invites', { method: 'POST', body: formData(e.target) });
+      toast(r.already ? tr('Already invited') : tr('Invitation sent')); e.target.reset(); document.getElementById('famInviteErr').innerHTML = ''; loadFamilyInvites();
+    } catch (err) { document.getElementById('famInviteErr').innerHTML = `<div class="alert error">${esc(err.message)}</div>`; }
+  };
   document.getElementById('ambCopy').onclick = async () => {
     try { await navigator.clipboard.writeText(amb.link); } catch { document.getElementById('ambLink').select(); document.execCommand('copy'); }
     toast(tr('Link copied'));
@@ -651,6 +666,15 @@ views.agency = async () => {
 
 const FAMILY_STAGE_LABELS = () => ({ enquiry: tr('New enquiry'), approved: tr('Approved'), matching: tr('Matching'), matched: tr('Matched'),
   placed: tr('Placed'), finished: tr('Finished'), not_going: tr('Not going ahead') });
+
+// The families the agency invited by email, and whether each has joined.
+async function loadFamilyInvites() {
+  const box = document.getElementById('famInvites'); if (!box) return;
+  const { invites } = await api('/agency/family-invites');
+  box.innerHTML = invites.length ? `<div class="table-wrap"><table><tr><th>${tr('Invited')}</th><th>${tr('Sent')}</th><th>${tr('Status')}</th></tr>
+    ${invites.map((i) => `<tr><td>${esc(i.name || '')}${i.name ? '<br>' : ''}<span class="muted small">${esc(i.email)}</span></td><td>${esc(i.created_at.slice(0, 10))}</td>
+      <td>${i.joined ? `✓ ${tr('Joined')}` : tr('Not joined yet')}</td></tr>`).join('')}</table></div>` : '';
+}
 
 // The agency's families, each with a stage, whether the agency's fee is paid, and a note only the agency sees.
 async function loadAgencyFamilies() {

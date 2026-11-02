@@ -2090,6 +2090,19 @@ test('agency spaces: closed network, hidden contact details, introduction log an
   assert.ok((await call(ap.token, 'GET', '/search?limit=100')).body.results.some((x) => x.user.id === outsiderFam.id), 'shared au pairs see families outside');
   const loop = (await call(boss.token, 'GET', '/me/ambassador')).body.space;
   assert.deepEqual([loop.share_aupairs, loop.pilot_until], [true, '2027-02-02']);
+
+  // The agency invites a family by email; signing up with that email joins the agency, even without the link.
+  let inv = await call(boss.token, 'POST', '/agency/family-invites', { email: 'Invited.Fam@test.io', name: 'The Invited', message: 'Welcome!' });
+  assert.deepEqual(inv.body, { invited: true });
+  const mail = [...outbox].reverse().find((m) => m.to === 'invited.fam@test.io');
+  assert.ok(mail && mail.text.includes('ref=DREAMDEMO') && mail.text.includes('Welcome!'), mail?.text);
+  assert.equal((await call(boss.token, 'POST', '/agency/family-invites', { email: 'invited.fam@test.io' })).body.already, true);
+  assert.equal((await call(boss.token, 'POST', '/agency/family-invites', { email: 'nope' })).status, 400);
+  assert.equal((await call(ap.token, 'POST', '/agency/family-invites', { email: 'x@test.io' })).status, 403);
+  const invitedFam = await register('invited.fam@test.io', 'family', 'AU', 'The Invited', { complete: false });
+  assert.equal(testDb.prepare('SELECT ref_code FROM users WHERE id = ?').get(invitedFam.id).ref_code, 'DREAMDEMO');
+  inv = (await call(boss.token, 'GET', '/agency/family-invites')).body.invites;
+  assert.deepEqual(inv.map((i) => [i.email, i.joined]), [['invited.fam@test.io', true]]);
 });
 
 test('agency approval: families wait for their agency, which tracks each one through its stages', async () => {
