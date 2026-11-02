@@ -475,6 +475,18 @@ CREATE TABLE IF NOT EXISTS agency_invites (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (from_id, email)
 );
+-- Families and au pairs an agency invited by email (role). Whoever signs up with that email joins the agency,
+-- with or without the link.
+CREATE TABLE IF NOT EXISTS agency_family_invites (
+  id INTEGER PRIMARY KEY,
+  ambassador_id INTEGER NOT NULL REFERENCES ambassadors(id) ON DELETE CASCADE,
+  email TEXT NOT NULL,
+  name TEXT,
+  message TEXT,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (ambassador_id, email)
+);
 -- Memberships an agency claims, like IAPA. Only the ones PairMundo checked show as a badge.
 CREATE TABLE IF NOT EXISTS agency_affiliations (
   id INTEGER PRIMARY KEY,
@@ -715,6 +727,21 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
   }
   // An agency can approve each family before they see anyone in its space.
   if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'approve_families')) db.exec('ALTER TABLE ambassadors ADD COLUMN approve_families INTEGER NOT NULL DEFAULT 0');
+  // Closed Loop: a closed space whose au pairs are still shown to every family on PairMundo (share_aupairs), and the
+  // date its free pilot ends (pilot_until), after which the Closed Loop fee applies.
+  if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'share_aupairs')) {
+    db.exec(`ALTER TABLE ambassadors ADD COLUMN share_aupairs INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE ambassadors ADD COLUMN pilot_until TEXT`);
+  }
+  // The au pairs an agency's families may also see from the whole app, as JSON criteria the agency sets
+  // ({nationalities, min_age, max_age, languages: [{code, level}], verified, drivers_license, min_childcare_years}).
+  // NULL: its families see only its own and its partners' au pairs.
+  if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'aupair_criteria')) db.exec('ALTER TABLE ambassadors ADD COLUMN aupair_criteria TEXT');
+  // The families outside its loop an agency's shared au pairs are shown to, as JSON criteria
+  // ({countries, verified, private_room, non_smoking, max_weekly_hours}). NULL: every family.
+  if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'family_criteria')) db.exec('ALTER TABLE ambassadors ADD COLUMN family_criteria TEXT');
+  // An agency's email invites go to families and to au pairs.
+  if (!db.prepare('PRAGMA table_info(agency_family_invites)').all().some((c) => c.name === 'role')) db.exec("ALTER TABLE agency_family_invites ADD COLUMN role TEXT NOT NULL DEFAULT 'family'");
   // The agency directory: whether an agency is listed, which side it works on, the countries it works with and a few words.
   if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'network_listed')) {
     db.exec(`ALTER TABLE ambassadors ADD COLUMN network_listed INTEGER NOT NULL DEFAULT 0;
