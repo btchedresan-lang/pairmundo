@@ -135,6 +135,21 @@ export const teamInviteEmail = ({ name, email, link }) => ({
     'Badji Tchedre-San, Co-founder & Partnerships, PairMundo'].join('\n'),
 });
 
+/** Tells an agency what's new on its agency page (November 2026). In English, like the other partner emails; signed by Badji. */
+export const agencyUpdateEmail = ({ name, link }) => ({
+  subject: `New on your ${APP_NAME} agency page: invite families and au pairs, and choose who sees whom`,
+  text: [`Hello ${name} team,`, '',
+    `We've added new tools to your agency page on ${APP_NAME}. Nothing changes for you unless you use them.`, '',
+    '- Invite families and au pairs by email. They get a link to create a free account, and join your agency when they sign up with that email. You see who has joined.',
+    '- Choose who sees whom. By default everyone sees everyone. You can limit which au pairs your families see (nationality, age, languages, ID check, driving licence, childcare experience) and which families see your au pairs (host country, ID check, private room, non-smoking home, weekly hours). Your own families and au pairs always see each other.',
+    '- Follow each of your families from new enquiry to placed, with private notes and whether your fee is paid.',
+    '- Keep a record of every first match between your families and your au pairs.', '',
+    'We can also hide contact details in chats until you confirm a placement, let you approve each new family first, and include the Family Pass for your families. Just reply to this email if you want any of these.', '',
+    'Open your agency page:', link, '',
+    'Questions? Just reply to this email.', '',
+    'Best regards,', 'Badji Tchedre-San', `Co-founder & Partnerships, ${APP_NAME}`].join('\n'),
+});
+
 /** An agency invites one of its host families to join it on PairMundo. In English, like ambassadorInviteEmail. */
 export const agencyFamilyInviteEmail = ({ from, name, message, link, email, role = 'family' }) => ({
   subject: role === 'aupair' ? `${from} invites you to meet host families on ${APP_NAME}` : `${from} invites you to find your au pair on ${APP_NAME}`,

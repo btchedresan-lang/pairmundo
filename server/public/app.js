@@ -2228,6 +2228,7 @@ async function adminAmbassadors(head, id, qs) {
     return;
   }
   const { ambassadors, rewards, partner_accounts: waiting } = await api(`/admin/ambassadors?month=${month}`);
+  const upd = await api('/admin/agency-update').catch(() => null);
   render(`${head}<div class="spread"><form id="monthPick" class="row"><label>Month</label><input type="month" name="month" value="${esc(month)}" style="width:auto"></form>
       <a class="btn sm" href="/api/admin/ambassadors.csv?month=${esc(month)}">⬇ Payout sheet for ${esc(month)} (CSV)</a></div>
     <p class="muted small">Rewards: ${usd(rewards.profile)} per completed, ID-verified au pair profile (up to ${usd(rewards.profile_monthly_cap)} a month), ${usd(rewards.pass)} for a family's first Family Pass, ${usd(rewards.placement)} per referred side when a stay starts.</p>
@@ -2239,10 +2240,20 @@ async function adminAmbassadors(head, id, qs) {
       <p class="muted small">Add the agency or ambassador below (or open an existing one) and put this email in "Their PairMundo account email". They then see their code and numbers when they sign in. Ambassadors earn from the code once it is linked, so have them sign the ambassador agreement first.</p>
       <table><tr><th>Name</th><th>Account email</th><th>Country</th><th>Signed up</th></tr>
       ${waiting.map((u) => `<tr><td>${esc(u.name)} <span class="chip">${u.role === 'agency' ? 'Agency' : 'Ambassador'}</span></td><td>${esc(u.email)}</td><td>${cname(u.country) || '—'}</td><td>${fmtTime(u.created_at)}</td></tr>`).join('')}</table></div>` : ''}
+    ${upd?.recipients.length ? `<div class="card"><h3>Agency update email (November 2026)</h3>
+      <p class="muted small">Tells each agency what's new on its agency page. Each agency gets it once. Agencies without an email are skipped.</p>
+      <div class="table-wrap"><table><tr><th>Agency</th><th>Goes to</th></tr>${upd.recipients.map((r) => `<tr><td>${esc(r.name)} <code>${esc(r.code)}</code></td><td>${r.to ? esc(r.to) : '<span class="muted">No email, skipped</span>'}</td></tr>`).join('')}</table></div>
+      ${upd.sample ? `<details><summary>Read the email</summary><p><strong>${esc(upd.sample.subject)}</strong></p><pre style="white-space:pre-wrap">${esc(upd.sample.text)}</pre></details>` : ''}
+      <button class="btn sm" id="sendUpdate">Send to ${upd.recipients.filter((r) => r.to).length} agencies</button></div>` : ''}
     <form class="card" id="ambNew"><h3>Add an ambassador, partner agency or flyer distributor</h3>
       <div class="field"><label>Referral code (letters, numbers and dashes; it can't change later)</label><input name="code" required placeholder="ANA-CO" autocapitalize="characters"></div>
       ${fields(qs?.get('new') ? { kind: qs.get('new'), name: qs.get('name'), country: qs.get('country'), account_email: qs.get('email') } : {})}<button class="btn sm">Add</button></form>`);
   wireKind(document.getElementById('ambNew'));
+  const su = document.getElementById('sendUpdate');
+  if (su) su.onclick = async () => {
+    if (!confirm('Send the update email to these agencies now? This cannot be undone.')) return;
+    try { const r = await api('/admin/agency-update', { method: 'POST' }); toast(`Sent to ${r.sent} agencies`); go(`#/admin/ambassadors?month=${month}`); } catch (err) { toast(err.message); }
+  };
   if (qs?.get('new')) document.getElementById('ambNew').scrollIntoView({ block: 'start' });
   document.querySelector('#monthPick input').onchange = (e) => go(`#/admin/ambassadors?month=${e.target.value}`);
   document.getElementById('ambNew').onsubmit = async (e) => {

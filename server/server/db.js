@@ -740,6 +740,8 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
   // The families outside its loop an agency's shared au pairs are shown to, as JSON criteria
   // ({countries, verified, private_room, non_smoking, max_weekly_hours}). NULL: every family.
   if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'family_criteria')) db.exec('ALTER TABLE ambassadors ADD COLUMN family_criteria TEXT');
+  // When the admin emailed an agency about the November 2026 agency page update, so it goes out once.
+  if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'update_emailed_at')) db.exec('ALTER TABLE ambassadors ADD COLUMN update_emailed_at TEXT');
   // An agency's email invites go to families and to au pairs.
   if (!db.prepare('PRAGMA table_info(agency_family_invites)').all().some((c) => c.name === 'role')) db.exec("ALTER TABLE agency_family_invites ADD COLUMN role TEXT NOT NULL DEFAULT 'family'");
   // The agency directory: whether an agency is listed, which side it works on, the countries it works with and a few words.
