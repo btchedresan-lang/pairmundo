@@ -675,10 +675,11 @@ views.agency = async () => {
         <label class="check"><input type="checkbox" name="non_smoking" ${c.non_smoking ? 'checked' : ''}> ${tr('Non-smoking home')}</label>
         <div id="famCritErr"></div><button class="btn sm">${tr('Save')}</button></form></div>`;
   })()}
-    <div class="card"><h2>${tr('Invite families')}</h2>
-      <p class="muted small">${tr('We email them a link to create a free family account. When they sign up with that email, they join {agency}.', { agency: esc(amb.name) })}</p>
-      <form id="famInvite"><div class="form-grid"><div class="field"><label>${tr('Family email')}</label><input name="email" type="email" required></div>
-        <div class="field"><label>${tr('Family name (optional)')}</label><input name="name" maxlength="120"></div></div>
+    <div class="card"><h2>${tr('Invite families and au pairs')}</h2>
+      <p class="muted small">${tr('We email them a link to create a free account. When they sign up with that email, they join {agency}.', { agency: esc(amb.name) })}</p>
+      <form id="famInvite"><div class="field"><label>${tr('Who are you inviting?')}</label><select name="role"><option value="family">${tr('A host family')}</option><option value="aupair">${tr('An au pair')}</option></select></div>
+        <div class="form-grid"><div class="field"><label>${tr('Email')}</label><input name="email" type="email" required></div>
+        <div class="field"><label>${tr('Name (optional)')}</label><input name="name" maxlength="120"></div></div>
         <div class="field"><label>${tr('Your message (optional)')}</label><textarea name="message" rows="2" maxlength="1000"></textarea></div>
         <div id="famInviteErr"></div><button class="btn sm">${tr('Send invitation')}</button></form>
       <div id="famInvites"></div></div>
@@ -724,12 +725,12 @@ views.agency = async () => {
 const FAMILY_STAGE_LABELS = () => ({ enquiry: tr('New enquiry'), approved: tr('Approved'), matching: tr('Matching'), matched: tr('Matched'),
   placed: tr('Placed'), finished: tr('Finished'), not_going: tr('Not going ahead') });
 
-// The families the agency invited by email, and whether each has joined.
+// The families and au pairs the agency invited by email, and whether each has joined.
 async function loadFamilyInvites() {
   const box = document.getElementById('famInvites'); if (!box) return;
   const { invites } = await api('/agency/family-invites');
-  box.innerHTML = invites.length ? `<div class="table-wrap"><table><tr><th>${tr('Invited')}</th><th>${tr('Sent')}</th><th>${tr('Status')}</th></tr>
-    ${invites.map((i) => `<tr><td>${esc(i.name || '')}${i.name ? '<br>' : ''}<span class="muted small">${esc(i.email)}</span></td><td>${esc(i.created_at.slice(0, 10))}</td>
+  box.innerHTML = invites.length ? `<div class="table-wrap"><table><tr><th>${tr('Invited')}</th><th></th><th>${tr('Sent')}</th><th>${tr('Status')}</th></tr>
+    ${invites.map((i) => `<tr><td>${esc(i.name || '')}${i.name ? '<br>' : ''}<span class="muted small">${esc(i.email)}</span></td><td>${i.role === 'aupair' ? tr('Au pair') : tr('Family')}</td><td>${esc(i.created_at.slice(0, 10))}</td>
       <td>${i.joined ? `✓ ${tr('Joined')}` : tr('Not joined yet')}</td></tr>`).join('')}</table></div>` : '';
 }
 

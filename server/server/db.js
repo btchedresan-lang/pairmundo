@@ -475,7 +475,7 @@ CREATE TABLE IF NOT EXISTS agency_invites (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (from_id, email)
 );
--- Families an agency invited by email to join its space. A family who signs up with that email joins the agency,
+-- Families and au pairs an agency invited by email (role). Whoever signs up with that email joins the agency,
 -- with or without the link.
 CREATE TABLE IF NOT EXISTS agency_family_invites (
   id INTEGER PRIMARY KEY,
@@ -740,6 +740,8 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
   // The families outside its loop an agency's shared au pairs are shown to, as JSON criteria
   // ({countries, verified, private_room, non_smoking, max_weekly_hours}). NULL: every family.
   if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'family_criteria')) db.exec('ALTER TABLE ambassadors ADD COLUMN family_criteria TEXT');
+  // An agency's email invites go to families and to au pairs.
+  if (!db.prepare('PRAGMA table_info(agency_family_invites)').all().some((c) => c.name === 'role')) db.exec("ALTER TABLE agency_family_invites ADD COLUMN role TEXT NOT NULL DEFAULT 'family'");
   // The agency directory: whether an agency is listed, which side it works on, the countries it works with and a few words.
   if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'network_listed')) {
     db.exec(`ALTER TABLE ambassadors ADD COLUMN network_listed INTEGER NOT NULL DEFAULT 0;

@@ -2101,8 +2101,13 @@ test('agency spaces: closed network, hidden contact details, introduction log an
   assert.equal((await call(ap.token, 'POST', '/agency/family-invites', { email: 'x@test.io' })).status, 403);
   const invitedFam = await register('invited.fam@test.io', 'family', 'AU', 'The Invited', { complete: false });
   assert.equal(testDb.prepare('SELECT ref_code FROM users WHERE id = ?').get(invitedFam.id).ref_code, 'DREAMDEMO');
+  // Au pairs too.
+  await call(boss.token, 'POST', '/agency/family-invites', { email: 'invited.ap@test.io', role: 'aupair' });
+  assert.ok([...outbox].reverse().find((m) => m.to === 'invited.ap@test.io')?.text.includes('role=aupair'));
+  const invitedAp = await register('invited.ap@test.io', 'aupair', 'PH', 'Invited AP', { complete: false });
+  assert.equal(testDb.prepare('SELECT ref_code FROM users WHERE id = ?').get(invitedAp.id).ref_code, 'DREAMDEMO');
   inv = (await call(boss.token, 'GET', '/agency/family-invites')).body.invites;
-  assert.deepEqual(inv.map((i) => [i.email, i.joined]), [['invited.fam@test.io', true]]);
+  assert.deepEqual(inv.map((i) => [i.email, i.role, i.joined]).sort(), [['invited.ap@test.io', 'aupair', true], ['invited.fam@test.io', 'family', true]]);
 
   // Au pair criteria: the agency's families also see au pairs from the whole app who fit them.
   const famSees = async (id) => (await call(fam.token, 'GET', '/search?limit=100')).body.results.some((x) => x.user.id === id);
