@@ -627,16 +627,54 @@ views.agency = async () => {
       <p class="muted small">${tr('Au pairs count here when they sign up with your code or link, or add your code later in their account. A profile shows to families once it has a photo and an About me.')}</p></div>
     ${amb.network ? `<div class="card"><h2>🤝 ${tr('Partner agencies')}</h2><p>${tr('Find agencies to work with, like a sending agency for your families or a host agency for your au pairs. Partners share their spaces, and you can show memberships like IAPA.')}</p>
       <a class="btn sm" href="#/network">${tr('Open partner agencies')}</a></div>` : ''}
-    ${amb.space ? `<div class="card"><h2>${amb.space.closed_network ? `🔒 ${tr('Your Closed Loop')}` : tr('Your agency space')}</h2>
-      ${amb.space.closed_network ? `<p>${amb.space.pilot_until && amb.space.pilot_until >= new Date().toISOString().slice(0, 10)
+    ${amb.space ? `<div class="card"><h2>${amb.space.loop ? `🔒 ${tr('Your Closed Loop')}` : tr('Your agency space')}</h2>
+      ${amb.space.loop ? `<p>${amb.space.pilot_until && amb.space.pilot_until >= new Date().toISOString().slice(0, 10)
     ? tr('Free pilot until {date}. After that: €129 a month (€97 in your first year as a founding partner) and €75 per au pair who starts with one of your families.', { date: esc(new Date(`${amb.space.pilot_until}T12:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })) })
     : tr('€129 a month (€97 in your first year as a founding partner) and €75 per au pair who starts with one of your families.')}</p>` : ''}
       <p>${trn(amb.space.families, '{n} family has joined with your code.', '{n} families have joined with your code.')} ${trn(amb.space.aupairs, '{n} au pair has joined with your code.', '{n} au pairs have joined with your code.')}</p>
-      <ul>${[[amb.space.closed_network, amb.space.share_aupairs ? tr('Your families only see your au pairs (and your partner agencies\' au pairs). Nobody outside sees your families.') : tr('Closed network: your families and au pairs only meet each other.')],
-    ...(amb.space.closed_network && amb.space.share_aupairs ? [[true, tr('Your au pairs are also shown to every family on PairMundo, labelled "Prepared by {agency}".', { agency: esc(amb.name) })]] : []),
+      <ul>${[[true, amb.space.aupair_criteria?.only_own || (amb.space.closed_network && !amb.space.aupair_criteria) ? tr('Your families see only your au pairs and your partner agencies\' au pairs.')
+      : amb.space.aupair_criteria ? tr('Your families see your au pairs, and au pairs on PairMundo who fit your criteria.') : tr('Your families see every au pair on PairMundo, yours first labelled "Prepared by {agency}".', { agency: esc(amb.name) })],
+    [true, amb.space.family_criteria?.only_own || (amb.space.closed_network && !amb.space.share_aupairs) ? tr('Your au pairs are shown only to your families and your partner agencies\' families.')
+      : amb.space.family_criteria ? tr('Your au pairs are shown to your families, and to families on PairMundo who fit your criteria.') : tr('Your au pairs are shown to every family on PairMundo, labelled "Prepared by {agency}".', { agency: esc(amb.name) })],
     [amb.space.mask_contacts, tr('Contact details are hidden in chats until a placement is confirmed.')],
     [amb.space.covers_pass, tr("Your families don't pay PairMundo for the Family Pass.")], [amb.space.approve_families, tr('You approve each family before they see your au pairs.')]].map(([on, label]) => `<li>${on ? '✓' : '–'} ${label}</li>`).join('')}</ul>
-      <p class="muted small">${tr('To change these, email PairMundo.')}</p></div>
+      <p class="muted small">${tr('Choose who sees whom below. To change the rest, email PairMundo.')}</p></div>
+    ${(() => {
+    const c = amb.space.aupair_criteria || {};
+    const mode = c.only_own ? 'own' : amb.space.aupair_criteria ? 'some' : 'all';
+    const lang = (i) => `<div class="form-grid"><div class="field"><label>${tr('Language {n}', { n: i + 1 })}</label><select name="lang${i}">${options(LANGS, c.languages?.[i]?.code || '', tr('None'))}</select></div>
+      <div class="field"><label>${tr('At least')}</label><select name="level${i}">${LEVELS.slice().reverse().map((l) => `<option ${c.languages?.[i]?.level === l ? 'selected' : ''}>${l}</option>`).join('')}</select></div></div>`;
+    return `<div class="card"><h2>${tr('Au pairs your families see')}</h2>
+      <p class="muted small">${tr('Your families always see your own au pairs and your partner agencies\' au pairs. Choose which other au pairs on PairMundo they see.')}</p>
+      <form id="critForm"><label class="check"><input type="radio" name="mode" value="all" ${mode === 'all' ? 'checked' : ''}> ${tr('Every au pair on PairMundo')}</label>
+        <label class="check"><input type="radio" name="mode" value="some" ${mode === 'some' ? 'checked' : ''}> ${tr('Only au pairs who fit these criteria')}</label>
+        <label class="check"><input type="radio" name="mode" value="own" ${mode === 'own' ? 'checked' : ''}> ${tr('Only our own au pairs')}</label>
+        <div class="field"><label>${tr('Nationalities (none selected = any)')}</label><select name="nationalities" multiple size="6">${Object.entries(COUNTRIES).sort((x, y) => tr(x[1]).localeCompare(tr(y[1])))
+    .map(([k, v]) => `<option value="${k}" ${(c.nationalities || []).includes(k) ? 'selected' : ''}>${esc(tr(v))}</option>`).join('')}</select></div>
+        <div class="form-grid"><div class="field"><label>${tr('Minimum age')}</label><input name="min_age" type="number" min="17" max="40" value="${c.min_age ?? ''}"></div>
+          <div class="field"><label>${tr('Maximum age')}</label><input name="max_age" type="number" min="17" max="40" value="${c.max_age ?? ''}"></div></div>
+        ${lang(0)}${lang(1)}
+        <div class="field"><label>${tr('Years of childcare experience, at least')}</label><input name="min_childcare_years" type="number" min="0" max="20" step="0.5" value="${c.min_childcare_years ?? ''}"></div>
+        <label class="check"><input type="checkbox" name="verified" ${c.verified ? 'checked' : ''}> ${tr('ID verified only')}</label>
+        <label class="check"><input type="checkbox" name="drivers_license" ${c.drivers_license ? 'checked' : ''}> ${tr("Driver's licence")}</label>
+        <div id="critErr"></div><button class="btn sm">${tr('Save')}</button></form></div>`;
+  })()}
+    ${(() => {
+    const c = amb.space.family_criteria || {};
+    const mode = c.only_own ? 'own' : amb.space.family_criteria ? 'some' : 'all';
+    return `<div class="card"><h2>${tr('Families your au pairs are shown to')}</h2>
+      <p class="muted small">${tr('Your own families and your partner agencies\' families always see your au pairs. Choose which other families on PairMundo see them too.')}</p>
+      <form id="famCritForm"><label class="check"><input type="radio" name="mode" value="all" ${mode === 'all' ? 'checked' : ''}> ${tr('Every family on PairMundo')}</label>
+        <label class="check"><input type="radio" name="mode" value="some" ${mode === 'some' ? 'checked' : ''}> ${tr('Only families who fit these criteria')}</label>
+        <label class="check"><input type="radio" name="mode" value="own" ${mode === 'own' ? 'checked' : ''}> ${tr('Only our own families')}</label>
+        <div class="field"><label>${tr('Host countries (none selected = any)')}</label><select name="countries" multiple size="6">${Object.entries(COUNTRIES).sort((x, y) => tr(x[1]).localeCompare(tr(y[1])))
+    .map(([k, v]) => `<option value="${k}" ${(c.countries || []).includes(k) ? 'selected' : ''}>${esc(tr(v))}</option>`).join('')}</select></div>
+        <div class="field"><label>${tr('Weekly hours, at most')}</label><input name="max_weekly_hours" type="number" min="10" max="60" value="${c.max_weekly_hours ?? ''}"></div>
+        <label class="check"><input type="checkbox" name="verified" ${c.verified ? 'checked' : ''}> ${tr('ID verified families only')}</label>
+        <label class="check"><input type="checkbox" name="private_room" ${c.private_room ? 'checked' : ''}> ${tr('Private room for the au pair')}</label>
+        <label class="check"><input type="checkbox" name="non_smoking" ${c.non_smoking ? 'checked' : ''}> ${tr('Non-smoking home')}</label>
+        <div id="famCritErr"></div><button class="btn sm">${tr('Save')}</button></form></div>`;
+  })()}
     <div class="card"><h2>${tr('Invite families')}</h2>
       <p class="muted small">${tr('We email them a link to create a free family account. When they sign up with that email, they join {agency}.', { agency: esc(amb.name) })}</p>
       <form id="famInvite"><div class="form-grid"><div class="field"><label>${tr('Family email')}</label><input name="email" type="email" required></div>
@@ -650,6 +688,25 @@ views.agency = async () => {
       ${amb.introductions.map((i) => `<tr><td>${esc(i.created_at.slice(0, 16))}</td><td>${esc(i.family_name)}</td><td>${esc(i.aupair_name)}</td>${amb.introductions.some((x) => x.partner_name) ? `<td>${esc(i.partner_name || '')}</td>` : ''}</tr>`).join('')}</table></div>` : `<p class="muted">${tr('No matches yet.')}</p>`}</div>
     ${amb.flags.length ? `<div class="card"><h2>${tr('Flagged')}</h2><table>${amb.flags.map((f) => `<tr><td>${esc(f.created_at.slice(0, 16))}</td><td>${esc(f.user_name)}</td><td>${tr('Tried to share contact details before a confirmed placement. They were hidden.')}</td></tr>`).join('')}</table></div>` : ''}` : ''}`);
   if (amb.space) { loadAgencyFamilies(); loadFamilyInvites(); }
+  const crit = document.getElementById('critForm');
+  if (crit) crit.onsubmit = async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const criteria = f.mode.value === 'own' ? { only_own: true } : f.mode.value === 'all' ? null : { nationalities: [...f.nationalities.selectedOptions].map((o) => o.value), min_age: f.min_age.value, max_age: f.max_age.value,
+      languages: [0, 1].map((i) => ({ code: f[`lang${i}`].value, level: f[`level${i}`].value })).filter((l) => l.code),
+      min_childcare_years: f.min_childcare_years.value, verified: f.verified.checked, drivers_license: f.drivers_license.checked };
+    try { await api('/agency/criteria', { method: 'POST', body: { criteria } }); document.getElementById('critErr').innerHTML = ''; toast(tr('Saved')); views.agency(); }
+    catch (err) { document.getElementById('critErr').innerHTML = `<div class="alert error">${esc(err.message)}</div>`; }
+  };
+  const famCrit = document.getElementById('famCritForm');
+  if (famCrit) famCrit.onsubmit = async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const criteria = f.mode.value === 'own' ? { only_own: true } : f.mode.value === 'all' ? null : { countries: [...f.countries.selectedOptions].map((o) => o.value), max_weekly_hours: f.max_weekly_hours.value,
+      verified: f.verified.checked, private_room: f.private_room.checked, non_smoking: f.non_smoking.checked };
+    try { await api('/agency/family-criteria', { method: 'POST', body: { criteria } }); document.getElementById('famCritErr').innerHTML = ''; toast(tr('Saved')); views.agency(); }
+    catch (err) { document.getElementById('famCritErr').innerHTML = `<div class="alert error">${esc(err.message)}</div>`; }
+  };
   const inv = document.getElementById('famInvite');
   if (inv) inv.onsubmit = async (e) => {
     e.preventDefault();

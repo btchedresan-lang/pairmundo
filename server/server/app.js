@@ -178,13 +178,51 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   /** Memberships PairMundo checked, shown as badges. */
   const agencyBadges = (ambassadorId) => db.prepare("SELECT org, org_name FROM agency_affiliations WHERE ambassador_id = ? AND status = 'verified' ORDER BY id")
     .all(ambassadorId);
-  /** A closed agency space keeps its members to itself: they only meet each other and its partner agencies' members.
-   *  In a Closed Loop that shares its au pairs, the au pairs also meet every family outside closed spaces. */
+  /** The agency's criteria for au pairs from the whole app, or null when its families see only its own au pairs. */
+  const criteriaOf = (a, k = 'aupair_criteria') => { if (!a?.[k]) return null; try { return JSON.parse(a[k]); } catch { return null; } };
+  /** Whether a family fits the criteria an agency set for who its shared au pairs are shown to. No criteria: every family. */
+  const fitsFamily = (p, u, c) => {
+    if (!c) return true;
+    if (!p || c.only_own) return false;
+    if (c.countries?.length && !c.countries.includes(u.country)) return false;
+    if (c.verified && !u.id_verified) return false;
+    if (c.private_room && !p.private_room) return false;
+    if (c.non_smoking && p.smoking_household) return false;
+    if (c.max_weekly_hours && !(p.weekly_hours != null && p.weekly_hours <= c.max_weekly_hours)) return false;
+    return true;
+  };
+  /** Whether an au pair's profile fits an agency's criteria. Language levels count from A1 up to native. */
+  const fitsCriteria = (p, u, c) => {
+    if (!c) return true;
+    if (!p || c.only_own) return false;
+    const rank = (l) => LEVELS.length - LEVELS.indexOf(l);
+    if (c.nationalities?.length && !c.nationalities.includes(p.nationality)) return false;
+    if (c.min_age && !(p.age != null && p.age >= c.min_age)) return false;
+    if (c.max_age && !(p.age != null && p.age <= c.max_age)) return false;
+    if (c.verified && !u.id_verified) return false;
+    if (c.drivers_license && !p.drivers_license) return false;
+    if (c.min_childcare_years && !(Number(p.childcare_years) >= c.min_childcare_years)) return false;
+    return (c.languages || []).every((need) => (p.languages || []).some((l) => l.code === need.code && (!need.level || (LEVELS.includes(l.level) && rank(l.level) >= rank(need.level)))));
+  };
+  /** Who may see whom across agency spaces. By default everyone sees everyone. An agency can limit which au pairs
+   *  outside its loop its families see (aupair_criteria) and which families outside its loop see its au pairs
+   *  (family_criteria); {only_own: true} means none. Its own members and its partner agencies' always meet.
+   *  The older closed network keeps a space to itself, except for au pairs it shares and au pairs that fit its criteria. */
   const closedApart = (a, b) => {
     const sa = agencySpace(a), sb = agencySpace(b);
     if (sa?.id === sb?.id || partnered(sa, sb)) return false;
-    const walled = (u, s) => !!s?.closed_network && !(u.role === 'aupair' && s.share_aupairs);
-    return walled(a, sa) || walled(b, sb);
+    const blocks = (u, s, other) => {
+      if (!s || u.role === other.role) return false;
+      if (u.role === 'family') {
+        const c = criteriaOf(s);
+        if (c) return !fitsCriteria(getProfile(other), other, c);
+        return !!s.closed_network;
+      }
+      if (s.closed_network && !s.share_aupairs) return true;
+      const c = criteriaOf(s, 'family_criteria');
+      return !!c && !fitsFamily(getProfile(other), other, c);
+    };
+    return blocks(a, sa, b) || blocks(b, sb, a);
   };
   const confirmedPlacementBetween = (a, b) => !!db.prepare(`SELECT 1 FROM placements WHERE status IN ('confirmed', 'active', 'completed')
     AND ((aupair_id = ? AND family_id = ?) OR (aupair_id = ? AND family_id = ?))`).get(a, b, b, a);
@@ -995,17 +1033,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const params = [targetRole, me.id, me.id];
     // A closed agency space: its members only meet each other, and nobody outside sees them.
     // Partner agencies share their spaces, so their members count as in.
-    const space = agencySpace(me);
-    const partnerCodes = partnersOf(space).map((x) => x.code);
-    const marks = (xs) => xs.map(() => '?').join(',');
-    // A Closed Loop that shares its au pairs: they see families everywhere too, and every family sees them.
-    if (space?.closed_network && !(me.role === 'aupair' && space.share_aupairs)) { where.push(`u.ref_code IN (${marks([space.code, ...partnerCodes])})`); params.push(space.code, ...partnerCodes); }
-    else {
-      const sharing = targetRole === 'aupair' ? ' AND share_aupairs = 0' : '';
-      const mine = space ? [space.code] : [];
-      where.push(`(u.ref_code IS NULL OR u.ref_code NOT IN (SELECT code FROM ambassadors WHERE kind = 'agency' AND active = 1 AND closed_network = 1${sharing}${[...mine, ...partnerCodes].length ? ` AND code NOT IN (${marks([...mine, ...partnerCodes])})` : ''}))`);
-      params.push(...mine, ...partnerCodes);
-    }
+    // Who may see whom across agency spaces is closedApart's call, applied to each row below.
     if (q.country) { where.push('u.country = ?'); params.push(String(q.country).toUpperCase()); }
     if (q.nationality && targetRole === 'aupair') { where.push('p.nationality = ?'); params.push(String(q.nationality).toUpperCase()); }
     if (q.verified === '1') where.push('u.id_verified = 1');
@@ -1019,7 +1047,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     }
     // Names match from the start only, so a search can't confirm someone's hidden last name.
     if (q.q) { where.push('(u.name LIKE ? OR p.bio LIKE ? OR u.city LIKE ?)'); const like = `%${q.q}%`; params.push(`${q.q}%`, like, like); }
-    const rows = db.prepare(`SELECT u.* FROM users u JOIN ${table} p ON p.user_id = u.id WHERE ${where.join(' AND ')}`).all(...params);
+    let rows = db.prepare(`SELECT u.* FROM users u JOIN ${table} p ON p.user_id = u.id WHERE ${where.join(' AND ')}`).all(...params);
+    rows = rows.filter((u) => !closedApart(me, u));
 
     let results = rows.map((u) => {
       const profile = getProfile(u);
@@ -2192,6 +2221,38 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       matches: db.prepare("SELECT COUNT(*) n FROM match_requests WHERE status = 'accepted' AND (from_user = ? OR to_user = ?)").get(u.id, u.id).n,
       placement: placement ?? null, ...familyStage(u, a) };
   };
+  // The agency's criteria for au pairs from the whole app that its families may also see. null turns it off.
+  api.post('/agency/criteria', requireRole('agency'), wrap((req) => {
+    const a = myAgency(req);
+    const b = req.body?.criteria;
+    if (b == null) { db.prepare('UPDATE ambassadors SET aupair_criteria = NULL WHERE id = ?').run(a.id); return { aupair_criteria: null }; }
+    const num = (v, lo, hi, label) => {
+      if (v == null || v === '') return null;
+      const n = Number(v); if (!Number.isFinite(n) || n < lo || n > hi) throw bad(`${label} must be between ${lo} and ${hi}.`); return n;
+    };
+    const codes = (Array.isArray(b.nationalities) ? b.nationalities : []).map((c) => String(c).trim().toUpperCase()).filter((c) => /^[A-Z]{2}$/.test(c));
+    const langs = (Array.isArray(b.languages) ? b.languages : []).map((l) => ({ code: String(l?.code || '').trim().toLowerCase(), level: LEVELS.includes(l?.level) ? l.level : null }))
+      .filter((l) => /^[a-z]{2,3}$/.test(l.code)).slice(0, 5);
+    if (b.only_own) { db.prepare('UPDATE ambassadors SET aupair_criteria = ? WHERE id = ?').run('{"only_own":true}', a.id); return { aupair_criteria: { only_own: true } }; }
+    const c = { nationalities: [...new Set(codes)].slice(0, 100), min_age: num(b.min_age, 17, 40, 'Minimum age'), max_age: num(b.max_age, 17, 40, 'Maximum age'),
+      languages: langs, verified: !!b.verified, drivers_license: !!b.drivers_license, min_childcare_years: num(b.min_childcare_years, 0, 20, 'Childcare experience') };
+    if (c.min_age && c.max_age && c.min_age > c.max_age) throw bad('The minimum age is above the maximum age.');
+    db.prepare('UPDATE ambassadors SET aupair_criteria = ? WHERE id = ?').run(JSON.stringify(c), a.id);
+    return { aupair_criteria: c };
+  }));
+  // Which families outside its loop the agency's shared au pairs are shown to. null: every family.
+  api.post('/agency/family-criteria', requireRole('agency'), wrap((req) => {
+    const a = myAgency(req);
+    const b = req.body?.criteria;
+    if (b == null) { db.prepare('UPDATE ambassadors SET family_criteria = NULL WHERE id = ?').run(a.id); return { family_criteria: null }; }
+    if (b.only_own) { db.prepare('UPDATE ambassadors SET family_criteria = ? WHERE id = ?').run('{"only_own":true}', a.id); return { family_criteria: { only_own: true } }; }
+    const hours = b.max_weekly_hours == null || b.max_weekly_hours === '' ? null : Number(b.max_weekly_hours);
+    if (hours != null && !(hours >= 10 && hours <= 60)) throw bad('Weekly hours must be between 10 and 60.');
+    const c = { countries: [...new Set((Array.isArray(b.countries) ? b.countries : []).map((x) => String(x).trim().toUpperCase()).filter((x) => /^[A-Z]{2}$/.test(x)))].slice(0, 100),
+      verified: !!b.verified, private_room: !!b.private_room, non_smoking: !!b.non_smoking, max_weekly_hours: hours };
+    db.prepare('UPDATE ambassadors SET family_criteria = ? WHERE id = ?').run(JSON.stringify(c), a.id);
+    return { family_criteria: c };
+  }));
   // Families the agency invited by email, and whether they joined.
   api.get('/agency/family-invites', requireRole('agency'), wrap((req) => {
     const a = myAgency(req);
@@ -2469,7 +2530,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       return { kind: 'agency', code: a.code, name: a.name, link: referralLink(a), network: agencyNetworkOn(),
         this_month: agencyStats(a, new Date().toISOString().slice(0, 7)), total: agencyStats(a),
         space: { closed_network: !!a.closed_network, mask_contacts: !!a.mask_contacts, covers_pass: !!a.covers_pass, approve_families: !!a.approve_families,
-          share_aupairs: !!a.share_aupairs, pilot_until: a.pilot_until ?? null,
+          share_aupairs: !!a.share_aupairs, pilot_until: a.pilot_until ?? null, loop: !!a.closed_network || (!!a.covers_pass && !!a.mask_contacts), aupair_criteria: criteriaOf(a), family_criteria: criteriaOf(a, 'family_criteria'),
           aupairs: db.prepare("SELECT COUNT(*) n FROM users WHERE ref_code = ? AND role = 'aupair'").get(a.code).n,
           families: db.prepare("SELECT COUNT(*) n FROM users WHERE ref_code = ? AND role = 'family'").get(a.code).n },
         introductions: db.prepare('SELECT family_name, aupair_name, how, partner_name, created_at FROM agency_introductions WHERE ambassador_id = ? ORDER BY created_at DESC, id DESC LIMIT 200').all(a.id),

@@ -2103,6 +2103,39 @@ test('agency spaces: closed network, hidden contact details, introduction log an
   assert.equal(testDb.prepare('SELECT ref_code FROM users WHERE id = ?').get(invitedFam.id).ref_code, 'DREAMDEMO');
   inv = (await call(boss.token, 'GET', '/agency/family-invites')).body.invites;
   assert.deepEqual(inv.map((i) => [i.email, i.joined]), [['invited.fam@test.io', true]]);
+
+  // Au pair criteria: the agency's families also see au pairs from the whole app who fit them.
+  const famSees = async (id) => (await call(fam.token, 'GET', '/search?limit=100')).body.results.some((x) => x.user.id === id);
+  assert.equal(await famSees(outsiderAp.id), false);
+  assert.equal((await call(boss.token, 'POST', '/agency/criteria', { criteria: { verified: true } })).status, 200);
+  assert.equal(await famSees(outsiderAp.id), false, 'not ID verified');
+  testDb.prepare('UPDATE users SET id_verified = 1 WHERE id = ?').run(outsiderAp.id);
+  assert.equal(await famSees(outsiderAp.id), true);
+  assert.equal((await call(fam.token, 'GET', `/users/${outsiderAp.id}`)).status, 200);
+  assert.equal((await call(boss.token, 'POST', '/agency/criteria', { criteria: { min_age: 30, max_age: 20 } })).status, 400);
+  await call(boss.token, 'POST', '/agency/criteria', { criteria: null });
+  assert.equal(await famSees(outsiderAp.id), false, 'criteria off');
+
+  // Family criteria: the shared au pairs show only to the outside families the agency chose.
+  const outSees = async () => (await call(outsiderFam.token, 'GET', '/search?limit=100')).body.results.some((x) => x.user.id === ap.id);
+  await call(boss.token, 'POST', '/agency/family-criteria', { criteria: { countries: ['NZ'] } });
+  assert.equal(await outSees(), false);
+  assert.equal((await call(outsiderFam.token, 'GET', `/users/${ap.id}`)).status, 404);
+  assert.ok(!(await call(ap.token, 'GET', '/search?limit=100')).body.results.some((x) => x.user.id === outsiderFam.id), 'and the au pair sees only those families');
+  await call(boss.token, 'POST', '/agency/family-criteria', { criteria: { countries: ['AU'] } });
+  assert.equal(await outSees(), true);
+  await call(boss.token, 'POST', '/agency/family-criteria', { criteria: null });
+  assert.equal(await outSees(), true);
+
+  // The default for an agency that isn't a closed network: everyone sees everyone, until it sets limits.
+  await call(admin, 'POST', `/admin/ambassadors/${dreamId}`, { closed_network: false });
+  assert.equal(await famSees(outsiderAp.id), true);
+  assert.ok((await call(outsiderAp.token, 'GET', '/search?limit=100')).body.results.some((x) => x.user.id === fam.id));
+  await call(boss.token, 'POST', '/agency/criteria', { criteria: { only_own: true } });
+  assert.equal(await famSees(outsiderAp.id), false, 'only our own au pairs');
+  assert.equal(await famSees(ap.id), true);
+  await call(boss.token, 'POST', '/agency/family-criteria', { criteria: { only_own: true } });
+  assert.equal(await outSees(), false, 'only our own families');
 });
 
 test('agency approval: families wait for their agency, which tracks each one through its stages', async () => {

@@ -733,6 +733,13 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
     db.exec(`ALTER TABLE ambassadors ADD COLUMN share_aupairs INTEGER NOT NULL DEFAULT 0;
       ALTER TABLE ambassadors ADD COLUMN pilot_until TEXT`);
   }
+  // The au pairs an agency's families may also see from the whole app, as JSON criteria the agency sets
+  // ({nationalities, min_age, max_age, languages: [{code, level}], verified, drivers_license, min_childcare_years}).
+  // NULL: its families see only its own and its partners' au pairs.
+  if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'aupair_criteria')) db.exec('ALTER TABLE ambassadors ADD COLUMN aupair_criteria TEXT');
+  // The families outside its loop an agency's shared au pairs are shown to, as JSON criteria
+  // ({countries, verified, private_room, non_smoking, max_weekly_hours}). NULL: every family.
+  if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'family_criteria')) db.exec('ALTER TABLE ambassadors ADD COLUMN family_criteria TEXT');
   // The agency directory: whether an agency is listed, which side it works on, the countries it works with and a few words.
   if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'network_listed')) {
     db.exec(`ALTER TABLE ambassadors ADD COLUMN network_listed INTEGER NOT NULL DEFAULT 0;
