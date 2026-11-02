@@ -344,3 +344,65 @@ body { overflow-x: clip; }
 .hero .btn.secondary { background: transparent; color: #fff; border-color: rgba(255, 255, 255, .7); }
 .hero .muted { color: rgba(255, 255, 255, .8) !important; }
 .hero .phone { background: #1a1d2b; box-shadow: 0 30px 60px -20px rgba(15, 25, 80, .55); }
+
+/* Landing: photo collage around the phone (the same people as the link-preview image), warm accents below the hero */
+:root { --coral: #ff6b5e; --coral-soft: #ffe9e5; --sun: #ffb400; --sun-soft: #fff3d1; --mint: #12b886; --mint-soft: #ddf7ec;
+  --sky: #3fa9f5; --sky-soft: #e1f2fe; --lilac: #9c6ade; --lilac-soft: #f1e8fd; }
+.hero-visual { position: relative; width: min(100%, 360px); display: flex; justify-content: center; padding: 18px 0; }
+.hero-visual .phone { position: relative; z-index: 2; width: 210px; }
+.pol { position: absolute; z-index: 1; margin: 0; width: 112px; padding: 6px 6px 22px; background: #fff; border-radius: 6px;
+  box-shadow: 0 14px 30px -8px rgba(10, 20, 80, .45); animation: pol-in .7s cubic-bezier(.2, .8, .2, 1.2) both; }
+.pol img { display: block; width: 100%; height: auto; aspect-ratio: 9 / 10; object-fit: cover; border-radius: 2px; background: var(--brand-soft); }
+.pol figcaption { position: absolute; left: 0; right: 0; bottom: 3px; text-align: center; color: var(--ink); font-family: var(--heading); font-size: .72rem; }
+.pol-1 { left: 0; top: 6%; --r: -8deg; animation-delay: .1s; }
+.pol-2 { right: 0; top: 2%; --r: 6deg; animation-delay: .2s; }
+.pol-3 { left: 4px; bottom: 10%; --r: 5deg; animation-delay: .3s; }
+.pol-3 figcaption { text-align: left; padding-left: 8px; }
+.pol-4 { right: 0; bottom: 16%; --r: -5deg; animation-delay: .4s; }
+.pol-4 figcaption { text-align: right; padding-right: 8px; }
+.pol { transform: rotate(var(--r)); }
+@keyframes pol-in { from { opacity: 0; transform: translateY(18px) rotate(0deg) scale(.9); } to { opacity: 1; transform: rotate(var(--r)); } }
+@media (prefers-reduced-motion: reduce) { .pol { animation: none; } }
+@media (min-width: 900px) {
+  .hero-visual { width: 440px; padding: 0; }
+  .hero-visual .phone { width: 260px; }
+  .pol { width: 140px; padding: 8px 8px 30px; }
+  .pol figcaption { font-size: .9rem; bottom: 5px; }
+}
+/* A warm glow behind the hero text, so the blue doesn't feel flat */
+.hero { background: radial-gradient(60% 70% at 85% 110%, rgba(255, 140, 120, .45), transparent 70%),
+  radial-gradient(40% 50% at 0% 0%, rgba(140, 200, 255, .35), transparent 70%), linear-gradient(160deg, #3d5cdb 0%, #4f6deb 45%, #6886f8 100%); }
+.hero .chip { background: rgba(255, 255, 255, .2); font-weight: 600; }
+.hero .btn:not(.secondary) { background: var(--sun); color: #2b2a33; border-color: var(--sun); box-shadow: 0 8px 20px -8px rgba(255, 180, 0, .8); }
+.hero .btn:not(.secondary):hover { background: #ffc233; }
+
+/* Full-width colored band for "How it works" */
+.band { margin: 40px calc(50% - 50vw) 8px; padding: 40px max(16px, calc(50vw - 544px)); }
+.band h2 { margin: 0 0 20px; }
+.band-warm { background: linear-gradient(180deg, #fff4e8 0%, #ffeef0 100%); }
+.band .card { border-color: transparent; box-shadow: 0 10px 30px -18px rgba(180, 80, 60, .45); }
+.steps .card:nth-child(1) .step-n { background: var(--coral); }
+.steps .card:nth-child(2) .step-n { background: var(--sun); color: #2b2a33; }
+.steps .card:nth-child(3) .step-n { background: var(--mint); }
+
+/* Feature tiles: each icon on its own color */
+.features .icon { width: 48px; height: 48px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; margin-bottom: 10px; }
+.features .card { border-top: 4px solid var(--c, var(--brand)); }
+.features .card:nth-child(5n+1) { --c: var(--coral); } .features .card:nth-child(5n+1) .icon { background: var(--coral-soft); }
+.features .card:nth-child(5n+2) { --c: var(--sun); } .features .card:nth-child(5n+2) .icon { background: var(--sun-soft); }
+.features .card:nth-child(5n+3) { --c: var(--mint); } .features .card:nth-child(5n+3) .icon { background: var(--mint-soft); }
+.features .card:nth-child(5n+4) { --c: var(--sky); } .features .card:nth-child(5n+4) .icon { background: var(--sky-soft); }
+.features .card:nth-child(5n+5) { --c: var(--lilac); } .features .card:nth-child(5n+5) .icon { background: var(--lilac-soft); }
+@media (min-width: 1000px) { .features { grid-template-columns: repeat(4, 1fr); } }
+/* On phones, two compact columns instead of one long list */
+@media (max-width: 600px) {
+  .features { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .features .card { padding: 14px 12px; margin: 0; }
+  .features .icon { width: 40px; height: 40px; font-size: 1.25rem; border-radius: 12px; }
+  .features h3 { font-size: 1rem; }
+  .features p { font-size: .82rem; line-height: 1.4; margin: 0; }
+  .band { padding-top: 32px; padding-bottom: 32px; }
+  .steps { gap: 12px; } .steps .card { margin: 0; }
+}
+.wait-card { border: 0; box-shadow: 0 16px 40px -24px rgba(59, 91, 219, .55); background: linear-gradient(#fff, #fff) padding-box,
+  linear-gradient(120deg, var(--coral), var(--sun), var(--mint), var(--brand)) border-box; border: 2px solid transparent; }

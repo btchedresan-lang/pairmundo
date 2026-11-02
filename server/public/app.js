@@ -487,18 +487,22 @@ function landing() {
       <a class="btn secondary" href="#/register?role=aupair">${tr('I want to be an au pair')}</a>
       <a class="btn secondary" href="#/agency-signup">${tr("I'm an au pair agency")}</a></div>
       <p class="small muted" style="margin-top:12px">${tr('Free for au pairs. Swiping and matching are free for everyone.')}</p></div>
-      <div class="phone" aria-hidden="true"><video id="heroLoop" muted loop playsinline preload="none" poster="/media/hero-loop-poster.webp" width="540" height="1170"></video></div>
+      <div class="hero-visual" aria-hidden="true">
+        ${[['nolan', ''], ['josue', ''], ['dam', tr('Au pair')], ['nathan', tr('Host family')]].map(([n, label], i) => `<figure class="pol pol-${i + 1}">
+          <img src="/media/hero-${n}.webp" alt="" width="360" height="400" decoding="async">${label ? `<figcaption>${label}</figcaption>` : ''}</figure>`).join('')}
+        <div class="phone"><video id="heroLoop" muted loop playsinline preload="none" poster="/media/hero-loop-poster.webp" width="540" height="1170"></video></div>
+      </div>
     </section>
     <section class="card wait-card"><div id="invited"></div><h2>${tr('Be the first to get the app')}</h2>
       <p class="muted">${tr("Leave your email and we'll tell you the day PairMundo arrives on the App Store and Google Play. No spam, and you can leave the list anytime.")}</p>
       <div id="earlyOffer"></div>${waitForm('wait1')}<div id="waitMsg1"></div></section>
-    <h2 class="center" style="margin:36px 0 16px">${tr('How it works')}</h2>
+    <section class="band band-warm"><h2 class="center">${tr('How it works')}</h2>
     <div class="grid steps">${[['1', tr('Create your profile'), tr('Add photos, languages, dates and what you are looking for. It takes about ten minutes.')],
     ['2', tr('Swipe and match'), tr('Like the profiles that fit. When the feeling is mutual, chat opens and you can get to know each other.')],
     ['3', tr('Plan the placement'), tr('Agree on dates, hours and pocket money. PairMundo checks them against the country rules and keeps a checklist for both of you.')]]
-    .map(([n, t, d]) => `<div class="card feature"><div class="step-n">${n}</div><h3>${t}</h3><p class="muted">${d}</p></div>`).join('')}</div>
+    .map(([n, t, d]) => `<div class="card feature"><div class="step-n">${n}</div><h3>${t}</h3><p class="muted">${d}</p></div>`).join('')}</div></section>
     <h2 class="center" style="margin:36px 0 16px">${tr('Why families and au pairs choose PairMundo')}</h2>
-    <div class="grid">
+    <div class="grid features">
       ${[['🔥', tr('Swipe to match'), tr("Swipe right to like, left to pass, up to super like. When you both like each other it's a match.")],
     ['🎯', tr('Smart matching'), tr('A match score that weighs languages, dates, childcare experience, destination wishes and program eligibility, with the reasons shown.')],
     ['⭐', tr('Two-way reviews'), tr('Families and au pairs rate each other after a real placement. Reviews stay hidden until both sides submit, so they are honest.')],
