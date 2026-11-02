@@ -2081,6 +2081,15 @@ test('agency spaces: closed network, hidden contact details, introduction log an
   // An open agency space changes nothing for outsiders.
   await call(admin, 'POST', `/admin/ambassadors/${amb.id ?? testDb.prepare("SELECT id FROM ambassadors WHERE code = 'DREAMDEMO'").get().id}`, { closed_network: false });
   assert.ok((await call(outsiderFam.token, 'GET', '/search?limit=100')).body.results.some((x) => x.user.id === ap.id));
+
+  // Closed Loop that shares its au pairs: outside families see them again, while the space's own families stay closed.
+  const dreamId = testDb.prepare("SELECT id FROM ambassadors WHERE code = 'DREAMDEMO'").get().id;
+  await call(admin, 'POST', `/admin/ambassadors/${dreamId}`, { closed_network: true, share_aupairs: true, pilot_until: '2027-02-02' });
+  assert.ok((await call(outsiderFam.token, 'GET', '/search?limit=100')).body.results.some((x) => x.user.id === ap.id), 'shared au pairs show to everyone');
+  assert.equal((await call(outsiderFam.token, 'GET', `/users/${ap.id}`)).status, 200);
+  assert.ok((await call(ap.token, 'GET', '/search?limit=100')).body.results.some((x) => x.user.id === outsiderFam.id), 'shared au pairs see families outside');
+  const loop = (await call(boss.token, 'GET', '/me/ambassador')).body.space;
+  assert.deepEqual([loop.share_aupairs, loop.pilot_until], [true, '2027-02-02']);
 });
 
 test('agency approval: families wait for their agency, which tracks each one through its stages', async () => {

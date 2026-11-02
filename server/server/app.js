@@ -178,10 +178,13 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   /** Memberships PairMundo checked, shown as badges. */
   const agencyBadges = (ambassadorId) => db.prepare("SELECT org, org_name FROM agency_affiliations WHERE ambassador_id = ? AND status = 'verified' ORDER BY id")
     .all(ambassadorId);
-  /** A closed agency space keeps its members to itself: they only meet each other and its partner agencies' members. */
+  /** A closed agency space keeps its members to itself: they only meet each other and its partner agencies' members.
+   *  In a Closed Loop that shares its au pairs, the au pairs also meet every family outside closed spaces. */
   const closedApart = (a, b) => {
     const sa = agencySpace(a), sb = agencySpace(b);
-    return (!!sa?.closed_network || !!sb?.closed_network) && sa?.id !== sb?.id && !partnered(sa, sb);
+    if (sa?.id === sb?.id || partnered(sa, sb)) return false;
+    const walled = (u, s) => !!s?.closed_network && !(u.role === 'aupair' && s.share_aupairs);
+    return walled(a, sa) || walled(b, sb);
   };
   const confirmedPlacementBetween = (a, b) => !!db.prepare(`SELECT 1 FROM placements WHERE status IN ('confirmed', 'active', 'completed')
     AND ((aupair_id = ? AND family_id = ?) OR (aupair_id = ? AND family_id = ?))`).get(a, b, b, a);
@@ -990,10 +993,13 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const space = agencySpace(me);
     const partnerCodes = partnersOf(space).map((x) => x.code);
     const marks = (xs) => xs.map(() => '?').join(',');
-    if (space?.closed_network) { where.push(`u.ref_code IN (${marks([space.code, ...partnerCodes])})`); params.push(space.code, ...partnerCodes); }
+    // A Closed Loop that shares its au pairs: they see families everywhere too, and every family sees them.
+    if (space?.closed_network && !(me.role === 'aupair' && space.share_aupairs)) { where.push(`u.ref_code IN (${marks([space.code, ...partnerCodes])})`); params.push(space.code, ...partnerCodes); }
     else {
-      where.push(`(u.ref_code IS NULL OR u.ref_code NOT IN (SELECT code FROM ambassadors WHERE kind = 'agency' AND active = 1 AND closed_network = 1${partnerCodes.length ? ` AND code NOT IN (${marks(partnerCodes)})` : ''}))`);
-      params.push(...partnerCodes);
+      const sharing = targetRole === 'aupair' ? ' AND share_aupairs = 0' : '';
+      const mine = space ? [space.code] : [];
+      where.push(`(u.ref_code IS NULL OR u.ref_code NOT IN (SELECT code FROM ambassadors WHERE kind = 'agency' AND active = 1 AND closed_network = 1${sharing}${[...mine, ...partnerCodes].length ? ` AND code NOT IN (${marks([...mine, ...partnerCodes])})` : ''}))`);
+      params.push(...mine, ...partnerCodes);
     }
     if (q.country) { where.push('u.country = ?'); params.push(String(q.country).toUpperCase()); }
     if (q.nationality && targetRole === 'aupair') { where.push('p.nationality = ?'); params.push(String(q.nationality).toUpperCase()); }
@@ -2436,6 +2442,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       return { kind: 'agency', code: a.code, name: a.name, link: referralLink(a), network: agencyNetworkOn(),
         this_month: agencyStats(a, new Date().toISOString().slice(0, 7)), total: agencyStats(a),
         space: { closed_network: !!a.closed_network, mask_contacts: !!a.mask_contacts, covers_pass: !!a.covers_pass, approve_families: !!a.approve_families,
+          share_aupairs: !!a.share_aupairs, pilot_until: a.pilot_until ?? null,
+          aupairs: db.prepare("SELECT COUNT(*) n FROM users WHERE ref_code = ? AND role = 'aupair'").get(a.code).n,
           families: db.prepare("SELECT COUNT(*) n FROM users WHERE ref_code = ? AND role = 'family'").get(a.code).n },
         introductions: db.prepare('SELECT family_name, aupair_name, how, partner_name, created_at FROM agency_introductions WHERE ambassador_id = ? ORDER BY created_at DESC, id DESC LIMIT 200').all(a.id),
         flags: db.prepare('SELECT user_name, kind, created_at FROM agency_flags WHERE ambassador_id = ? ORDER BY created_at DESC, id DESC LIMIT 100').all(a.id) };
@@ -2664,7 +2672,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     return { name, country: text('country', 2)?.toUpperCase() ?? null, contact: text('contact', 200), notes: text('notes', 2000), user_id: userId,
       active: 'active' in body ? (body.active ? 1 : 0) : Number(a.active ?? 1), gift_days: giftDays, kind, invite_email: inviteEmail,
       flyer_rate: kr('flyer_rate', 'Pay per flyer'), family_bonus: kr('family_bonus', 'Pay per family'), bonus_days: bonusDays, areas: JSON.stringify(areas),
-      ...Object.fromEntries(['closed_network', 'mask_contacts', 'covers_pass', 'approve_families'].map((k) => [k, k in body ? (body[k] ? 1 : 0) : Number(a[k] ?? 0)])) };
+      ...Object.fromEntries(['closed_network', 'mask_contacts', 'covers_pass', 'approve_families', 'share_aupairs'].map((k) => [k, k in body ? (body[k] ? 1 : 0) : Number(a[k] ?? 0)])),
+      pilot_until: 'pilot_until' in body ? (/^\d{4}-\d{2}-\d{2}$/.test(String(body.pilot_until ?? '')) ? String(body.pilot_until) : null) : a.pilot_until ?? null };
   };
   /** Emails someone without an account an invite to create one, so they can see their code's numbers. */
   const sendAmbassadorInvite = (a) => {
@@ -2704,8 +2713,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (!code) throw bad('A code is 3 to 24 letters, numbers or dashes, like ANACO.');
     if (db.prepare('SELECT 1 FROM ambassadors WHERE code = ?').get(code)) throw new HttpError(409, 'That code is already taken.');
     const f = ambassadorFields(req.body);
-    const r = db.prepare('INSERT INTO ambassadors (code, name, country, contact, notes, user_id, active, gift_days, kind, invite_email, flyer_rate, family_bonus, bonus_days, areas, closed_network, mask_contacts, covers_pass, approve_families) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-      .run(code, f.name, f.country, f.contact, f.notes, f.user_id, f.active, f.gift_days, f.kind, f.invite_email, f.flyer_rate, f.family_bonus, f.bonus_days, f.areas, f.closed_network, f.mask_contacts, f.covers_pass, f.approve_families);
+    const r = db.prepare('INSERT INTO ambassadors (code, name, country, contact, notes, user_id, active, gift_days, kind, invite_email, flyer_rate, family_bonus, bonus_days, areas, closed_network, mask_contacts, covers_pass, approve_families, share_aupairs, pilot_until) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+      .run(code, f.name, f.country, f.contact, f.notes, f.user_id, f.active, f.gift_days, f.kind, f.invite_email, f.flyer_rate, f.family_bonus, f.bonus_days, f.areas, f.closed_network, f.mask_contacts, f.covers_pass, f.approve_families, f.share_aupairs, f.pilot_until);
     if (f.user_id) partnerLinked(f.user_id, code);
     if (f.invite_email) sendAmbassadorInvite({ ...f, code });
     res.status(201);
@@ -2716,8 +2725,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   api.post('/admin/ambassadors/:id', requireRole('admin'), wrap((req) => {
     const a = adminAmbassador(req.params.id, null, false);
     const f = ambassadorFields(req.body || {}, a);
-    db.prepare('UPDATE ambassadors SET name = ?, country = ?, contact = ?, notes = ?, user_id = ?, active = ?, gift_days = ?, kind = ?, invite_email = ?, flyer_rate = ?, family_bonus = ?, bonus_days = ?, areas = ?, closed_network = ?, mask_contacts = ?, covers_pass = ?, approve_families = ? WHERE id = ?')
-      .run(f.name, f.country, f.contact, f.notes, f.user_id, f.active, f.gift_days, f.kind, f.invite_email, f.flyer_rate, f.family_bonus, f.bonus_days, f.areas, f.closed_network, f.mask_contacts, f.covers_pass, f.approve_families, a.id);
+    db.prepare('UPDATE ambassadors SET name = ?, country = ?, contact = ?, notes = ?, user_id = ?, active = ?, gift_days = ?, kind = ?, invite_email = ?, flyer_rate = ?, family_bonus = ?, bonus_days = ?, areas = ?, closed_network = ?, mask_contacts = ?, covers_pass = ?, approve_families = ?, share_aupairs = ?, pilot_until = ? WHERE id = ?')
+      .run(f.name, f.country, f.contact, f.notes, f.user_id, f.active, f.gift_days, f.kind, f.invite_email, f.flyer_rate, f.family_bonus, f.bonus_days, f.areas, f.closed_network, f.mask_contacts, f.covers_pass, f.approve_families, f.share_aupairs, f.pilot_until, a.id);
     if (f.user_id && f.user_id !== a.user_id) partnerLinked(f.user_id, a.code);
     // Saving the form again doesn't re-send; a new email (or ?resend=1) does.
     if (f.invite_email && (f.invite_email !== a.invite_email || req.query.resend)) sendAmbassadorInvite({ ...f, code: a.code });

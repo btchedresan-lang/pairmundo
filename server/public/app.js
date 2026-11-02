@@ -627,9 +627,14 @@ views.agency = async () => {
       <p class="muted small">${tr('Au pairs count here when they sign up with your code or link, or add your code later in their account. A profile shows to families once it has a photo and an About me.')}</p></div>
     ${amb.network ? `<div class="card"><h2>🤝 ${tr('Partner agencies')}</h2><p>${tr('Find agencies to work with, like a sending agency for your families or a host agency for your au pairs. Partners share their spaces, and you can show memberships like IAPA.')}</p>
       <a class="btn sm" href="#/network">${tr('Open partner agencies')}</a></div>` : ''}
-    ${amb.space ? `<div class="card"><h2>${tr('Your agency space')}</h2>
-      <p>${trn(amb.space.families, '{n} family has joined with your code.', '{n} families have joined with your code.')}</p>
-      <ul>${[[amb.space.closed_network, tr('Closed network: your families and au pairs only meet each other.')], [amb.space.mask_contacts, tr('Contact details are hidden in chats until a placement is confirmed.')],
+    ${amb.space ? `<div class="card"><h2>${amb.space.closed_network ? `🔒 ${tr('Your Closed Loop')}` : tr('Your agency space')}</h2>
+      ${amb.space.closed_network ? `<p>${amb.space.pilot_until && amb.space.pilot_until >= new Date().toISOString().slice(0, 10)
+    ? tr('Free pilot until {date}. After that: €129 a month (€97 in your first year as a founding partner) and €75 per au pair who starts with one of your families.', { date: esc(new Date(`${amb.space.pilot_until}T12:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })) })
+    : tr('€129 a month (€97 in your first year as a founding partner) and €75 per au pair who starts with one of your families.')}</p>` : ''}
+      <p>${trn(amb.space.families, '{n} family has joined with your code.', '{n} families have joined with your code.')} ${trn(amb.space.aupairs, '{n} au pair has joined with your code.', '{n} au pairs have joined with your code.')}</p>
+      <ul>${[[amb.space.closed_network, amb.space.share_aupairs ? tr('Your families only see your au pairs (and your partner agencies\' au pairs). Nobody outside sees your families.') : tr('Closed network: your families and au pairs only meet each other.')],
+    ...(amb.space.closed_network && amb.space.share_aupairs ? [[true, tr('Your au pairs are also shown to every family on PairMundo, labelled "Prepared by {agency}".', { agency: esc(amb.name) })]] : []),
+    [amb.space.mask_contacts, tr('Contact details are hidden in chats until a placement is confirmed.')],
     [amb.space.covers_pass, tr("Your families don't pay PairMundo for the Family Pass.")], [amb.space.approve_families, tr('You approve each family before they see your au pairs.')]].map(([on, label]) => `<li>${on ? '✓' : '–'} ${label}</li>`).join('')}</ul>
       <p class="muted small">${tr('To change these, email PairMundo.')}</p></div>
     <div class="card"><h2>${tr('Your families')}</h2><div id="agencyFamilies"><p class="muted">${tr('Loading…')}</p></div></div>
@@ -2039,7 +2044,7 @@ views.admin = async ([tab = 'overview', id], qs) => {
 
 const kindChip = (a) => ({ agency: '<span class="chip">Agency</span>', distributor: '<span class="chip">Flyer distributor</span>' })[a.kind] || '';
 /** Shows the flyer pay fields only when the type is flyer distributor. */
-const spaceFields = (form) => Object.fromEntries(['closed_network', 'mask_contacts', 'covers_pass', 'approve_families'].map((k) => [k, form[k].checked]));
+const spaceFields = (form) => ({ ...Object.fromEntries(['closed_network', 'mask_contacts', 'covers_pass', 'approve_families', 'share_aupairs'].map((k) => [k, form[k].checked])), pilot_until: form.pilot_until.value });
 function wireKind(form) {
   const sync = () => { form.querySelector('.distOnly').hidden = form.kind.value !== 'distributor'; form.querySelector('.agencyOnly').hidden = form.kind.value !== 'agency'; };
   form.kind.onchange = sync;
@@ -2065,7 +2070,9 @@ async function adminAmbassadors(head, id, qs) {
       <label class="check"><input type="checkbox" name="closed_network" ${a.closed_network ? 'checked' : ''}> Closed network: they only meet each other, and nobody outside sees them</label>
       <label class="check"><input type="checkbox" name="mask_contacts" ${a.mask_contacts ? 'checked' : ''}> Hide phone numbers, emails and social handles in their chats until a placement is confirmed</label>
       <label class="check"><input type="checkbox" name="covers_pass" ${a.covers_pass ? 'checked' : ''}> Families don't need the Family Pass (they pay the agency instead)</label>
-      <label class="check"><input type="checkbox" name="approve_families" ${a.approve_families ? 'checked' : ''}> The agency approves each family before they see any au pairs</label></fieldset>
+      <label class="check"><input type="checkbox" name="approve_families" ${a.approve_families ? 'checked' : ''}> The agency approves each family before they see any au pairs</label>
+      <label class="check"><input type="checkbox" name="share_aupairs" ${a.share_aupairs ? 'checked' : ''}> Closed Loop: still show the agency's au pairs to every family on PairMundo (its families stay closed)</label>
+      <div class="field"><label>Closed Loop free pilot ends (then €129 a month, €97 in year one)</label><input name="pilot_until" type="date" value="${esc(a.pilot_until || '')}"></div></fieldset>
     <div class="form-grid"><div class="field"><label>Name</label><input name="name" required value="${esc(a.name)}"></div>
       <div class="field"><label>Country</label><select name="country">${options(COUNTRIES, a.country || '', '—')}</select></div></div>
     <div class="form-grid"><div class="field"><label>Phone or email (only you see this)</label><input name="contact" value="${esc(a.contact)}"></div>

@@ -715,6 +715,12 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
   }
   // An agency can approve each family before they see anyone in its space.
   if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'approve_families')) db.exec('ALTER TABLE ambassadors ADD COLUMN approve_families INTEGER NOT NULL DEFAULT 0');
+  // Closed Loop: a closed space whose au pairs are still shown to every family on PairMundo (share_aupairs), and the
+  // date its free pilot ends (pilot_until), after which the Closed Loop fee applies.
+  if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'share_aupairs')) {
+    db.exec(`ALTER TABLE ambassadors ADD COLUMN share_aupairs INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE ambassadors ADD COLUMN pilot_until TEXT`);
+  }
   // The agency directory: whether an agency is listed, which side it works on, the countries it works with and a few words.
   if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'network_listed')) {
     db.exec(`ALTER TABLE ambassadors ADD COLUMN network_listed INTEGER NOT NULL DEFAULT 0;
