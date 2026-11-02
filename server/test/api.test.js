@@ -2550,11 +2550,12 @@ test('agency update email: the admin previews who gets it and the text, then sen
     const h = { Authorization: `Bearer ${tok}` };
     const preview = await (await fetch(`${b2}/admin/agency-update`, { headers: h })).json();
     assert.deepEqual(preview.recipients.map((r) => [r.code, r.to]), [['NOMAIL', null], ['OLDAG', 'boss@old.test']]);
-    assert.ok(preview.sample.text.includes('Badji Tchedre-San') && preview.sample.text.includes('Invite families and au pairs'));
+    assert.ok(preview.sample.text.includes('Badji Tchedre-San') && preview.sample.text.includes('24 November') && preview.sample.text.includes('ref=OLDAG'));
     assert.ok(!preview.sample.text.includes('€'), 'no prices in the update');
     const sent = await (await fetch(`${b2}/admin/agency-update`, { method: 'POST', headers: h })).json();
     assert.deepEqual(sent, { sent: 1, missing: ['No Mail Agency'] });
     assert.deepEqual(mails.map((m) => m.to), ['boss@old.test']);
+    assert.ok((await import('node:fs')).existsSync(mails[0].attachments[0].path), 'the profile guide is attached');
     assert.equal((await (await fetch(`${b2}/admin/agency-update`, { method: 'POST', headers: h })).json()).sent, 0, 'sent once');
   } finally { srv.close(); }
 });

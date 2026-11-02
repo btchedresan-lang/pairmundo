@@ -2939,12 +2939,15 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   const agencyUpdateMail = (a) => {
     const to = (a.user_id && db.prepare('SELECT email FROM users WHERE id = ?').get(a.user_id)?.email) || a.invite_email || null;
     const link = a.user_id ? `${publicBase()}/#/agency` : `${publicBase()}/#/agency-signup?email=${encodeURIComponent(to || '')}`;
-    return { to, ...agencyUpdateEmail({ name: a.name, link }) };
+    return { to, ...agencyUpdateEmail({ name: a.name, link, code: a.user_id ? a.code : null }),
+      attachments: [{ path: join(PUBLIC_DIR, 'media', 'PairMundo-profile-guide-for-agencies.pdf') }] };
   };
   const agencyUpdatePending = () => db.prepare("SELECT * FROM ambassadors WHERE kind = 'agency' AND active = 1 AND update_emailed_at IS NULL ORDER BY name").all();
   api.get('/admin/agency-update', requireRole('admin'), wrap(() => {
     const rows = agencyUpdatePending().map((a) => ({ id: a.id, code: a.code, name: a.name, ...agencyUpdateMail(a) }));
-    return { recipients: rows.map(({ id, code, name, to }) => ({ id, code, name, to })), sample: rows.find((r) => r.to) ?? null };
+    const sample = rows.find((r) => r.to);
+    return { recipients: rows.map(({ id, code, name, to }) => ({ id, code, name, to })),
+      sample: sample ? { to: sample.to, subject: sample.subject, text: sample.text, attachment: '/media/PairMundo-profile-guide-for-agencies.pdf' } : null };
   }));
   api.post('/admin/agency-update', requireRole('admin'), wrap(() => {
     let sent = 0;

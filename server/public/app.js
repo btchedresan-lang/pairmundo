@@ -2243,7 +2243,8 @@ async function adminAmbassadors(head, id, qs) {
     ${upd?.recipients.length ? `<div class="card"><h3>Agency update email (November 2026)</h3>
       <p class="muted small">Tells each agency what's new on its agency page. Each agency gets it once. Agencies without an email are skipped.</p>
       <div class="table-wrap"><table><tr><th>Agency</th><th>Goes to</th></tr>${upd.recipients.map((r) => `<tr><td>${esc(r.name)} <code>${esc(r.code)}</code></td><td>${r.to ? esc(r.to) : '<span class="muted">No email, skipped</span>'}</td></tr>`).join('')}</table></div>
-      ${upd.sample ? `<details><summary>Read the email</summary><p><strong>${esc(upd.sample.subject)}</strong></p><pre style="white-space:pre-wrap">${esc(upd.sample.text)}</pre></details>` : ''}
+      ${upd.sample ? `<details><summary>Read the email</summary><p><strong>${esc(upd.sample.subject)}</strong></p><pre style="white-space:pre-wrap">${esc(upd.sample.text)}</pre>
+        <p>Attached: <a href="${esc(upd.sample.attachment)}" target="_blank">profile set-up guide (PDF)</a></p></details>` : ''}
       <button class="btn sm" id="sendUpdate">Send to ${upd.recipients.filter((r) => r.to).length} agencies</button></div>` : ''}
     <form class="card" id="ambNew"><h3>Add an ambassador, partner agency or flyer distributor</h3>
       <div class="field"><label>Referral code (letters, numbers and dashes; it can't change later)</label><input name="code" required placeholder="ANA-CO" autocapitalize="characters"></div>
