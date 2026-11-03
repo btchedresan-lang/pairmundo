@@ -116,10 +116,10 @@ const pid = Number(db.prepare(`INSERT INTO placements (aupair_id, family_id, cou
     aupair_confirmed, family_confirmed, created_by) VALUES (?,?,?,?,?,?,?,'completed',1,1,?)`)
   .run(apIds[2], famIds[5], 'US', '2025-08-01', '2026-07-31', 45, 848, famIds[5]).lastInsertRowid);
 PLACEMENT_TASKS.forEach((t, i) => db.prepare('INSERT INTO placement_tasks (placement_id, title, owner, done, sort) VALUES (?,?,?,1,?)').run(pid, t.title, t.owner, i));
-db.prepare('INSERT INTO reviews (placement_id, reviewer_id, reviewee_id, overall, criteria, comment) VALUES (?,?,?,?,?,?)')
-  .run(pid, famIds[5], apIds[2], 5, JSON.stringify({ reliability: 5, childcare: 5, communication: 5, household: 4, adaptability: 5 }), 'Thandi was wonderful with our baby and toddler. Punctual, warm and proactive. We miss her!');
-db.prepare('INSERT INTO reviews (placement_id, reviewer_id, reviewee_id, overall, criteria, comment, response) VALUES (?,?,?,?,?,?,?)')
-  .run(pid, apIds[2], famIds[5], 4, JSON.stringify({ respect: 5, accommodation: 4, communication: 4, fair_hours: 4, support: 5 }), 'Kind family who included me in everything. Schedules sometimes changed last minute, but they always made it up.', 'Thank you Thandi, and fair point on the schedules!');
+db.prepare('INSERT INTO reviews (placement_id, reviewer_id, reviewee_id, overall, score, criteria, comment) VALUES (?,?,?,?,?,?,?)')
+  .run(pid, famIds[5], apIds[2], 5, 4.8, JSON.stringify({ childcare: 5, reliability: 5, communication: 5, household: 4, adaptability: 5, accuracy: 5 }), 'Thandi was wonderful with our baby and toddler. Punctual, warm and proactive. We miss her!');
+db.prepare('INSERT INTO reviews (placement_id, reviewer_id, reviewee_id, overall, score, criteria, comment, response) VALUES (?,?,?,?,?,?,?,?)')
+  .run(pid, apIds[2], famIds[5], 4, 4.3, JSON.stringify({ respect: 5, agreement: 4, accommodation: 4, support: 5, communication: 4, accuracy: 4 }), 'Kind family who included me in everything. Schedules sometimes changed last minute, but they always made it up.', 'Thank you Thandi, and fair point on the schedules!');
 
 // A confirmed upcoming placement: Maria (from Colombia, so she needs a visa) with Familie Schmidt in Hamburg.
 // The family has filled in and signed the agreement; Maria still has to sign.
