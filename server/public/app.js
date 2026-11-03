@@ -1972,7 +1972,9 @@ async function adminAccountInvites() {
         <button class="btn sm" id="accountSend" ${p.invite_ready ? '' : 'disabled'}>Send ${p.invite_ready} links</button>
         <button class="btn secondary sm" id="accountRemind" ${p.reminder_ready ? '' : 'disabled'}>Remind ${p.reminder_ready}</button>
         <button class="btn ghost sm" id="accountTest">Email me the samples</button></div>
-      <details><summary class="small">Read what people get</summary>${p.samples.map((m) => `<p class="small"><strong>${esc(m.subject)}</strong></p><pre class="small" style="white-space:pre-wrap">${esc(m.text)}</pre>`).join('')}</details>`;
+      <details><summary class="small">See what people get</summary>${p.samples.map((m) => `<p class="small"><strong>${esc(m.subject)}</strong></p>
+        <iframe sandbox title="${esc(m.subject)}" srcdoc="${esc(m.html)}" style="width:100%;max-width:640px;height:900px;border:1px solid var(--line);border-radius:12px;background:#edf1fd"></iframe>
+        <details><summary class="small">Plain-text version</summary><pre class="small" style="white-space:pre-wrap">${esc(m.text)}</pre></details>`).join('')}</details>`;
     const send = (kind) => async (e) => {
       if (kind === 'invite' && !confirm(`Email up to ${document.getElementById('accountLimit').value} people a link to finish their profile?`)) return;
       e.target.disabled = true;

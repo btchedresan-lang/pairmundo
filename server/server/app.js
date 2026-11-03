@@ -2791,7 +2791,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   const accountEmailFor = (w, kind, token) => {
     const b = w.role === 'family' && earlyDays() && db.prepare('SELECT redeemed_at FROM early_bonus WHERE email = ?').get(w.email);
     return accountInviteEmail(w.lang || 'en', { kind, role: w.role, email: w.email, linkDays: accountLinkDays(), earlyDays: b && !b.redeemed_at ? earlyDays() : 0,
-      link: `${publicBase()}/#/claim/${token}`, leaveUrl: `${publicBase()}/api/waitlist/leave?t=${w.token}` });
+      link: `${publicBase()}/#/claim/${token}`, leaveUrl: `${publicBase()}/api/waitlist/leave?t=${w.token}`, assetBase: publicBase() });
   };
   const accountStatus = () => {
     const n = (sql, ...a) => db.prepare(sql).get(...a).n;
@@ -2831,7 +2831,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   }));
   api.post('/admin/account-invites/test', requireRole('admin'), wrap(async (req) => {
     const { samples } = accountStatus();
-    for (const m of samples) await mailer({ to: req.user.email, subject: `[Test: ${m.kind}, ${m.role || 'role not given'}] ${m.subject}`, text: m.text });
+    for (const m of samples) await mailer({ to: req.user.email, subject: `[Test: ${m.kind}, ${m.role || 'role not given'}] ${m.subject}`, text: m.text, html: m.html });
     return { ok: true, to: req.user.email, count: samples.length };
   }));
 

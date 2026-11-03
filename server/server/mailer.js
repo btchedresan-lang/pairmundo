@@ -17,12 +17,13 @@ export function createMailer() {
     };
   }
   // attachments: [{ path }], files on this server, sent as base64.
-  return async ({ to, subject, text, attachments }) => {
+  // html, when given, is the designed version; text stays as the plain version for mail apps that don't show HTML.
+  return async ({ to, subject, text, html, attachments }) => {
     const files = (attachments || []).map((a) => ({ filename: a.filename || basename(a.path), content: readFileSync(a.path).toString('base64') }));
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from, to, subject, text, ...(files.length ? { attachments: files } : {}) }),
+      body: JSON.stringify({ from, to, subject, text, ...(html ? { html } : {}), ...(files.length ? { attachments: files } : {}) }),
     });
     if (!res.ok) throw new Error(`Email send failed (${res.status}): ${await res.text()}`);
   };
@@ -61,7 +62,7 @@ export const profileInviteEmail = (lang, { kind, email, signupUrl, leaveUrl, ear
  * they told us on the waitlist, to choose a password and finish it (kind 'invite', or 'reminder' with a fresh link).
  * role is 'family', 'aupair' or null (they didn't say; the page asks). Signed by Badji, who runs partnerships.
  */
-export const accountInviteEmail = (lang, { kind, role, email, link, leaveUrl, linkDays, earlyDays = 0 }) => {
+export const accountInviteEmail = (lang, { kind, role, email, link, leaveUrl, linkDays, earlyDays = 0, assetBase = 'https://pairmundo.com' }) => {
   const v = { app: APP_NAME, email, link, days: linkDays, early: earlyDays };
   const parts = kind === 'reminder'
     ? [t(lang, "Hi!\n\nA quick reminder: the {app} profile we started for you when you joined the list is still waiting. It stays hidden until you finish it. Here is a fresh personal link: {link}", v)]
@@ -80,7 +81,88 @@ export const accountInviteEmail = (lang, { kind, role, email, link, leaveUrl, li
   const subject = kind === 'reminder' ? t(lang, 'Your {app} profile is still waiting for you', v)
     : role === 'family' ? t(lang, 'Your family profile on {app} is ready to finish', v)
       : role === 'aupair' ? t(lang, 'Your au pair profile on {app} is ready to finish', v) : t(lang, 'Your {app} profile is ready to finish', v);
-  return { subject, text: parts.join('\n\n') };
+  const html = accountInviteHtml(lang, { kind, role, email, link, leaveUrl, linkDays, earlyDays, assetBase, subject });
+  return { subject, text: parts.join('\n\n'), html };
+};
+
+const esc = (x) => String(x ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+/** Translated text made safe for HTML, with line breaks kept. */
+const th = (lang, text, vars) => esc(t(lang, text, vars)).replace(/\n/g, '<br>');
+
+/**
+ * The HTML version of accountInviteEmail: brand banner, the app on two phones, three steps, swipe / match / chat and
+ * a big button. Built from tables with inline styles so it holds up in Gmail, Outlook and Apple Mail; pictures carry
+ * no words (alt text says what they show), and every client that blocks images still gets the whole message.
+ */
+const accountInviteHtml = (lang, { kind, role, email, link, leaveUrl, linkDays, earlyDays, assetBase, subject }) => {
+  const v = { app: APP_NAME, email, days: linkDays, early: earlyDays };
+  const img = (f) => `${esc(assetBase.replace(/\/$/, ''))}/media/email/${f}`;
+  const BLUE = '#3b5bdb'; const INK = '#2b2a33'; const MUTED = '#6b7286'; const SERIF = "Georgia, 'Times New Roman', serif";
+  const SANS = "-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+  const reminder = kind === 'reminder';
+  const headline = reminder ? t(lang, 'Your {app} profile is still waiting for you', v)
+    : role === 'family' ? t(lang, 'Your au pair could be one swipe away', v)
+      : role === 'aupair' ? t(lang, 'Your host family could be one swipe away', v) : t(lang, 'Your next adventure could be one swipe away', v);
+  const sub = reminder ? t(lang, 'It stays hidden until you finish it. Here is a fresh personal link.', v)
+    : t(lang, "We've started your profile with the details you gave us. Finish it in about 5 minutes and start matching.", v);
+  const button = (bg, fg) => `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto"><tr><td align="center" bgcolor="${bg}" style="border-radius:999px">
+      <a href="${esc(link)}" style="display:inline-block;padding:16px 34px;font:700 17px/1.2 ${SANS};color:${fg};text-decoration:none;border-radius:999px">${th(lang, 'Finish my profile', v)} &rarr;</a></td></tr></table>`;
+  const step = (n, text) => `<tr><td width="44" valign="top" style="padding:0 0 14px"><div style="width:32px;height:32px;line-height:32px;border-radius:16px;background:#edf2ff;color:${BLUE};font:700 15px/32px ${SANS};text-align:center">${n}</div></td>
+      <td valign="top" style="padding:5px 0 14px;font:16px/1.45 ${SANS};color:${INK}">${text}</td></tr>`;
+  const feature = (emoji, title, text) => `<td width="33%" valign="top" style="padding:0 8px;text-align:center">
+      <div style="font-size:26px;line-height:1">${emoji}</div><div style="font:600 17px/1.3 ${SERIF};color:${INK};padding:6px 0 4px">${th(lang, title, v)}</div>
+      <div style="font:14px/1.45 ${SANS};color:${MUTED}">${th(lang, text, v)}</div></td>`;
+  const nudge = role === 'aupair' ? 'Families can only like au pairs with a photo and a few words, so the sooner your profile is done, the sooner they can find you.'
+    : role === 'family' ? 'Au pairs can only like families who have a photo and a few words, so the sooner your profile is there, the sooner they can find you.'
+      : "The link asks whether you're a host family or an au pair, then takes you to your profile.";
+  return `<!doctype html><html lang="${esc(lang)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"><title>${esc(subject)}</title></head>
+<body style="margin:0;padding:0;background:#edf1fd">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0">${esc(sub)}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#edf1fd"><tr><td align="center" style="padding:24px 12px">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px">
+  <tr><td style="padding:0 4px 18px"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+    <td><img src="${img('icon.png')}" width="40" height="40" alt="" style="display:block;border:0;border-radius:10px"></td>
+    <td style="padding-left:10px;font:600 24px/1 ${SERIF};color:${BLUE}">${esc(APP_NAME)}</td></tr></table></td></tr>
+
+  <tr><td bgcolor="${BLUE}" style="background:${BLUE};background-image:linear-gradient(180deg,#3b5bdb,#4563e3);border-radius:24px 24px 0 0;padding:36px 32px 26px;text-align:center">
+    <div style="display:inline-block;background:rgba(255,255,255,.18);color:#fff;border-radius:999px;padding:6px 14px;font:600 13px/1.2 ${SANS};letter-spacing:.3px">${th(lang, reminder ? 'Your link is inside' : "You're one of the first 🎉", v)}</div>
+    <h1 style="margin:16px 0 10px;font:600 34px/1.15 ${SERIF};color:#fff">${esc(headline)}</h1>
+    <p style="margin:0 auto 24px;max-width:440px;font:17px/1.5 ${SANS};color:#e5eaff">${esc(sub)}</p>
+    ${button('#ffffff', BLUE)}
+  </td></tr>
+  <tr><td bgcolor="#4563e3" style="background:#4563e3;border-radius:0 0 24px 24px;overflow:hidden;line-height:0">
+    <img src="${img(role === 'aupair' ? 'hero-aupair.jpg' : 'hero-family.jpg')}" width="600" alt="${th(lang, 'The PairMundo app: profiles with a match score, and buttons to like or super like', v)}" style="display:block;width:100%;max-width:600px;height:auto;border:0;border-radius:0 0 24px 24px">
+  </td></tr>
+
+  <tr><td style="padding:22px 0 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="background:#fff;border-radius:20px">
+    <tr><td style="padding:26px 28px 12px">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="background:#ebfbee;border-radius:12px;padding:12px 14px;font:15px/1.45 ${SANS};color:#2b6a3a">🔒 ${th(lang, 'Your profile is hidden. Nobody can see it or match with you until you finish it yourself.', v)}</td></tr></table>
+      <h2 style="margin:22px 0 14px;font:600 22px/1.2 ${SERIF};color:${INK}">${th(lang, '3 quick steps', v)}</h2>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        ${step(1, th(lang, 'Tap the button.', v))}
+        ${step(2, th(lang, 'Add your name and choose a password. No code to type.', v))}
+        ${step(3, th(lang, 'Add a photo and a few lines about yourself.', v))}
+      </table>
+      <p style="margin:4px 0 0;font:15px/1.5 ${SANS};color:${MUTED}">${th(lang, nudge, v)}</p>
+      ${earlyDays && role === 'family' ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:18px"><tr><td style="background:#fff4e6;border-radius:12px;padding:14px 16px;font:15px/1.45 ${SANS};color:#7a4a00">🎁 <strong>${th(lang, 'Your {early} extra free days of the Family Pass are already saved to this profile. Use them whenever it suits you.', v)}</strong></td></tr></table>` : ''}
+    </td></tr>
+    <tr><td style="padding:14px 0 0;line-height:0"><img src="${img('swipe-match-chat.jpg')}" width="600" alt="${th(lang, 'Swipe, match and chat in the PairMundo app', v)}" style="display:block;width:100%;max-width:600px;height:auto;border:0"></td></tr>
+    <tr><td style="padding:20px 20px 8px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+      ${feature('🔥', 'Swipe', 'Browse profiles that fit you, each with a match score.')}
+      ${feature('💚', 'Match', "Like each other and it's a match.")}
+      ${feature('💬', 'Chat and video call', 'Get to know each other before you decide.')}
+    </tr></table></td></tr>
+    <tr><td style="padding:22px 28px 30px">${button(BLUE, '#ffffff')}</td></tr>
+  </table></td></tr>
+
+  <tr><td style="padding:22px 8px 0;font:15px/1.5 ${SANS};color:${INK}">${th(lang, 'Best,', v)}<br><strong>Badji Tchedre-San</strong><br><span style="color:${MUTED}">Co-founder &amp; Partnerships, PairMundo</span></td></tr>
+  <tr><td style="padding:22px 8px 0;font:13px/1.5 ${SANS};color:${MUTED}">
+    ${th(lang, "The link is only for you, so please don't forward it. It works for {days} days. If you don't want a profile, ignore this email: nothing is shown, and we don't keep a profile you never finish.", v)}<br><br>
+    ${th(lang, 'Button not working? Copy this link into your browser:', v)}<br><a href="${esc(link)}" style="color:${BLUE};word-break:break-all">${esc(link)}</a><br><br>
+    ${esc(t(lang, 'You got this email because you joined the {app} list. To leave the list, open this link: {link}', { ...v, link: '\u0000' })).replace('\u0000', `<a href="${esc(leaveUrl)}" style="color:${MUTED}">${esc(leaveUrl)}</a>`)}
+  </td></tr>
+</table></td></tr></table></body></html>`;
 };
 
 /** Asks a family an au pair looked after children for to review them; answering takes a free account on that email. */

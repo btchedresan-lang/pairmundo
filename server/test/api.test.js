@@ -1957,6 +1957,12 @@ test('account invites: waitlist spots become profiles people finish from a perso
     assert.match(ap.subject, /au pair profile on PairMundo is ready to finish/);
     assert.match(ap.text, /hidden/);
     assert.match(ap.text, /waitlist\/leave\?t=/);
+    // The designed version: same personal link on the button, the au pair picture, Badji's sign-off.
+    assert.ok(ap.html.includes(`#/claim/${linkOf('ai-ap@test.io')}`));
+    assert.match(ap.html, /media\/email\/hero-aupair\.jpg/);
+    assert.match(ap.html, /Your host family could be one swipe away/);
+    assert.match(ap.html, /Badji Tchedre-San/);
+    assert.match(box.find((m) => m.to === 'ai-fam@test.io').html, /Gör klart min profil/);
     assert.equal((await call2(admin, 'POST', '/admin/account-invites/send', { kind: 'invite' })).body.sent, 0, 'never twice');
 
     // The link shows what we know, and finishing it makes a confirmed account with the waitlist details.
