@@ -332,6 +332,69 @@ export const DICT = {
   "Your {app} profile is ready to finish": {
     es: "Tu perfil de {app} está listo para completar", fr: "Votre profil {app} est prêt à être terminé",
     de: "Dein {app}-Profil ist bereit zum Fertigstellen", pt: "Seu perfil no {app} está pronto para terminar" },
+  "Your au pair could be one swipe away": {
+    es: "Tu au pair podría estar a un solo swipe", fr: "Votre au pair est peut-être à un swipe de vous",
+    de: "Dein Au-pair ist vielleicht nur einen Swipe entfernt", pt: "Sua au pair pode estar a um swipe de distância" },
+  "Your host family could be one swipe away": {
+    es: "Tu familia de acogida podría estar a un solo swipe", fr: "Votre famille d'accueil est peut-être à un swipe de vous",
+    de: "Deine Gastfamilie ist vielleicht nur einen Swipe entfernt", pt: "Sua família anfitriã pode estar a um swipe de distância" },
+  "Your next adventure could be one swipe away": {
+    es: "Tu próxima aventura podría estar a un solo swipe", fr: "Votre prochaine aventure est peut-être à un swipe de vous",
+    de: "Dein nächstes Abenteuer ist vielleicht nur einen Swipe entfernt", pt: "Sua próxima aventura pode estar a um swipe de distância" },
+  "It stays hidden until you finish it. Here is a fresh personal link.": {
+    es: "Está oculto hasta que lo completes. Aquí tienes un nuevo enlace personal.", fr: "Il reste masqué tant que vous ne l'avez pas terminé. Voici un nouveau lien personnel.",
+    de: "Es bleibt verborgen, bis du es fertigstellst. Hier ist ein neuer persönlicher Link.", pt: "Ele fica oculto até você terminá-lo. Aqui está um novo link pessoal." },
+  "We've started your profile with the details you gave us. Finish it in about 5 minutes and start matching.": {
+    es: "Hemos empezado tu perfil con los datos que nos diste. Complétalo en unos 5 minutos y empieza a hacer match.", fr: "Nous avons commencé votre profil avec les informations que vous nous avez données. Terminez-le en 5 minutes environ et commencez à matcher.",
+    de: "Wir haben dein Profil mit deinen Angaben schon angelegt. Stell es in etwa 5 Minuten fertig und fang an zu matchen.", pt: "Começamos seu perfil com os dados que você nos deu. Termine em uns 5 minutos e comece a dar match." },
+  "Finish my profile": {
+    es: "Completar mi perfil", fr: "Terminer mon profil",
+    de: "Profil fertigstellen", pt: "Terminar meu perfil" },
+  "Your link is inside": {
+    es: "Tu enlace está dentro", fr: "Votre lien est ici",
+    de: "Dein Link ist hier drin", pt: "Seu link está aqui" },
+  "You're one of the first 🎉": {
+    es: "Eres de los primeros 🎉", fr: "Vous faites partie des premiers 🎉",
+    de: "Du bist unter den Ersten 🎉", pt: "Você está entre os primeiros 🎉" },
+  "The PairMundo app: profiles with a match score, and buttons to like or super like": {
+    es: "La app PairMundo: perfiles con porcentaje de match y botones para dar like o súper like", fr: "L'application PairMundo : des profils avec un score de match, et des boutons pour liker ou super liker",
+    de: "Die PairMundo-App: Profile mit Match-Wert und Buttons zum Liken oder Super-Liken", pt: "O app PairMundo: perfis com porcentagem de match e botões para curtir ou super curtir" },
+  "3 quick steps": {
+    es: "3 pasos rápidos", fr: "3 étapes rapides",
+    de: "3 schnelle Schritte", pt: "3 passos rápidos" },
+  "Tap the button.": {
+    es: "Pulsa el botón.", fr: "Appuyez sur le bouton.",
+    de: "Tippe auf den Button.", pt: "Toque no botão." },
+  "Add your name and choose a password. No code to type.": {
+    es: "Añade tu nombre y elige una contraseña. Sin códigos.", fr: "Ajoutez votre nom et choisissez un mot de passe. Aucun code à saisir.",
+    de: "Gib deinen Namen ein und wähle ein Passwort. Kein Code nötig.", pt: "Adicione seu nome e escolha uma senha. Sem código para digitar." },
+  "Add a photo and a few lines about yourself.": {
+    es: "Añade una foto y unas líneas sobre ti.", fr: "Ajoutez une photo et quelques lignes sur vous.",
+    de: "Füge ein Foto und ein paar Zeilen über dich hinzu.", pt: "Adicione uma foto e algumas linhas sobre você." },
+  "Swipe, match and chat in the PairMundo app": {
+    es: "Desliza, haz match y chatea en la app PairMundo", fr: "Swipez, matchez et discutez dans l'application PairMundo",
+    de: "Swipen, matchen und chatten in der PairMundo-App", pt: "Deslize, dê match e converse no app PairMundo" },
+  "Swipe": {
+    es: "Desliza", fr: "Swipez",
+    de: "Swipen", pt: "Deslize" },
+  "Browse profiles that fit you, each with a match score.": {
+    es: "Mira perfiles que encajan contigo, cada uno con su porcentaje de match.", fr: "Parcourez les profils qui vous correspondent, chacun avec un score de match.",
+    de: "Entdecke Profile, die zu dir passen, jedes mit Match-Wert.", pt: "Veja perfis que combinam com você, cada um com porcentagem de match." },
+  "Match": {
+    es: "Haz match", fr: "Matchez",
+    de: "Matchen", pt: "Dê match" },
+  "Like each other and it's a match.": {
+    es: "Si os gustáis mutuamente, es un match.", fr: "Vous vous likez mutuellement, et c'est un match.",
+    de: "Ihr mögt euch beide, und es ist ein Match.", pt: "Curtiram um ao outro? É match." },
+  "Chat and video call": {
+    es: "Chatea y haz videollamadas", fr: "Discutez et faites des appels vidéo",
+    de: "Chatten und Videoanrufe", pt: "Converse e faça chamadas de vídeo" },
+  "Get to know each other before you decide.": {
+    es: "Conoceos antes de decidir.", fr: "Apprenez à vous connaître avant de décider.",
+    de: "Lernt euch kennen, bevor ihr entscheidet.", pt: "Conheçam-se antes de decidir." },
+  "Button not working? Copy this link into your browser:": {
+    es: "¿El botón no funciona? Copia este enlace en tu navegador:", fr: "Le bouton ne fonctionne pas ? Copiez ce lien dans votre navigateur :",
+    de: "Button funktioniert nicht? Kopiere diesen Link in deinen Browser:", pt: "O botão não funciona? Copie este link no seu navegador:" },
 };
 
 // Swedish lives in its own file, keyed by the same English text.
