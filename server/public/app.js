@@ -595,6 +595,36 @@ views.register = (_, query) => {
 
 const errBox = (err) => { document.getElementById('err').innerHTML = `<div class="alert error">${esc(err.message)}</div>`; };
 
+// A personal link from the "finish your profile" email: we started a profile from the person's waitlist spot, and
+// they add their name and a password to make it theirs. Nothing is visible until they do.
+views.claim = async ([token]) => {
+  let i;
+  try { i = await api(`/auth/claim/${encodeURIComponent(token || '')}`); }
+  catch (err) {
+    render(`<div class="card" style="max-width:480px;margin:32px auto"><div class="alert error">${esc(err.message)}</div>
+      <div class="row"><a class="btn" href="#/login">${tr('Sign in')}</a><a class="btn secondary" href="#/register">${tr('Create your account')}</a></div></div>`);
+    return;
+  }
+  render(`<div class="card" style="max-width:480px;margin:32px auto"><h1>${tr('Finish your profile')}</h1>
+    <p>${tr('We started your profile from your waitlist spot. It stays hidden until you add your name and choose a password.')}</p>
+    <form id="f">
+      <div class="field"><label>${tr('Email')}</label><input value="${esc(i.email)}" disabled></div>
+      ${i.role ? '' : `<div class="field"><label>${tr('I am')}</label><select name="role" required><option value="">${tr('Choose…')}</option>
+        <option value="family">${tr('A host family')}</option><option value="aupair">${tr('An au pair')}</option></select></div>`}
+      <div class="field"><label>${tr('Name')}</label><input name="name" required placeholder="${tr('e.g. Maria Lopez or The Smith Family')}"><p class="muted small">${tr('Other members see only your first name and last initial, like Maria L. Your full name is shared once you both confirm a placement.')}</p></div>
+      <div class="form-grid"><div class="field"><label>${tr('Country you live in')}</label><select name="country" required>${options(COUNTRIES, i.country || '', tr('Choose…'))}</select></div>
+      <div class="field"><label>${tr('City')}</label><input name="city"></div></div>
+      <div class="field"><label>${tr('Password')}</label><input name="password" type="password" minlength="8" required autocomplete="new-password"></div>
+      <div id="err"></div><button class="btn" style="width:100%">${tr('Finish my profile')}</button>
+      <p class="muted small" style="text-align:center">${tr('By creating an account you agree to the {terms} and the {privacy}.', { terms: `<a href="/terms" target="_blank">${tr('Terms of Use')}</a>`, privacy: `<a href="/privacy" target="_blank">${tr('Privacy Policy')}</a>` })}</p></form>
+    <p class="muted small" style="text-align:center">${tr("Didn't ask for this? Close this page: nothing is shown, and the link stops working on its own.")}</p></div>`);
+  document.getElementById('f').onsubmit = async (e) => {
+    e.preventDefault();
+    try { await api(`/auth/claim/${encodeURIComponent(token)}`, { method: 'POST', body: formData(e.target) }); await refreshMe(); toast(tr('Welcome! Now add a photo and a few lines about yourself.')); go('#/profile'); }
+    catch (err) { errBox(err); }
+  };
+};
+
 // ---------- partner agencies ----------
 // Agencies get their own account: no profile, nobody sees it, and once PairMundo links it to the agency's code it
 // shows how the agency's au pairs are doing.
@@ -1925,6 +1955,38 @@ async function adminBackup() {
   };
   try { show(await api('/admin/backup')); } catch (e) { box.textContent = e.message; }
 }
+// Turn the waitlist into profiles: each person on it without an account gets a personal link to finish the profile
+// we start from their waitlist spot. Nothing goes out until the admin presses a button, and nobody is visible until
+// they open their link and choose a password.
+async function adminAccountInvites() {
+  const box = document.getElementById('accountInvites'); if (!box) return;
+  const show = (p) => {
+    const r = p.invite_ready_by_role;
+    box.innerHTML = `<p><strong>${p.invite_ready}</strong> people on the waitlist have no account and haven't had a link yet (${r.family} families, ${r.aupair} au pairs, ${r.unknown} who didn't say; the link asks them).
+        ${p.waitlist_with_account} of ${p.waitlist} already have an account.</p>
+      <p class="muted small">${p.invited} links sent, <strong>${p.finished}</strong> profiles finished, ${p.reminded} reminded, ${p.expired} links expired unused.
+        Links work for ${p.link_days} days. The reminder, with a fresh link, goes to people invited at least ${p.reminder_days} days ago who haven't finished.
+        Their profile is only made when they open the link and choose a password, so nobody is visible or matchable before that.</p>
+      ${p.error ? `<div class="alert error small">${esc(p.error)}. Press the button again to carry on.</div>` : p.sent != null ? `<div class="alert ok small">Sent ${p.sent}.</div>` : ''}
+      <div class="row"><label class="small">Send up to <input id="accountLimit" type="number" min="1" max="1000" value="100" style="width:80px"></label>
+        <button class="btn sm" id="accountSend" ${p.invite_ready ? '' : 'disabled'}>Send ${p.invite_ready} links</button>
+        <button class="btn secondary sm" id="accountRemind" ${p.reminder_ready ? '' : 'disabled'}>Remind ${p.reminder_ready}</button>
+        <button class="btn ghost sm" id="accountTest">Email me the samples</button></div>
+      <details><summary class="small">Read what people get</summary>${p.samples.map((m) => `<p class="small"><strong>${esc(m.subject)}</strong></p><pre class="small" style="white-space:pre-wrap">${esc(m.text)}</pre>`).join('')}</details>`;
+    const send = (kind) => async (e) => {
+      if (kind === 'invite' && !confirm(`Email up to ${document.getElementById('accountLimit').value} people a link to finish their profile?`)) return;
+      e.target.disabled = true;
+      try { show(await api('/admin/account-invites/send', { method: 'POST', body: { kind, limit: Number(document.getElementById('accountLimit').value) } })); }
+      catch (err) { toast(err.message); e.target.disabled = false; }
+    };
+    document.getElementById('accountSend').onclick = send('invite');
+    document.getElementById('accountRemind').onclick = send('reminder');
+    document.getElementById('accountTest').onclick = async () => {
+      try { const res = await api('/admin/account-invites/test', { method: 'POST' }); toast(`Sent ${res.count} samples to ${res.to}`); } catch (err) { toast(err.message); }
+    };
+  };
+  try { show(await api('/admin/account-invites')); } catch (e) { box.textContent = e.message; }
+}
 // Before launch: email waitlisted families without an account that they can make their profile on the website now,
 // then a reminder a few days later. Nothing goes out until the admin presses a button.
 async function adminProfileInvites() {
@@ -2054,6 +2116,7 @@ views.admin = async ([tab = 'overview', id], qs) => {
     const w = await api('/admin/waitlist');
     const role = (r) => (r === 'aupair' ? 'Au pair' : r === 'family' ? 'Family' : '—');
     render(`${head}<div class="spread"><p><strong>${w.total}</strong> people want to hear when the apps launch.</p><a class="btn sm" href="/api/admin/waitlist.csv">⬇ Download as a spreadsheet (CSV)</a></div>
+      <div class="card"><h2>Turn the waitlist into profiles</h2><div id="accountInvites" class="muted small">Loading…</div></div>
       <div class="card"><h2>Invite families to make their profile now</h2><div id="profileInvites" class="muted small">Loading…</div></div>
       <div class="card"><h2>Launch email</h2><div id="launchEmail" class="muted small">Loading…</div></div>
       ${w.early_bonus ? `<div class="card"><h2>Early family bonus</h2><p><strong>${w.early_bonus.taken}</strong> of ${w.early_bonus.cap} spots taken (${w.early_bonus.accounts} with an account), <strong>${w.early_bonus.redeemed}</strong> used.
@@ -2066,7 +2129,7 @@ views.admin = async ([tab = 'overview', id], qs) => {
         <table><tr><th>Source</th><th>Families</th><th>Au pairs</th></tr>${(w.signups_by_source || []).map((r) => `<tr><td>${esc(r.source || 'Website')}</td><td>${r.families}</td><td>${r.aupairs}</td></tr>`).join('')}</table></div>
       <div class="card table-wrap"><h2>Latest</h2><table><tr><th>Email</th><th>Role</th><th>Region</th><th>Language</th><th>Source</th><th>Joined</th></tr>
       ${w.people.map((p) => `<tr><td>${esc(p.email)}</td><td>${role(p.role)}</td><td>${cname(p.country) || '—'}</td><td>${esc(LANGUAGES[p.lang] || p.lang)}</td><td>${esc(p.source || '—')}</td><td>${fmtTime(p.created_at)}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">Nobody yet.</td></tr>'}</table></div>`);
-    adminProfileInvites();
+    adminAccountInvites(); adminProfileInvites();
     return adminLaunchEmail();
   }
   if (tab === 'ambassadors') return adminAmbassadors(head, id, qs);
@@ -2901,7 +2964,7 @@ function afterLogin() {
   try { next = sessionStorage.getItem('next'); sessionStorage.removeItem('next'); } catch { /* private mode */ }
   go(next && next !== '#/login' ? next : '#/');
 }
-const PUBLIC = new Set(['home', 'login', 'register', 'agency-signup', 'ambassador-signup', 'programs', 'forgot', 'reference', 'partners', 'jobs', 'careers', 'guides']);
+const PUBLIC = new Set(['home', 'login', 'register', 'agency-signup', 'ambassador-signup', 'programs', 'forgot', 'reference', 'claim', 'partners', 'jobs', 'careers', 'guides']);
 views.messages = ((orig) => (args) => (args[0] ? orig(args) : go('#/matches')))(views.messages);
 async function route() {
   clearInterval(pollTimer);

@@ -103,5 +103,18 @@
   "We couldn't confirm your {org} membership. Open your partner page to see why.": "Vi kunde inte bekräfta ert medlemskap i {org}. Öppna er partnersida för att se varför.",
   "Families trust and message verified au pairs first. Verify your ID in Account and safety; it takes about 2 minutes with your passport or ID card and a selfie.": "Familjer litar mer på verifierade au pairer och skriver till dem först. Verifiera ditt ID under Konto och säkerhet; det tar ungefär 2 minuter med pass eller ID-kort och en selfie.",
   "One last step: verify your ID": "Ett sista steg: verifiera ditt ID",
-  "Verify your ID here: {link}": "Verifiera ditt ID här: {link}"
+  "Verify your ID here: {link}": "Verifiera ditt ID här: {link}",
+  "Hi!\n\nThanks for joining the {app} list. You don't have to wait for the apps: we've started your profile with the details you gave us, so you only need a few minutes to finish it.": "Hej!\n\nTack för att du skrev upp dig på {app}-listan. Du behöver inte vänta på apparna: vi har påbörjat din profil med uppgifterna du gav oss, så det tar bara några minuter att göra klart den.",
+  "Your profile is hidden. Nobody can see it or match with you until you finish it yourself.": "Din profil är dold. Ingen kan se den eller matcha med dig förrän du själv gör klart den.",
+  "To finish it:\n1. Open your personal link: {link}\n2. Add your name and choose a password. Opening the link confirms your email ({email}), so there's no code to type.\n3. Add a photo and a few lines about yourself.": "Så här gör du klart den:\n1. Öppna din personliga länk: {link}\n2. Lägg till ditt namn och välj ett lösenord. När du öppnar länken bekräftas din e-post ({email}), så du behöver inte skriva någon kod.\n3. Lägg till ett foto och några rader om dig själv.",
+  "Families can only like au pairs with a photo and a few words, so the sooner your profile is done, the sooner they can find you.": "Familjer kan bara gilla au pairer med ett foto och några ord, så ju förr din profil är klar, desto förr kan de hitta dig.",
+  "The link asks whether you're a host family or an au pair, then takes you to your profile.": "Länken frågar om du är värdfamilj eller au pair och tar dig sedan till din profil.",
+  "Your {early} extra free days of the Family Pass are already saved to this profile. Use them whenever it suits you.": "Era {early} extra gratisdagar av Family Pass är redan sparade på den här profilen. Använd dem när det passar er.",
+  "The link is only for you, so please don't forward it. It works for {days} days. If you don't want a profile, ignore this email: nothing is shown, and we don't keep a profile you never finish.": "Länken är bara till dig, så vidarebefordra den inte. Den fungerar i {days} dagar. Vill du inte ha en profil kan du strunta i det här mejlet: ingenting visas, och vi sparar ingen profil som du aldrig gör klar.",
+  "Hi!\n\nA quick reminder: the {app} profile we started for you when you joined the list is still waiting. It stays hidden until you finish it. Here is a fresh personal link: {link}": "Hej!\n\nEn snabb påminnelse: {app}-profilen vi påbörjade åt dig när du skrev upp dig på listan väntar fortfarande. Den är dold tills du gör klart den. Här är en ny personlig länk: {link}",
+  "Best,": "Vänliga hälsningar,",
+  "Your {app} profile is still waiting for you": "Din {app}-profil väntar fortfarande på dig",
+  "Your family profile on {app} is ready to finish": "Er familjeprofil på {app} är redo att göras klar",
+  "Your au pair profile on {app} is ready to finish": "Din au pair-profil på {app} är redo att göras klar",
+  "Your {app} profile is ready to finish": "Din {app}-profil är redo att göras klar"
 }
