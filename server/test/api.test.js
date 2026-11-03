@@ -1942,7 +1942,7 @@ test('account invites: waitlist spots become profiles people finish from a perso
     let s = (await call2(admin, 'GET', '/admin/account-invites')).body;
     assert.deepEqual([s.waitlist, s.waitlist_with_account, s.invite_ready], [5, 1, 4]);
     assert.deepEqual(s.invite_ready_by_role, { family: 1, aupair: 2, unknown: 1 });
-    assert.match(s.samples[0].text, /Badji Tchedre-San, Co-founder & Partnerships, PairMundo/);
+    assert.match(s.samples[0].text, /Michael Lee, Co-founder & Community, PairMundo/);
     assert.equal((await call2(null, 'GET', '/admin/account-invites')).status, 401);
 
     // Sending makes no account: nothing about them is in users until they open the link.
@@ -1957,11 +1957,11 @@ test('account invites: waitlist spots become profiles people finish from a perso
     assert.match(ap.subject, /au pair profile on PairMundo is ready to finish/);
     assert.match(ap.text, /hidden/);
     assert.match(ap.text, /waitlist\/leave\?t=/);
-    // The designed version: same personal link on the button, the au pair picture, Badji's sign-off.
+    // The designed version: same personal link on the button, the au pair picture, Michael's sign-off.
     assert.ok(ap.html.includes(`#/claim/${linkOf('ai-ap@test.io')}`));
     assert.match(ap.html, /media\/email\/hero-aupair\.jpg/);
     assert.match(ap.html, /Your host family could be one swipe away/);
-    assert.match(ap.html, /Badji Tchedre-San/);
+    assert.match(ap.html, /Michael Lee/);
     assert.match(box.find((m) => m.to === 'ai-fam@test.io').html, /Gör klart min profil/);
     assert.equal((await call2(admin, 'POST', '/admin/account-invites/send', { kind: 'invite' })).body.sent, 0, 'never twice');
 

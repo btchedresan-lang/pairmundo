@@ -60,7 +60,7 @@ export const profileInviteEmail = (lang, { kind, email, signupUrl, leaveUrl, ear
 /**
  * Turns a waitlist spot into a profile: a personal link that opens the person's profile, already started with what
  * they told us on the waitlist, to choose a password and finish it (kind 'invite', or 'reminder' with a fresh link).
- * role is 'family', 'aupair' or null (they didn't say; the page asks). Signed by Badji, who runs partnerships.
+ * role is 'family', 'aupair' or null (they didn't say; the page asks). Signed by Michael Lee, co-founder for community.
  */
 export const accountInviteEmail = (lang, { kind, role, email, link, leaveUrl, linkDays, earlyDays = 0, assetBase = 'https://pairmundo.com' }) => {
   const v = { app: APP_NAME, email, link, days: linkDays, early: earlyDays };
@@ -76,7 +76,7 @@ export const accountInviteEmail = (lang, { kind, role, email, link, leaveUrl, li
       : t(lang, "The link asks whether you're a host family or an au pair, then takes you to your profile.", v));
   if (earlyDays && role === 'family') parts.push(t(lang, 'Your {early} extra free days of the Family Pass are already saved to this profile. Use them whenever it suits you.', v));
   parts.push(t(lang, "The link is only for you, so please don't forward it. It works for {days} days. If you don't want a profile, ignore this email: nothing is shown, and we don't keep a profile you never finish.", v));
-  parts.push(`${t(lang, 'Best,', v)}\nBadji Tchedre-San, Co-founder & Partnerships, PairMundo`);
+  parts.push(`${t(lang, 'Best,', v)}\nMichael Lee, Co-founder & Community, PairMundo`);
   parts.push(t(lang, 'You got this email because you joined the {app} list. To leave the list, open this link: {link}', { ...v, link: leaveUrl }));
   const subject = kind === 'reminder' ? t(lang, 'Your {app} profile is still waiting for you', v)
     : role === 'family' ? t(lang, 'Your family profile on {app} is ready to finish', v)
@@ -156,7 +156,7 @@ const accountInviteHtml = (lang, { kind, role, email, link, leaveUrl, linkDays, 
     <tr><td style="padding:22px 28px 30px">${button(BLUE, '#ffffff')}</td></tr>
   </table></td></tr>
 
-  <tr><td style="padding:22px 8px 0;font:15px/1.5 ${SANS};color:${INK}">${th(lang, 'Best,', v)}<br><strong>Badji Tchedre-San</strong><br><span style="color:${MUTED}">Co-founder &amp; Partnerships, PairMundo</span></td></tr>
+  <tr><td style="padding:22px 8px 0;font:15px/1.5 ${SANS};color:${INK}">${th(lang, 'Best,', v)}<br><strong>Michael Lee</strong><br><span style="color:${MUTED}">Co-founder &amp; Community, PairMundo</span></td></tr>
   <tr><td style="padding:22px 8px 0;font:13px/1.5 ${SANS};color:${MUTED}">
     ${th(lang, "The link is only for you, so please don't forward it. It works for {days} days. If you don't want a profile, ignore this email: nothing is shown, and we don't keep a profile you never finish.", v)}<br><br>
     ${th(lang, 'Button not working? Copy this link into your browser:', v)}<br><a href="${esc(link)}" style="color:${BLUE};word-break:break-all">${esc(link)}</a><br><br>
