@@ -7,7 +7,7 @@ import { hashPassword, verifyPassword, createSession, sessionMiddleware, require
 import { scoreMatch, checkCompliance, ageOn } from './matching.js';
 import { LEGACY_CRITERIA, PROGRAMS, REVIEW_CRITERIA, familyDocuments, reviewScore, placementTaskList, visaRoute } from './programs.js';
 import { buildAgreement, buildHostLetter, cleanTerms, defaultTerms, REQUIRED_TERMS } from './agreement.js';
-import { createMailer, agencyFamilyInviteEmail, agencyUpdateEmail, agencyLeadEmail, agencyNetworkInviteEmail, ambassadorInviteEmail, codeEmail, launchEmail, profileInviteEmail, referenceEmail, teamInviteEmail, waitlistEmail } from './mailer.js';
+import { createMailer, agencyFamilyInviteEmail, agencyUpdateEmail, agencyLeadEmail, agencyNetworkInviteEmail, ambassadorInviteEmail, codeEmail, launchEmail, accountInviteEmail, profileInviteEmail, referenceEmail, teamInviteEmail, waitlistEmail } from './mailer.js';
 import { mountPipeline } from './pipeline.js';
 import { mountHiring } from './hiring.js';
 import { countryName, pickLang, t as translate } from './i18n.js';
@@ -595,6 +595,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const gone = w ? db.prepare('DELETE FROM waitlist WHERE email = ?').run(w.email).changes : 0;
     // Leaving the list frees an early family bonus spot that no account has taken up yet.
     if (w) db.prepare('DELETE FROM early_bonus WHERE email = ? AND user_id IS NULL AND redeemed_at IS NULL').run(w.email);
+    // ...and ends an invite to finish a profile that was never opened, so its link stops working.
+    if (w) db.prepare('DELETE FROM account_invites WHERE email = ? AND claimed_at IS NULL').run(w.email);
     const lang = pickLang(req.get('accept-language')) || 'en';
     res.type('html').send(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/legal.css"><main><h1>PairMundo</h1><p>${
       translate(lang, gone ? "You're off the list. We won't email you about the launch." : 'This link was already used, or the address is not on the list.')}</p><p><a href="/">pairmundo.com</a></p></main>`);
@@ -628,6 +630,18 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     return user;
   };
 
+  /**
+   * The ambassador or agency a new au pair or family belongs to without typing a code: someone who joined the
+   * waitlist from an ambassador's link or a flyer keeps that ambassador, so a referral made before launch still
+   * counts, and a family an agency invited by email joins that agency, even without the link.
+   */
+  const carriedReferral = (email, role) => {
+    const waited = db.prepare('SELECT ref_code FROM waitlist WHERE email = ?').get(email);
+    const invitedBy = ['family', 'aupair'].includes(role) ? db.prepare(`SELECT x.code FROM agency_family_invites i JOIN ambassadors x ON x.id = i.ambassador_id
+      WHERE i.email = ? AND i.user_id IS NULL AND x.active = 1 ORDER BY i.id DESC LIMIT 1`).get(email) : null;
+    return ambassadorByCode(waited?.ref_code) ?? ambassadorByCode(invitedBy?.code);
+  };
+
   api.post('/auth/register', authLimit, wrap((req, res) => {
     const { password, role, name, country, city } = req.body || {};
     const email = normEmail(req.body?.email);
@@ -641,14 +655,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     // An ambassador's referral code, typed in or carried over from their link.
     let ambassador = str(req.body?.ref_code) && !partner ? ambassadorByCode(referralCode(req.body.ref_code)) : null;
     if (str(req.body?.ref_code) && !partner && !ambassador) throw bad('That referral code is not valid. Check it, or leave it empty.');
-    // Someone who joined the waitlist from an ambassador's link or a flyer and signs up later in the app keeps
-    // that ambassador and source, so a referral made before launch still counts.
     const waited = db.prepare('SELECT source, ref_code FROM waitlist WHERE email = ?').get(email);
-    if (!partner) ambassador ??= ambassadorByCode(waited?.ref_code);
-    // A family an agency invited by email joins that agency, even without the link.
-    const invitedBy = ['family', 'aupair'].includes(role) ? db.prepare(`SELECT x.code FROM agency_family_invites i JOIN ambassadors x ON x.id = i.ambassador_id
-      WHERE i.email = ? AND i.user_id IS NULL AND x.active = 1 ORDER BY i.id DESC LIMIT 1`).get(email) : null;
-    if (!partner) ambassador ??= ambassadorByCode(invitedBy?.code);
+    if (!partner) ambassador ??= carriedReferral(email, role);
     const source = str(req.body?.source, 60)?.toLowerCase() ?? waited?.source ?? null;
     if (db.prepare('SELECT 1 FROM users WHERE lower(trim(email)) = ?').get(email)) throw new HttpError(409, 'An account with this email already exists.');
     const user = createMember({ email, password, role, name, country, city, lang: pickLang(req.get('accept-language')), source, ambassador });
@@ -658,6 +666,41 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     setCookie(res, s.token);
     res.status(201);
     return { user: { ...publicUser(user, user), email: user.email, email_verified: false }, token: s.token };
+  }));
+
+  // ---------- finishing a profile started from the waitlist ----------
+  // An admin turns waitlist spots into profiles: each person gets a personal link (see /admin/account-invites). The
+  // account is only made when they open it, add their name and choose a password, so until then nothing about them
+  // can be seen, liked or matched. Opening the link proves the email, so there's no code to type.
+  const hashToken = (tok) => createHash('sha256').update(String(tok || '')).digest('hex');
+  const openInvite = (tok) => {
+    const i = db.prepare(`SELECT i.*, w.role, w.country, w.lang, w.source FROM account_invites i JOIN waitlist w ON w.email = i.email
+      WHERE i.token_hash = ? AND i.claimed_at IS NULL AND i.expires_at > datetime('now')`).get(hashToken(tok));
+    if (!i || db.prepare('SELECT 1 FROM users WHERE lower(trim(email)) = ?').get(i.email)) throw notFound('This link has expired or was already used. Sign in, or create your account.');
+    return i;
+  };
+  api.get('/auth/claim/:token', authLimit, wrap((req) => {
+    const i = openInvite(req.params.token);
+    return { email: i.email, role: i.role, country: i.country };
+  }));
+  api.post('/auth/claim/:token', authLimit, wrap((req, res) => {
+    const i = openInvite(req.params.token);
+    const { password, name, city } = req.body || {};
+    const role = i.role || req.body?.role;
+    if (!['aupair', 'family'].includes(role)) throw bad('Choose au pair or host family.');
+    if (!str(name)) throw bad('Name is required.');
+    if (!password || String(password).length < 8) throw bad('Password must be at least 8 characters.');
+    const country = /^[A-Za-z]{2}$/.test(req.body?.country || '') ? req.body.country : i.country;
+    if (!country) throw bad('Choose the country you live in.');
+    const user = createMember({ email: i.email, password, role, name, country, city, lang: i.lang || pickLang(req.get('accept-language')),
+      source: i.source, ambassador: carriedReferral(i.email, role), verified: true });
+    db.prepare("UPDATE account_invites SET claimed_at = datetime('now'), user_id = ? WHERE email = ?").run(user.id, i.email);
+    db.prepare('UPDATE agency_family_invites SET user_id = ? WHERE email = ? AND user_id IS NULL').run(user.id, i.email);
+    claimInvite(user);
+    const s = createSession(db, user.id);
+    setCookie(res, s.token);
+    res.status(201);
+    return { user: { ...publicUser(user, user), email: user.email, email_verified: true }, token: s.token };
   }));
 
   api.post('/auth/login', authLimit, wrap((req, res) => {
@@ -2688,6 +2731,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   const inviteRecipients = (kind) => db.prepare(`SELECT w.* FROM waitlist w WHERE w.role = 'family'
       AND NOT EXISTS (SELECT 1 FROM users u WHERE lower(trim(u.email)) = w.email)
       AND NOT EXISTS (SELECT 1 FROM profile_invites i WHERE i.email = w.email AND i.kind = ?)
+      AND NOT EXISTS (SELECT 1 FROM account_invites a WHERE a.email = w.email)
       ${kind === 'reminder' ? "AND EXISTS (SELECT 1 FROM profile_invites i WHERE i.email = w.email AND i.kind = 'invite' AND i.sent_at <= datetime('now', ?))" : ''}
     ORDER BY w.created_at, w.rowid`).all(...(kind === 'reminder' ? [kind, `-${reminderDays()} days`] : [kind]));
   const inviteEmailFor = (w, kind) => {
@@ -2729,6 +2773,65 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   api.post('/admin/profile-invites/test', requireRole('admin'), wrap(async (req) => {
     const { samples } = inviteStatus();
     for (const m of samples) await mailer({ to: req.user.email, subject: `[Test: ${m.kind}] ${m.subject}`, text: m.text });
+    return { ok: true, to: req.user.email, count: samples.length };
+  }));
+
+  // Turning the waitlist into profiles: everyone on the waitlist with no account gets a personal link to finish the
+  // profile we start from what they told us (role, country, language, the flyer or ambassador that brought them,
+  // a family's early free days). The account is made only when they open the link and choose a password, so nobody
+  // is visible or matchable before that. One reminder with a fresh link goes out PROFILE_REMINDER_DAYS after the
+  // invite. Links work for ACCOUNT_INVITE_DAYS (30 unless set). Nothing goes out until an admin presses a button.
+  const accountLinkDays = () => envInt('ACCOUNT_INVITE_DAYS', 30, 365);
+  const noAccount = 'NOT EXISTS (SELECT 1 FROM users u WHERE lower(trim(u.email)) = w.email)';
+  const accountRecipients = (kind) => (kind === 'reminder'
+    ? db.prepare(`SELECT w.* FROM waitlist w JOIN account_invites a ON a.email = w.email WHERE ${noAccount}
+        AND a.claimed_at IS NULL AND a.reminded_at IS NULL AND a.invited_at <= datetime('now', ?) ORDER BY a.invited_at, w.rowid`).all(`-${reminderDays()} days`)
+    : db.prepare(`SELECT w.* FROM waitlist w WHERE ${noAccount}
+        AND NOT EXISTS (SELECT 1 FROM account_invites a WHERE a.email = w.email) ORDER BY w.created_at, w.rowid`).all());
+  const accountEmailFor = (w, kind, token) => {
+    const b = w.role === 'family' && earlyDays() && db.prepare('SELECT redeemed_at FROM early_bonus WHERE email = ?').get(w.email);
+    return accountInviteEmail(w.lang || 'en', { kind, role: w.role, email: w.email, linkDays: accountLinkDays(), earlyDays: b && !b.redeemed_at ? earlyDays() : 0,
+      link: `${publicBase()}/#/claim/${token}`, leaveUrl: `${publicBase()}/api/waitlist/leave?t=${w.token}` });
+  };
+  const accountStatus = () => {
+    const n = (sql, ...a) => db.prepare(sql).get(...a).n;
+    const ready = accountRecipients('invite');
+    const byRole = (r) => ready.filter((w) => (w.role || null) === r).length;
+    return {
+      waitlist: n('SELECT COUNT(*) n FROM waitlist'),
+      waitlist_with_account: n(`SELECT COUNT(*) n FROM waitlist w WHERE NOT ${noAccount}`),
+      invited: n('SELECT COUNT(*) n FROM account_invites'),
+      reminded: n('SELECT COUNT(*) n FROM account_invites WHERE reminded_at IS NOT NULL'),
+      finished: n('SELECT COUNT(*) n FROM account_invites WHERE claimed_at IS NOT NULL'),
+      expired: n("SELECT COUNT(*) n FROM account_invites WHERE claimed_at IS NULL AND expires_at <= datetime('now')"),
+      invite_ready: ready.length,
+      invite_ready_by_role: { family: byRole('family'), aupair: byRole('aupair'), unknown: byRole(null) },
+      reminder_ready: accountRecipients('reminder').length,
+      reminder_days: reminderDays(),
+      link_days: accountLinkDays(),
+      samples: [['invite', 'family'], ['invite', 'aupair'], ['invite', null], ['reminder', 'family']]
+        .map(([kind, role]) => ({ kind, role, ...accountEmailFor({ email: 'name@example.com', lang: 'en', token: '…', role }, kind, '…') })),
+    };
+  };
+  api.get('/admin/account-invites', requireRole('admin'), wrap(() => accountStatus()));
+  api.post('/admin/account-invites/send', requireRole('admin'), wrap(async (req) => {
+    const kind = req.body?.kind === 'reminder' ? 'reminder' : 'invite';
+    const limit = Math.min(Math.max(Math.floor(Number(req.body?.limit)) || 100, 1), 1000);
+    let sent = 0; let error = null;
+    for (const w of accountRecipients(kind).slice(0, limit)) {
+      // A new token every time: only its hash is kept, and a reminder makes the first link stop working.
+      const token = randomBytes(24).toString('base64url');
+      const expires = `+${accountLinkDays()} days`;
+      try { await mailer({ to: w.email, ...accountEmailFor(w, kind, token) }); } catch (e) { error = `Stopped at ${w.email}: ${e.message}`; console.error('Account invite failed:', e.message); break; }
+      if (kind === 'reminder') db.prepare("UPDATE account_invites SET token_hash = ?, expires_at = datetime('now', ?), reminded_at = datetime('now') WHERE email = ?").run(hashToken(token), expires, w.email);
+      else db.prepare("INSERT INTO account_invites (email, token_hash, expires_at) VALUES (?, ?, datetime('now', ?))").run(w.email, hashToken(token), expires);
+      sent++;
+    }
+    return { ...accountStatus(), sent, error };
+  }));
+  api.post('/admin/account-invites/test', requireRole('admin'), wrap(async (req) => {
+    const { samples } = accountStatus();
+    for (const m of samples) await mailer({ to: req.user.email, subject: `[Test: ${m.kind}, ${m.role || 'role not given'}] ${m.subject}`, text: m.text });
     return { ok: true, to: req.user.email, count: samples.length };
   }));
 

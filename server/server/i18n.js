@@ -293,6 +293,45 @@ export const DICT = {
   "Verify your ID here: {link}": {
     es: "Verifica tu identidad aquí: {link}", fr: "Vérifiez votre identité ici : {link}",
     de: "Lass deinen Ausweis hier prüfen: {link}", pt: "Verifique sua identidade aqui: {link}" },
+  "Hi!\n\nThanks for joining the {app} list. You don't have to wait for the apps: we've started your profile with the details you gave us, so you only need a few minutes to finish it.": {
+    es: "¡Hola!\n\nGracias por unirte a la lista de {app}. No hace falta esperar a las apps: hemos empezado tu perfil con los datos que nos diste, así que solo necesitas unos minutos para completarlo.", fr: "Bonjour !\n\nMerci de vous être inscrit à la liste {app}. Inutile d'attendre les applications : nous avons commencé votre profil avec les informations que vous nous avez données, il ne vous faut que quelques minutes pour le terminer.",
+    de: "Hallo!\n\nDanke, dass du dich auf die {app}-Liste gesetzt hast. Du musst nicht auf die Apps warten: Wir haben dein Profil mit deinen Angaben schon angelegt, du brauchst nur ein paar Minuten, um es fertigzustellen.", pt: "Olá!\n\nObrigado por entrar na lista do {app}. Não precisa esperar pelos apps: começamos seu perfil com os dados que você nos deu, então só faltam alguns minutos para terminá-lo." },
+  "Your profile is hidden. Nobody can see it or match with you until you finish it yourself.": {
+    es: "Tu perfil está oculto. Nadie puede verlo ni hacer match contigo hasta que lo completes tú.", fr: "Votre profil est masqué. Personne ne peut le voir ni matcher avec vous tant que vous ne l'avez pas terminé vous-même.",
+    de: "Dein Profil ist verborgen. Niemand kann es sehen oder mit dir matchen, bis du es selbst fertigstellst.", pt: "Seu perfil está oculto. Ninguém pode vê-lo nem dar match com você até que você mesmo o termine." },
+  "To finish it:\n1. Open your personal link: {link}\n2. Add your name and choose a password. Opening the link confirms your email ({email}), so there's no code to type.\n3. Add a photo and a few lines about yourself.": {
+    es: "Para completarlo:\n1. Abre tu enlace personal: {link}\n2. Añade tu nombre y elige una contraseña. Al abrir el enlace se confirma tu email ({email}), así que no tienes que escribir ningún código.\n3. Añade una foto y unas líneas sobre ti.", fr: "Pour le terminer :\n1. Ouvrez votre lien personnel : {link}\n2. Ajoutez votre nom et choisissez un mot de passe. Ouvrir le lien confirme votre adresse e-mail ({email}), vous n'avez donc aucun code à saisir.\n3. Ajoutez une photo et quelques lignes sur vous.",
+    de: "So stellst du es fertig:\n1. Öffne deinen persönlichen Link: {link}\n2. Gib deinen Namen ein und wähle ein Passwort. Das Öffnen des Links bestätigt deine E-Mail-Adresse ({email}), du musst also keinen Code eingeben.\n3. Füge ein Foto und ein paar Zeilen über dich hinzu.", pt: "Para terminar:\n1. Abra seu link pessoal: {link}\n2. Adicione seu nome e escolha uma senha. Abrir o link confirma seu e-mail ({email}), então não há código para digitar.\n3. Adicione uma foto e algumas linhas sobre você." },
+  "Families can only like au pairs with a photo and a few words, so the sooner your profile is done, the sooner they can find you.": {
+    es: "Las familias solo pueden dar like a au pairs con foto y unas palabras, así que cuanto antes esté listo tu perfil, antes te encontrarán.", fr: "Les familles ne peuvent liker que les au pairs avec une photo et quelques mots : plus tôt votre profil est prêt, plus tôt elles vous trouvent.",
+    de: "Familien können nur Au-pairs mit Foto und ein paar Worten liken. Je früher dein Profil fertig ist, desto früher finden sie dich.", pt: "Famílias só podem curtir au pairs com foto e algumas palavras, então quanto antes seu perfil estiver pronto, antes elas encontram você." },
+  "The link asks whether you're a host family or an au pair, then takes you to your profile.": {
+    es: "El enlace te pregunta si eres una familia de acogida o au pair y luego te lleva a tu perfil.", fr: "Le lien vous demande si vous êtes une famille d'accueil ou un au pair, puis vous emmène vers votre profil.",
+    de: "Der Link fragt, ob du Gastfamilie oder Au-pair bist, und bringt dich dann zu deinem Profil.", pt: "O link pergunta se você é uma família anfitriã ou au pair e depois leva você ao seu perfil." },
+  "Your {early} extra free days of the Family Pass are already saved to this profile. Use them whenever it suits you.": {
+    es: "Tus {early} días gratis extra de Family Pass ya están guardados en este perfil. Úsalos cuando te venga bien.", fr: "Vos {early} jours gratuits de Family Pass en plus sont déjà réservés à ce profil. Utilisez-les quand cela vous convient.",
+    de: "Deine {early} zusätzlichen Gratistage des Family Pass sind schon in diesem Profil gespeichert. Löse sie ein, wann es dir passt.", pt: "Seus {early} dias grátis extras de Family Pass já estão guardados neste perfil. Use quando for melhor para você." },
+  "The link is only for you, so please don't forward it. It works for {days} days. If you don't want a profile, ignore this email: nothing is shown, and we don't keep a profile you never finish.": {
+    es: "El enlace es solo para ti, así que no lo reenvíes. Funciona durante {days} días. Si no quieres un perfil, ignora este email: no se muestra nada y no guardamos un perfil que nunca completes.", fr: "Le lien est réservé à vous, merci de ne pas le transférer. Il fonctionne pendant {days} jours. Si vous ne voulez pas de profil, ignorez cet e-mail : rien n'est affiché, et nous ne gardons pas un profil que vous ne terminez jamais.",
+    de: "Der Link ist nur für dich, bitte leite ihn nicht weiter. Er funktioniert {days} Tage lang. Wenn du kein Profil möchtest, ignoriere diese E-Mail: Es wird nichts angezeigt, und ein Profil, das du nie fertigstellst, behalten wir nicht.", pt: "O link é só para você, então não o encaminhe. Ele funciona por {days} dias. Se não quiser um perfil, ignore este e-mail: nada é mostrado, e não guardamos um perfil que você nunca terminar." },
+  "Hi!\n\nA quick reminder: the {app} profile we started for you when you joined the list is still waiting. It stays hidden until you finish it. Here is a fresh personal link: {link}": {
+    es: "¡Hola!\n\nUn recordatorio rápido: el perfil de {app} que empezamos para ti cuando te uniste a la lista te sigue esperando. Está oculto hasta que lo completes. Aquí tienes un nuevo enlace personal: {link}", fr: "Bonjour !\n\nPetit rappel : le profil {app} que nous avons commencé pour vous lors de votre inscription à la liste vous attend toujours. Il reste masqué tant que vous ne l'avez pas terminé. Voici un nouveau lien personnel : {link}",
+    de: "Hallo!\n\nKurze Erinnerung: Das {app}-Profil, das wir für dich angelegt haben, als du dich auf die Liste gesetzt hast, wartet noch auf dich. Es bleibt verborgen, bis du es fertigstellst. Hier ist ein neuer persönlicher Link: {link}", pt: "Olá!\n\nUm lembrete rápido: o perfil no {app} que começamos para você quando entrou na lista ainda está esperando. Ele fica oculto até você terminá-lo. Aqui está um novo link pessoal: {link}" },
+  "Best,": {
+    es: "Un saludo,", fr: "Bien cordialement,",
+    de: "Viele Grüße", pt: "Um abraço," },
+  "Your {app} profile is still waiting for you": {
+    es: "Tu perfil de {app} te sigue esperando", fr: "Votre profil {app} vous attend toujours",
+    de: "Dein {app}-Profil wartet noch auf dich", pt: "Seu perfil no {app} ainda está esperando por você" },
+  "Your family profile on {app} is ready to finish": {
+    es: "El perfil de tu familia en {app} está listo para completar", fr: "Le profil de votre famille sur {app} est prêt à être terminé",
+    de: "Euer Familienprofil auf {app} ist bereit zum Fertigstellen", pt: "O perfil da sua família no {app} está pronto para terminar" },
+  "Your au pair profile on {app} is ready to finish": {
+    es: "Tu perfil de au pair en {app} está listo para completar", fr: "Votre profil d'au pair sur {app} est prêt à être terminé",
+    de: "Dein Au-pair-Profil auf {app} ist bereit zum Fertigstellen", pt: "Seu perfil de au pair no {app} está pronto para terminar" },
+  "Your {app} profile is ready to finish": {
+    es: "Tu perfil de {app} está listo para completar", fr: "Votre profil {app} est prêt à être terminé",
+    de: "Dein {app}-Profil ist bereit zum Fertigstellen", pt: "Seu perfil no {app} está pronto para terminar" },
 };
 
 // Swedish lives in its own file, keyed by the same English text.

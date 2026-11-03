@@ -1916,6 +1916,98 @@ test('profile invites: waitlisted families without an account are invited once, 
   }
 });
 
+test('account invites: waitlist spots become profiles people finish from a personal link, hidden until then', async () => {
+  const db2 = openDb(':memory:');
+  const box = [];
+  const app2 = createApp(db2, { mailer: async (m) => { box.push(m); }, pusher: async (m) => m.map(() => ({ status: 'ok' })) });
+  const srv = await new Promise((r) => { const s = app2.listen(0, () => r(s)); });
+  const b2 = `http://127.0.0.1:${srv.address().port}/api`;
+  const call2 = async (token, method, path, body, headers = {}) => {
+    const res = await fetch(b2 + path, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...headers }, body: body ? JSON.stringify(body) : undefined });
+    return { status: res.status, body: await res.json() };
+  };
+  const linkOf = (to) => box.find((m) => m.to === to).text.match(/#\/claim\/([\w-]+)/)[1];
+  try {
+    const { hashPassword } = await import('../server/auth.js');
+    db2.prepare("INSERT INTO users (email, password_hash, role, name, email_verified) VALUES ('boss@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+    const admin = (await call2(null, 'POST', '/auth/login', { email: 'boss@test.io', password: 'password123' })).body.token;
+    await call2(null, 'POST', '/waitlist', { email: 'ai-fam@test.io', role: 'family', country: 'SE', source: 'flyer-x' }, { 'Accept-Language': 'sv' });
+    await call2(null, 'POST', '/waitlist', { email: 'ai-ap@test.io', role: 'aupair', country: 'CO' });
+    await call2(null, 'POST', '/waitlist', { email: 'ai-who@test.io' });
+    await call2(null, 'POST', '/waitlist', { email: 'ai-leave@test.io', role: 'aupair', country: 'BR' });
+    await call2(null, 'POST', '/waitlist', { email: 'ai-joined@test.io', role: 'family' });
+    await call2(null, 'POST', '/auth/register', { email: 'ai-joined@test.io', password: 'password123', role: 'family', name: 'Joined', country: 'SE' });
+    const users = () => db2.prepare("SELECT COUNT(*) n FROM users WHERE role IN ('aupair','family')").get().n;
+
+    let s = (await call2(admin, 'GET', '/admin/account-invites')).body;
+    assert.deepEqual([s.waitlist, s.waitlist_with_account, s.invite_ready], [5, 1, 4]);
+    assert.deepEqual(s.invite_ready_by_role, { family: 1, aupair: 2, unknown: 1 });
+    assert.match(s.samples[0].text, /Badji Tchedre-San, Co-founder & Partnerships, PairMundo/);
+    assert.equal((await call2(null, 'GET', '/admin/account-invites')).status, 401);
+
+    // Sending makes no account: nothing about them is in users until they open the link.
+    box.length = 0;
+    s = (await call2(admin, 'POST', '/admin/account-invites/send', { kind: 'invite' })).body;
+    assert.equal(s.sent, 4);
+    assert.equal(users(), 1);
+    assert.equal(db2.prepare('SELECT COUNT(*) n FROM account_invites').get().n, 4);
+    assert.ok(!db2.prepare('SELECT 1 FROM account_invites WHERE token_hash = ?').get(linkOf('ai-ap@test.io')), 'only a hash is kept');
+    assert.match(box.find((m) => m.to === 'ai-fam@test.io').subject, /familjeprofil/);
+    const ap = box.find((m) => m.to === 'ai-ap@test.io');
+    assert.match(ap.subject, /au pair profile on PairMundo is ready to finish/);
+    assert.match(ap.text, /hidden/);
+    assert.match(ap.text, /waitlist\/leave\?t=/);
+    assert.equal((await call2(admin, 'POST', '/admin/account-invites/send', { kind: 'invite' })).body.sent, 0, 'never twice');
+
+    // The link shows what we know, and finishing it makes a confirmed account with the waitlist details.
+    const tok = linkOf('ai-fam@test.io');
+    let r = await call2(null, 'GET', `/auth/claim/${tok}`);
+    assert.deepEqual(r.body, { email: 'ai-fam@test.io', role: 'family', country: 'SE' });
+    assert.equal((await call2(null, 'POST', `/auth/claim/${tok}`, { name: 'Svensson', password: 'short' })).status, 400);
+    r = await call2(null, 'POST', `/auth/claim/${tok}`, { name: 'Familjen Svensson', password: 'password123' });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    const u = db2.prepare("SELECT * FROM users WHERE email = 'ai-fam@test.io'").get();
+    assert.deepEqual([u.role, u.country, u.lang, u.source, u.email_verified], ['family', 'SE', 'sv', 'flyer-x', 1]);
+    assert.equal((await call2(r.body.token, 'GET', '/me')).status, 200);
+    assert.equal((await call2(null, 'POST', '/auth/login', { email: 'ai-fam@test.io', password: 'password123' })).status, 200);
+    assert.equal((await call2(null, 'GET', `/auth/claim/${tok}`)).status, 404, 'used once');
+
+    // Someone who didn't say picks a role; a wrong token or an expired link does nothing.
+    const who = linkOf('ai-who@test.io');
+    assert.equal((await call2(null, 'GET', `/auth/claim/${who}`)).body.role, null);
+    assert.equal((await call2(null, 'POST', `/auth/claim/${who}`, { name: 'Ana', password: 'password123', country: 'MX' })).status, 400);
+    assert.equal((await call2(null, 'POST', `/auth/claim/${who}`, { name: 'Ana', password: 'password123', country: 'MX', role: 'aupair' })).status, 201);
+    assert.equal(db2.prepare("SELECT role FROM users WHERE email = 'ai-who@test.io'").get().role, 'aupair');
+    assert.equal((await call2(null, 'GET', '/auth/claim/nope')).status, 404);
+
+    // Leaving the waitlist kills the link.
+    const leave = box.find((m) => m.to === 'ai-leave@test.io').text.match(/leave\?t=([\w-]+)/)[1];
+    const leaveTok = linkOf('ai-leave@test.io');
+    await fetch(`${b2}/waitlist/leave?t=${leave}`);
+    assert.equal((await call2(null, 'GET', `/auth/claim/${leaveTok}`)).status, 404);
+
+    // The reminder waits a few days, goes once with a fresh link, and the old link stops working.
+    assert.equal((await call2(admin, 'POST', '/admin/account-invites/send', { kind: 'reminder' })).body.sent, 0);
+    db2.prepare("UPDATE account_invites SET invited_at = datetime('now', '-6 days')").run();
+    const old = linkOf('ai-ap@test.io');
+    box.length = 0;
+    s = (await call2(admin, 'POST', '/admin/account-invites/send', { kind: 'reminder' })).body;
+    assert.equal(s.sent, 1);
+    assert.match(box[0].subject, /still waiting/);
+    assert.equal((await call2(null, 'GET', `/auth/claim/${old}`)).status, 404);
+    assert.equal((await call2(null, 'GET', `/auth/claim/${linkOf('ai-ap@test.io')}`)).status, 200);
+    assert.equal((await call2(admin, 'POST', '/admin/account-invites/send', { kind: 'reminder' })).body.sent, 0, 'reminded once');
+    db2.prepare("UPDATE account_invites SET expires_at = datetime('now', '-1 minute')").run();
+    assert.equal((await call2(null, 'GET', `/auth/claim/${linkOf('ai-ap@test.io')}`)).status, 404, 'expired');
+    s = (await call2(admin, 'GET', '/admin/account-invites')).body;
+    assert.deepEqual([s.finished, s.reminded], [2, 1]);
+
+    assert.equal((await call2(admin, 'POST', '/admin/account-invites/test')).body.count, 4);
+  } finally {
+    srv.close();
+  }
+});
+
 test('profile nudges: accounts without a photo or bio are nudged 2 and 7 days after signing up, once each', async () => {
   const fam = await register('nudge-fam@test.io', 'family', 'SE', 'Nudge Family', { complete: false });
   const done = await register('nudge-done@test.io', 'family', 'SE', 'Done Family');

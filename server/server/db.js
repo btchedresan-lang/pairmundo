@@ -228,6 +228,19 @@ CREATE TABLE IF NOT EXISTS profile_invites (
   PRIMARY KEY (email, kind)
 );
 
+-- A waitlist spot turned into a profile the person finishes themselves. Nothing about them goes into users (so
+-- nothing can be seen, liked or matched) until they open their personal link and choose a password; only a hash of
+-- the link's token is kept. Links expire (ACCOUNT_INVITE_DAYS), and leaving the waitlist ends the invite too.
+CREATE TABLE IF NOT EXISTS account_invites (
+  email TEXT PRIMARY KEY,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  invited_at TEXT NOT NULL DEFAULT (datetime('now')),
+  reminded_at TEXT,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  claimed_at TEXT
+);
+
 -- New accounts still missing a photo or bio get a nudge 2 days and 7 days after signing up (kind: day2 | day7).
 CREATE TABLE IF NOT EXISTS profile_nudges (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

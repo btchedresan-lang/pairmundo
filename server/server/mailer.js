@@ -56,6 +56,33 @@ export const profileInviteEmail = (lang, { kind, email, signupUrl, leaveUrl, ear
   return { subject: t(lang, kind === 'reminder' ? 'Your family profile is waiting' : 'Your family profile on {app} is open', v), text: parts.join('\n\n') };
 };
 
+/**
+ * Turns a waitlist spot into a profile: a personal link that opens the person's profile, already started with what
+ * they told us on the waitlist, to choose a password and finish it (kind 'invite', or 'reminder' with a fresh link).
+ * role is 'family', 'aupair' or null (they didn't say; the page asks). Signed by Badji, who runs partnerships.
+ */
+export const accountInviteEmail = (lang, { kind, role, email, link, leaveUrl, linkDays, earlyDays = 0 }) => {
+  const v = { app: APP_NAME, email, link, days: linkDays, early: earlyDays };
+  const parts = kind === 'reminder'
+    ? [t(lang, "Hi!\n\nA quick reminder: the {app} profile we started for you when you joined the list is still waiting. It stays hidden until you finish it. Here is a fresh personal link: {link}", v)]
+    : [t(lang, "Hi!\n\nThanks for joining the {app} list. You don't have to wait for the apps: we've started your profile with the details you gave us, so you only need a few minutes to finish it.", v),
+      t(lang, 'Your profile is hidden. Nobody can see it or match with you until you finish it yourself.', v),
+      t(lang, "To finish it:\n1. Open your personal link: {link}\n2. Add your name and choose a password. Opening the link confirms your email ({email}), so there's no code to type.\n3. Add a photo and a few lines about yourself.", v)];
+  parts.push(role === 'aupair'
+    ? t(lang, 'Families can only like au pairs with a photo and a few words, so the sooner your profile is done, the sooner they can find you.', v)
+    : role === 'family'
+      ? t(lang, 'Au pairs can only like families who have a photo and a few words, so the sooner your profile is there, the sooner they can find you.', v)
+      : t(lang, "The link asks whether you're a host family or an au pair, then takes you to your profile.", v));
+  if (earlyDays && role === 'family') parts.push(t(lang, 'Your {early} extra free days of the Family Pass are already saved to this profile. Use them whenever it suits you.', v));
+  parts.push(t(lang, "The link is only for you, so please don't forward it. It works for {days} days. If you don't want a profile, ignore this email: nothing is shown, and we don't keep a profile you never finish.", v));
+  parts.push(`${t(lang, 'Best,', v)}\nBadji Tchedre-San, Co-founder & Partnerships, PairMundo`);
+  parts.push(t(lang, 'You got this email because you joined the {app} list. To leave the list, open this link: {link}', { ...v, link: leaveUrl }));
+  const subject = kind === 'reminder' ? t(lang, 'Your {app} profile is still waiting for you', v)
+    : role === 'family' ? t(lang, 'Your family profile on {app} is ready to finish', v)
+      : role === 'aupair' ? t(lang, 'Your au pair profile on {app} is ready to finish', v) : t(lang, 'Your {app} profile is ready to finish', v);
+  return { subject, text: parts.join('\n\n') };
+};
+
 /** Asks a family an au pair looked after children for to review them; answering takes a free account on that email. */
 export const referenceEmail = (lang, { aupair, link }) => {
   const v = { app: APP_NAME, aupair, link };
