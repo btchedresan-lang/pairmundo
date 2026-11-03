@@ -408,3 +408,19 @@ body { overflow-x: clip; }
 }
 .wait-card { border: 0; box-shadow: 0 16px 40px -24px rgba(59, 91, 219, .55); background: linear-gradient(#fff, #fff) padding-box,
   linear-gradient(120deg, var(--coral), var(--sun), var(--mint), var(--brand)) border-box; border: 2px solid transparent; }
+/* Guides: training videos for agencies, au pairs and families */
+.guides { max-width: 980px; margin: 0 auto; }
+.guide-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 16px 0; }
+.guide-tab { display: flex; gap: 10px; align-items: center; padding: 12px 14px; border-radius: var(--radius); background: var(--card); border: 2px solid var(--line); color: var(--ink); text-decoration: none; }
+.guide-tab.on { border-color: var(--brand); background: var(--brand-soft); }
+.guide-icon { font-size: 1.6rem; }
+.guide-player video { width: 100%; aspect-ratio: 16 / 9; border-radius: 10px; background: #1a1d2b; display: block; margin-bottom: 14px; }
+.guide-chapters { list-style: none; padding: 0; margin: 8px 0 12px; columns: 2; column-gap: 24px; }
+.guide-chapters li { break-inside: avoid; margin: 2px 0; }
+.guide-chapters button.link { background: none; border: 0; padding: 4px 0; font: inherit; color: var(--brand); cursor: pointer; text-align: left; }
+.guide-chapters button.link .muted { display: inline-block; min-width: 3em; font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) {
+  .guide-tabs { gap: 6px; }
+  .guide-tab { flex-direction: column; text-align: center; gap: 4px; padding: 10px 6px; font-size: .9rem; }
+  .guide-chapters { columns: 1; }
+}
