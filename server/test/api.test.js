@@ -1942,7 +1942,7 @@ test('account invites: waitlist spots become profiles people finish from a perso
     let s = (await call2(admin, 'GET', '/admin/account-invites')).body;
     assert.deepEqual([s.waitlist, s.waitlist_with_account, s.invite_ready], [5, 1, 4]);
     assert.deepEqual(s.invite_ready_by_role, { family: 1, aupair: 2, unknown: 1 });
-    assert.match(s.samples[0].text, /Michael Lee, Co-founder, PairMundo/);
+    assert.match(s.samples[0].text, /Michael Lee, Co-founder & Community, PairMundo/);
     assert.equal((await call2(null, 'GET', '/admin/account-invites')).status, 401);
 
     // Sending makes no account: nothing about them is in users until they open the link.
