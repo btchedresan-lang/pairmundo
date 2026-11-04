@@ -54,6 +54,9 @@ services:
         sync: false
       - key: STRIPE_WEBHOOK_SECRET
         sync: false
+      # Optional automatic payouts to flyer distributors (Stripe Connect): set to stripe. See DEPLOY.md.
+      - key: FLYER_PAYOUTS
+        sync: false
       - key: REVENUECAT_SECRET_KEY
         sync: false
       - key: REVENUECAT_WEBHOOK_AUTH
