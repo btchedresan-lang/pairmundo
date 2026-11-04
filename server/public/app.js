@@ -970,6 +970,7 @@ function distributorCard(d) {
     <p>${tr('Approved, not paid out yet')}: <strong>${kr(d.total.owed_ore)}</strong></p>
     ${d.total.pending?.sessions ? `<p>${tr('Waiting for approval')}: <strong>${trn(d.total.pending.flyers, '{n} flyer', '{n} flyers')}, ${kr(d.total.pending.amount_ore)}</strong></p>` : ''}
     <p class="muted small">${tr('You earn {flyer} for each flyer you deliver, and {family} for each family who joins through your flyers within {days} days of a delivery in that area. Send your count below after each delivery. PairMundo checks it, and once it is approved it is added to your pay.', { flyer: kr(r.flyer_ore), family: kr(r.family_ore), days: r.bonus_days })}</p></div>
+  ${payoutCard(d.payouts)}
   ${d.areas.length ? `<form class="card" id="sendCount"><h3>📬 ${tr('Send your flyer count')}</h3>
     <div class="form-grid"><div class="field"><label>${tr('Area')}</label><select name="area">${d.areas.map((x) => `<option value="${esc(x)}">${esc(areaName(x))}</option>`).join('')}</select></div>
       <div class="field"><label>${tr('Flyers delivered')}</label><input name="flyers" type="number" min="1" step="1" inputmode="numeric" required placeholder="500"></div></div>
@@ -980,11 +981,22 @@ function distributorCard(d) {
     ${d.sessions.map((s) => `<tr><td>${fmtDate(s.delivered_on)}</td><td>${esc(areaName(s.area))}<div style="margin-top:4px">${distributorStatus(s)}</div></td><td>${s.flyers}${s.status === 'approved' && s.families ? `<div class="small muted">${trn(s.families, '{n} family', '{n} families')}</div>` : ''}</td><td>${kr(s.amount_ore)}</td></tr>`).join('')
     || `<tr><td colspan="4" class="muted">${tr('No deliveries yet. Send your first count above.')}</td></tr>`}</table></div>`;
 }
+/** Automatic payouts: set up once on Stripe's page, then approved pay goes to their bank by itself. */
+const payoutCard = (p) => (!p?.enabled ? ''
+  : p.ready ? `<div class="card"><p>✓ ${tr('Payouts are set up. Your pay goes to your bank account automatically once a count is approved.')}</p></div>`
+    : `<div class="card"><h3>💸 ${p.started ? tr('Finish setting up your payouts') : tr('Get paid automatically')}</h3>
+    <p>${tr('Add your bank details once on our payment partner Stripe\'s secure page. After that, your pay is sent to your bank automatically each time a count is approved.')}</p>
+    <button class="btn" id="setupPayouts">${p.started ? tr('Continue setup') : tr('Set up payouts')}</button></div>`);
 /** Where a delivery is: waiting for approval (and can be taken back), turned down with the reason, owed, or paid. */
 const distributorStatus = (s) => (s.status === 'pending' ? `<span class="chip">${tr('Waiting for approval')}</span> <button class="btn ghost sm" data-withdraw="${s.id}">${tr('Take back')}</button>`
   : s.status === 'rejected' ? `<span class="chip warn">${tr('Not approved')}</span>${s.review_note ? `<div class="small muted">${esc(s.review_note)}</div>` : ''}`
     : s.paid ? `<span class="chip ok">✓ ${tr('Paid')}</span>` : `<span class="muted">${tr('Approved, payment coming')}</span>`);
 function wireDistributor() {
+  const setup = document.getElementById('setupPayouts');
+  if (setup) setup.onclick = async () => {
+    setup.disabled = true;
+    try { location.href = (await api('/me/ambassador/payouts', { method: 'POST' })).url; } catch (err) { toast(err.message); setup.disabled = false; }
+  };
   const form = document.getElementById('sendCount');
   if (form) form.onsubmit = async (e) => {
     e.preventDefault();
@@ -2279,7 +2291,12 @@ const reviewControls = (s) => `<span class="row" style="gap:6px;flex-wrap:nowrap
   <button class="btn sm" data-approve="${s.id}">Approve</button><button class="btn ghost sm" data-reject="${s.id}">Reject</button></span>`;
 function wireReviews(ambId, reload, only = null) {
   const review = async (sid, body) => {
-    try { await api(`/admin/ambassadors/${ambId}/sessions/${sid}/review`, { method: 'POST', body }); toast(body.decision === 'approve' ? 'Approved. It is now owed to them.' : 'Rejected. They can see why.'); reload(); }
+    try {
+      const r = await api(`/admin/ambassadors/${ambId}/sessions/${sid}/review`, { method: 'POST', body });
+      toast(body.decision === 'reject' ? 'Rejected. They can see why.' : r.payout?.status === 'paid' ? `Approved and paid ${kr(r.payout.amount_ore)} to their account.`
+        : r.payout?.status === 'failed' ? `Approved, but the payout failed: ${r.payout.error}` : 'Approved. It is now owed to them.');
+      reload();
+    }
     catch (err) { toast(err.message); }
   };
   const mine = (b, k) => only == null || Number(b.dataset[k]) === only;
@@ -2338,6 +2355,11 @@ async function adminAmbassadors(head, id, qs) {
       <form class="card" id="ambEdit"><h3>Details</h3>${fields(a)}
         <label class="check"><input type="checkbox" name="active" ${a.active ? 'checked' : ''}> Active (the code works and earns rewards)</label>
         <button class="btn sm" style="margin-top:10px">Save</button></form>
+      ${a.kind === 'distributor' && a.payouts?.enabled ? `<div class="card"><h3>💸 Automatic payouts</h3>
+        <p>${a.payouts.ready ? '✓ Their Stripe account is set up. Approved pay is sent to it automatically.' : a.payouts.started ? 'They started setting up their Stripe account but haven\'t finished.' : 'They haven\'t set up their payout account yet. They do it from their pay page.'}</p>
+        ${a.payouts.ready && a.stats.owed_ore > 0 ? `<button class="btn sm" id="payNow">Pay what's owed now (${kr(a.stats.owed_ore)})</button>` : ''}
+        ${a.payouts.history.length ? `<div class="table-wrap"><table><tr><th>When</th><th>Amount</th><th>Status</th></tr>${a.payouts.history.map((p) => `<tr><td>${fmtTime(p.created_at)}</td><td>${kr(p.amount_ore)} ${p.currency !== 'sek' ? esc(p.currency.toUpperCase()) : ''}</td>
+          <td>${p.status === 'paid' ? `✓ Sent <span class="muted small">${esc(p.transfer_id || '')}</span>` : p.status === 'failed' ? `<span class="chip warn">Failed</span> <span class="muted small">${esc(p.error || '')}</span>` : 'Sending…'}</td></tr>`).join('')}</table></div>` : ''}</div>` : ''}
       ${a.kind === 'distributor' ? `<form class="card" id="sessNew"><h3>Log a delivery session</h3>
         ${a.areas.length ? `<div class="form-grid"><div class="field"><label>Area</label><select name="area">${a.areas.map((x) => `<option value="${esc(x)}">${esc(areaName(x))} (${esc(x)})</option>`).join('')}</select></div>
           <div class="field"><label>Flyers delivered</label><input name="flyers" type="number" min="1" step="1" required></div></div>
@@ -2369,6 +2391,13 @@ async function adminAmbassadors(head, id, qs) {
       catch (err) { toast(err.message); }
     };
     wireReviews(a.id, () => views.admin(['ambassadors', a.id], qs));
+    const $pay = document.getElementById('payNow');
+    if ($pay) $pay.onclick = async () => {
+      if (!confirm(`Send ${a.name} ${kr(a.stats.owed_ore)} now?`)) return;
+      $pay.disabled = true;
+      try { const r = await api(`/admin/ambassadors/${a.id}/payout`, { method: 'POST' }); toast(r.payout.status === 'paid' ? `Sent ${kr(r.payout.amount_ore)}` : `Failed: ${r.payout.error}`); views.admin(['ambassadors', a.id], qs); }
+      catch (err) { toast(err.message); $pay.disabled = false; }
+    };
     const $sess = document.getElementById('sessNew');
     if ($sess) $sess.onsubmit = async (e) => {
       e.preventDefault();

@@ -18,6 +18,7 @@ import { createStorage } from './storage.js';
 import { createModerator } from './moderation.js';
 import { createBackups } from './backup.js';
 import { createVideo, CALL_HOURS } from './video.js';
+import { createPayouts } from './payouts.js';
 
 const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
 const MAX_PHOTOS = 6;
@@ -108,7 +109,7 @@ export function seedPrograms(db) {
   }
 }
 
-export function createApp(db, { mailer = createMailer(), pusher = createPusher(), storage, identity = createIdentity(), checkout = createCheckout(), revenuecat = createRevenueCat(), backups = createBackups(db), moderator = createModerator(), video = createVideo() } = {}) {
+export function createApp(db, { mailer = createMailer(), pusher = createPusher(), storage, identity = createIdentity(), checkout = createCheckout(), revenuecat = createRevenueCat(), backups = createBackups(db), moderator = createModerator(), video = createVideo(), payouts = createPayouts() } = {}) {
   const UPLOAD_DIR = process.env.UPLOAD_DIR || 'data/uploads';
   storage ??= createStorage({ dir: UPLOAD_DIR });
   seedPrograms(db);
@@ -539,6 +540,69 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       owed_ore: owed('flyer_sessions', " AND status = 'approved'") + owed('flyer_bonuses'),
       pending: { sessions: p.sessions, flyers: p.flyers, amount_ore: p.n } };
   };
+  // ---------- automatic flyer payouts (Stripe Connect, see payouts.js) ----------
+  // Once a distributor has set up their Stripe account, everything approved and not paid yet is sent to it: right
+  // after the admin approves a count, when their account becomes ready, when the admin presses Pay now, and every hour
+  // (which picks up family bonuses and retries a payout that failed, say because the Stripe balance was short).
+  /** Sends a distributor everything they're owed. Returns the payout, or null when there's nothing to send or no account. */
+  const payDistributor = async (amb, { notifyFailure = true } = {}) => {
+    const a = db.prepare('SELECT * FROM ambassadors WHERE id = ?').get(amb.id);
+    if (!payouts || a?.kind !== 'distributor' || !a.stripe_account || !a.payouts_ready) return null;
+    syncFlyerBonuses(a);
+    // A payout left half-sent (the server stopped mid-transfer) is sent again first, under the same key, so Stripe
+    // makes it once either way.
+    const stuck = db.prepare("SELECT id, amount_ore amount FROM flyer_payouts WHERE ambassador_id = ? AND status = 'sending' AND created_at < datetime('now', '-15 minutes') ORDER BY id LIMIT 1").get(a.id);
+    // Otherwise claim the rows first, so a second call while this transfer is on its way can't send them again.
+    const p = stuck || tx(db, () => {
+      const owed = db.prepare("SELECT COALESCE(SUM(amount_ore), 0) n FROM flyer_sessions WHERE ambassador_id = ? AND status = 'approved' AND paid_at IS NULL AND payout_id IS NULL").get(a.id).n
+        + db.prepare('SELECT COALESCE(SUM(amount_ore), 0) n FROM flyer_bonuses WHERE ambassador_id = ? AND paid_at IS NULL AND payout_id IS NULL').get(a.id).n;
+      if (owed <= 0) return null;
+      const id = Number(db.prepare('INSERT INTO flyer_payouts (ambassador_id, amount_ore, currency) VALUES (?,?,?)').run(a.id, owed, payouts.currency).lastInsertRowid);
+      db.prepare("UPDATE flyer_sessions SET payout_id = ? WHERE ambassador_id = ? AND status = 'approved' AND paid_at IS NULL AND payout_id IS NULL").run(id, a.id);
+      db.prepare('UPDATE flyer_bonuses SET payout_id = ? WHERE ambassador_id = ? AND paid_at IS NULL AND payout_id IS NULL').run(id, a.id);
+      return { id, amount: owed };
+    });
+    if (!p) return null;
+    try {
+      const transferId = await payouts.transfer({ accountId: a.stripe_account, amount: p.amount, key: `flyer-payout-${p.id}`,
+        description: `PairMundo flyer deliveries (${a.code})`, metadata: { ambassador_id: String(a.id), payout_id: String(p.id) } });
+      tx(db, () => {
+        db.prepare("UPDATE flyer_payouts SET status = 'paid', transfer_id = ? WHERE id = ?").run(transferId, p.id);
+        for (const t of ['flyer_sessions', 'flyer_bonuses']) db.prepare(`UPDATE ${t} SET paid_at = datetime('now') WHERE payout_id = ?`).run(p.id);
+      });
+      if (a.user_id) notify(a.user_id, 'ambassador', 'PairMundo paid you {amount} for your flyer deliveries. Thank you!', { amount: krText(p.amount) }, '#/ambassador');
+      return { id: p.id, status: 'paid', amount_ore: p.amount };
+    } catch (e) {
+      console.error(`Flyer payout ${p.id} failed:`, e.message);
+      tx(db, () => {
+        db.prepare("UPDATE flyer_payouts SET status = 'failed', error = ? WHERE id = ?").run(String(e.message).slice(0, 500), p.id);
+        for (const t of ['flyer_sessions', 'flyer_bonuses']) db.prepare(`UPDATE ${t} SET payout_id = NULL WHERE payout_id = ?`).run(p.id);
+      });
+      if (notifyFailure) {
+        for (const adm of db.prepare("SELECT id FROM users WHERE role = 'admin'").all()) {
+          notify(adm.id, 'ambassador', "Couldn't pay {name} {amount} automatically: {error}", { name: a.name, amount: krText(p.amount), error: String(e.message).slice(0, 200) }, `#/admin/ambassadors/${a.id}`);
+        }
+      }
+      return { id: p.id, status: 'failed', amount_ore: p.amount, error: e.message };
+    }
+  };
+  /** Asks Stripe whether a distributor's account can take transfers yet. */
+  const refreshPayoutAccount = async (a) => {
+    if (!payouts || !a.stripe_account || a.payouts_ready) return !!a.payouts_ready;
+    const ready = await payouts.ready(a.stripe_account).catch((e) => { console.error('Stripe account check failed:', e.message); return false; });
+    if (ready) db.prepare('UPDATE ambassadors SET payouts_ready = 1 WHERE id = ?').run(a.id);
+    return ready;
+  };
+  const payoutInfo = (a) => ({ enabled: !!payouts, started: !!a.stripe_account, ready: !!a.payouts_ready });
+  // Hourly: pay every ready distributor what's owed, quietly (the admin hears about a failure at most once a day each).
+  app.sendFlyerPayouts = async () => {
+    if (!payouts) return;
+    for (const a of db.prepare("SELECT * FROM ambassadors WHERE kind = 'distributor' AND active = 1 AND stripe_account IS NOT NULL").all()) {
+      if (!a.payouts_ready && !(await refreshPayoutAccount(a))) continue;
+      const failedToday = db.prepare("SELECT 1 FROM flyer_payouts WHERE ambassador_id = ? AND status = 'failed' AND created_at >= datetime('now', '-1 day')").get(a.id);
+      await payDistributor(a, { notifyFailure: !failedToday });
+    }
+  };
   /** Checks a delivery session someone sends (the admin or the distributor) against the distributor's areas. */
   const flyerSessionFields = (a, body) => {
     if (a.kind !== 'distributor') throw bad('Only flyer distributors have delivery sessions.');
@@ -567,6 +631,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
         referrals: db.prepare('SELECT id, name, role, country, created_at, suspended FROM users WHERE ref_code = ? ORDER BY created_at DESC, id DESC LIMIT 500').all(a.code),
         rewards: db.prepare('SELECT r.*, u.name user_name FROM referral_rewards r LEFT JOIN users u ON u.id = r.user_id WHERE r.ambassador_id = ? ORDER BY r.created_at DESC, r.id DESC LIMIT 500').all(a.id),
         ...(a.kind === 'distributor' ? {
+          payouts: { ...payoutInfo(a), history: db.prepare('SELECT * FROM flyer_payouts WHERE ambassador_id = ? ORDER BY created_at DESC, id DESC LIMIT 100').all(a.id) },
           sessions: flyerSessions(a),
           bonuses: db.prepare(`SELECT b.*, u.id user_id, u.name user_name FROM flyer_bonuses b LEFT JOIN users u ON lower(trim(u.email)) = b.email
             WHERE b.ambassador_id = ? ORDER BY b.joined_at DESC, b.id DESC LIMIT 500`).all(a.id),
@@ -2596,8 +2661,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   }));
 
   // An ambassador's own numbers, shown in their app.
-  api.get('/me/ambassador', requireAuth, wrap((req) => {
-    const a = db.prepare('SELECT * FROM ambassadors WHERE user_id = ? AND active = 1').get(req.user.id);
+  api.get('/me/ambassador', requireAuth, wrap(async (req) => {
+    let a = db.prepare('SELECT * FROM ambassadors WHERE user_id = ? AND active = 1').get(req.user.id);
     if (!a) throw notFound();
     // A partner agency sees how its au pairs are doing, and nothing about rewards.
     if (a.kind === 'agency') {
@@ -2612,7 +2677,12 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     }
     // A flyer distributor sees their sessions and pay. Which families joined stays with the admin.
     if (a.kind === 'distributor') {
-      return { kind: 'distributor', code: a.code, name: a.name, areas: areasOf(a),
+      // Back from Stripe's set-up page: see whether their account is ready, and pay them what's owed if it is.
+      if (a.stripe_account && !a.payouts_ready && await refreshPayoutAccount(a)) {
+        await payDistributor(a);
+        a = db.prepare('SELECT * FROM ambassadors WHERE id = ?').get(a.id);
+      }
+      return { kind: 'distributor', code: a.code, name: a.name, areas: areasOf(a), payouts: payoutInfo(a),
         rates: { flyer_ore: a.flyer_rate, family_ore: a.family_bonus, bonus_days: a.bonus_days },
         this_month: distributorStats(a, new Date().toISOString().slice(0, 7)), total: distributorStats(a),
         sessions: flyerSessions(a).map(({ id, area, flyers, amount_ore, delivered_on, families, paid_at, status, review_note }) => ({ id, area, flyers, amount_ore, delivered_on, families, paid: !!paid_at,
@@ -2641,6 +2711,18 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     }
     res.status(201);
     return { ok: true, id: Number(r.lastInsertRowid) };
+  }));
+  // A distributor sets up where their pay goes: Stripe's own page takes their bank details and ID.
+  api.post('/me/ambassador/payouts', requireAuth, wrap(async (req) => {
+    const a = myDistributor(req);
+    if (!payouts) throw bad('Automatic payouts are not switched on yet.');
+    let account = a.stripe_account;
+    if (!account) {
+      account = await payouts.createAccount({ email: req.user.email, country: a.country || req.user.country, name: a.name, ambassadorId: a.id });
+      db.prepare('UPDATE ambassadors SET stripe_account = ?, payouts_ready = 0 WHERE id = ?').run(account, a.id);
+    }
+    const back = `${publicBase()}/#/ambassador`;
+    return { url: await payouts.onboardingLink(account, { refreshUrl: back, returnUrl: back }) };
   }));
   // A count sent by mistake can be taken back while it still waits for approval.
   api.delete('/me/ambassador/sessions/:sid', requireAuth, wrap((req) => {
@@ -2996,7 +3078,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const mark = (table, when, w = '') => db.prepare(`UPDATE ${table} SET paid_at = datetime('now') WHERE ambassador_id = ? AND paid_at IS NULL${w}${month ? ` AND ${when} <= ?` : ''}`).run(a.id, ...m).changes;
     const owedBefore = a.kind === 'distributor' ? distributorStats(a).owed_ore : 0;
     // Counts still waiting for approval (or turned down) aren't paid with the rest.
-    const marked = mark('referral_rewards', "strftime('%Y-%m', created_at)") + mark('flyer_sessions', 'substr(delivered_on, 1, 7)', " AND status = 'approved'") + mark('flyer_bonuses', "strftime('%Y-%m', joined_at)");
+    const marked = mark('referral_rewards', "strftime('%Y-%m', created_at)") + mark('flyer_sessions', 'substr(delivered_on, 1, 7)', " AND status = 'approved' AND payout_id IS NULL") + mark('flyer_bonuses', "strftime('%Y-%m', joined_at)", ' AND payout_id IS NULL');
     const out = adminAmbassador(a.id);
     // A distributor hears that their pay went out, with how much.
     const paidOre = owedBefore - (a.kind === 'distributor' ? out.stats.owed_ore : 0);
@@ -3017,7 +3099,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   }));
   // A count the distributor sent: the admin approves it (correcting the number of flyers if the spot-check found
   // fewer), and it earns the rate it was sent at and is owed until the next payout; or turns it down with a reason.
-  api.post('/admin/ambassadors/:id/sessions/:sid/review', requireRole('admin'), wrap((req) => {
+  api.post('/admin/ambassadors/:id/sessions/:sid/review', requireRole('admin'), wrap(async (req) => {
     const a = adminAmbassador(req.params.id, null, false);
     const s = db.prepare('SELECT * FROM flyer_sessions WHERE id = ? AND ambassador_id = ?').get(Number(req.params.sid), a.id);
     if (!s) throw notFound();
@@ -3037,7 +3119,19 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       db.prepare("UPDATE flyer_sessions SET status = 'rejected', review_note = ?, reviewed_at = datetime('now') WHERE id = ?").run(note, s.id);
       if (a.user_id) notify(a.user_id, 'ambassador', "Your count of {flyers} flyers in {area} wasn't approved. Open your page to see why.", { flyers: s.flyers, area: areaLabel(s.area) }, '#/ambassador');
     } else throw bad('Approve or reject it.');
-    return adminAmbassador(a.id);
+    // With automatic payouts on and their account set up, the approved pay goes out right away.
+    const payout = decision === 'approve' && (await refreshPayoutAccount(a)) ? await payDistributor(a) : null;
+    return { payout, ...adminAmbassador(a.id) };
+  }));
+  // Send a distributor what they're owed now (family bonuses, or a payout that failed), instead of waiting for the hour.
+  api.post('/admin/ambassadors/:id/payout', requireRole('admin'), wrap(async (req) => {
+    const a = adminAmbassador(req.params.id, null, false);
+    if (!payouts) throw bad('Automatic payouts are off. Set FLYER_PAYOUTS=stripe on the server (see DEPLOY.md).');
+    if (!a.stripe_account) throw bad("They haven't set up their payout account yet. They do it from their pay page.");
+    if (!(await refreshPayoutAccount(a))) throw bad("Their payout account isn't ready yet: Stripe is still waiting for their details.");
+    const payout = await payDistributor(a);
+    if (!payout) throw bad('Nothing is owed to them right now.');
+    return { payout, ...adminAmbassador(a.id) };
   }));
   // A session logged by mistake can go, until it's paid. Families it brought in move to another session in the same
   // area if there is one, or drop out.

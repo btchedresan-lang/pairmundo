@@ -582,6 +582,20 @@ CREATE TABLE IF NOT EXISTS flyer_bonuses (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Automatic payouts to a flyer distributor's Stripe account (see payouts.js). The sessions and bonuses a payout covers
+-- point at it while it's being sent, and get paid_at once Stripe accepts the transfer; a failed one lets them go again.
+CREATE TABLE IF NOT EXISTS flyer_payouts (
+  id INTEGER PRIMARY KEY,
+  ambassador_id INTEGER NOT NULL REFERENCES ambassadors(id) ON DELETE CASCADE,
+  amount_ore INTEGER NOT NULL,
+  currency TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'sending',         -- sending | paid | failed
+  transfer_id TEXT,
+  error TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS flyer_payouts_amb ON flyer_payouts(ambassador_id, created_at);
+
 -- The partnerships pipeline: agencies and other partners PairMundo is courting, from first research to an active
 -- partner, worked by the admin and partner managers (staff with their own login who see only this).
 CREATE TABLE IF NOT EXISTS partner_team (
@@ -778,6 +792,13 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
       ALTER TABLE flyer_sessions ADD COLUMN submitted_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
       ALTER TABLE flyer_sessions ADD COLUMN review_note TEXT;
       ALTER TABLE flyer_sessions ADD COLUMN reviewed_at TEXT`);
+  }
+  // Flyer distributors can be paid automatically, to their own Stripe account.
+  if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'stripe_account')) {
+    db.exec(`ALTER TABLE ambassadors ADD COLUMN stripe_account TEXT;
+      ALTER TABLE ambassadors ADD COLUMN payouts_ready INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE flyer_sessions ADD COLUMN payout_id INTEGER REFERENCES flyer_payouts(id) ON DELETE SET NULL;
+      ALTER TABLE flyer_bonuses ADD COLUMN payout_id INTEGER REFERENCES flyer_payouts(id) ON DELETE SET NULL`);
   }
   // Which partner agency an introduction came through, when the family and the au pair are with different agencies.
   if (!db.prepare('PRAGMA table_info(agency_introductions)').all().some((c) => c.name === 'partner_name')) db.exec('ALTER TABLE agency_introductions ADD COLUMN partner_name TEXT');

@@ -1344,5 +1344,16 @@
   "{n} flyer": "{n} flygblad",
   "{n} flyers": "{n} flygblad",
   "{n} family": "{n} familj",
-  "{n} families": "{n} familjer"
+  "{n} families": "{n} familjer",
+  "Add your bank details once on our payment partner Stripe's secure page. After that, your pay is sent to your bank automatically each time a count is approved.": "Lägg in dina bankuppgifter en gång på vår betalpartner Stripes säkra sida. Efter det skickas din ersättning automatiskt till din bank varje gång en rapport godkänns.",
+  "Automatic payouts are not switched on yet.": "Automatiska utbetalningar är inte påslagna än.",
+  "Automatic payouts are off. Set FLYER_PAYOUTS=stripe on the server (see DEPLOY.md).": "Automatiska utbetalningar är avstängda. Sätt FLYER_PAYOUTS=stripe på servern (se DEPLOY.md).",
+  "Continue setup": "Fortsätt",
+  "Finish setting up your payouts": "Slutför dina utbetalningsuppgifter",
+  "Get paid automatically": "Få betalt automatiskt",
+  "Nothing is owed to them right now.": "Inget är skyldigt dem just nu.",
+  "Payouts are set up. Your pay goes to your bank account automatically once a count is approved.": "Utbetalningar är klara. Din ersättning går automatiskt till ditt bankkonto när en rapport godkänns.",
+  "Set up payouts": "Ställ in utbetalningar",
+  "Their payout account isn't ready yet: Stripe is still waiting for their details.": "Deras utbetalningskonto är inte klart än: Stripe väntar fortfarande på deras uppgifter.",
+  "They haven't set up their payout account yet. They do it from their pay page.": "De har inte ställt in sitt utbetalningskonto än. Det gör de från sin ersättningssida."
 }

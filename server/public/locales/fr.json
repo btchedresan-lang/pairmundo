@@ -1227,5 +1227,16 @@
   "{n} flyer": "{n} flyer",
   "{n} flyers": "{n} flyers",
   "{n} family": "{n} famille",
-  "{n} families": "{n} familles"
+  "{n} families": "{n} familles",
+  "Add your bank details once on our payment partner Stripe's secure page. After that, your pay is sent to your bank automatically each time a count is approved.": "Ajoutez vos coordonnées bancaires une seule fois sur la page sécurisée de notre partenaire de paiement Stripe. Ensuite, votre paie est versée automatiquement sur votre compte à chaque décompte approuvé.",
+  "Automatic payouts are not switched on yet.": "Les versements automatiques ne sont pas encore activés.",
+  "Automatic payouts are off. Set FLYER_PAYOUTS=stripe on the server (see DEPLOY.md).": "Les versements automatiques sont désactivés. Définissez FLYER_PAYOUTS=stripe sur le serveur (voir DEPLOY.md).",
+  "Continue setup": "Continuer",
+  "Finish setting up your payouts": "Terminez la configuration de vos versements",
+  "Get paid automatically": "Soyez payé automatiquement",
+  "Nothing is owed to them right now.": "Rien ne lui est dû pour le moment.",
+  "Payouts are set up. Your pay goes to your bank account automatically once a count is approved.": "Les versements sont configurés. Votre paie est versée automatiquement sur votre compte bancaire dès qu'un décompte est approuvé.",
+  "Set up payouts": "Configurer les versements",
+  "Their payout account isn't ready yet: Stripe is still waiting for their details.": "Son compte de versement n'est pas encore prêt : Stripe attend encore ses informations.",
+  "They haven't set up their payout account yet. They do it from their pay page.": "Il n'a pas encore configuré son compte de versement. Cela se fait depuis sa page de paie."
 }

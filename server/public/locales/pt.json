@@ -1227,5 +1227,16 @@
   "{n} flyer": "{n} folheto",
   "{n} flyers": "{n} folhetos",
   "{n} family": "{n} família",
-  "{n} families": "{n} famílias"
+  "{n} families": "{n} famílias",
+  "Add your bank details once on our payment partner Stripe's secure page. After that, your pay is sent to your bank automatically each time a count is approved.": "Adicione seus dados bancários uma vez na página segura do nosso parceiro de pagamentos Stripe. Depois disso, seu pagamento é enviado ao seu banco automaticamente sempre que uma contagem for aprovada.",
+  "Automatic payouts are not switched on yet.": "Os pagamentos automáticos ainda não estão ativados.",
+  "Automatic payouts are off. Set FLYER_PAYOUTS=stripe on the server (see DEPLOY.md).": "Os pagamentos automáticos estão desativados. Defina FLYER_PAYOUTS=stripe no servidor (veja DEPLOY.md).",
+  "Continue setup": "Continuar",
+  "Finish setting up your payouts": "Termine de configurar seus pagamentos",
+  "Get paid automatically": "Receba automaticamente",
+  "Nothing is owed to them right now.": "Nada é devido no momento.",
+  "Payouts are set up. Your pay goes to your bank account automatically once a count is approved.": "Os pagamentos estão configurados. Seu pagamento vai para sua conta bancária automaticamente quando uma contagem é aprovada.",
+  "Set up payouts": "Configurar pagamentos",
+  "Their payout account isn't ready yet: Stripe is still waiting for their details.": "A conta de pagamentos ainda não está pronta: a Stripe ainda aguarda os dados.",
+  "They haven't set up their payout account yet. They do it from their pay page.": "Ainda não configurou a conta de pagamentos. Isso é feito na página de pagamentos."
 }
