@@ -395,6 +395,15 @@ export const DICT = {
   "Button not working? Copy this link into your browser:": {
     es: "¿El botón no funciona? Copia este enlace en tu navegador:", fr: "Le bouton ne fonctionne pas ? Copiez ce lien dans votre navigateur :",
     de: "Button funktioniert nicht? Kopiere diesen Link in deinen Browser:", pt: "O botão não funciona? Copie este link no seu navegador:" },
+  "Your count of {flyers} flyers in {area} was approved. {amount} is added to your pay.": {
+    es: "Tu recuento de {flyers} folletos en {area} está aprobado. Se suman {amount} a tu pago.", fr: "Votre décompte de {flyers} flyers à {area} est approuvé. {amount} s'ajoutent à votre paie.",
+    de: "Deine Zählung von {flyers} Flyern in {area} wurde bestätigt. {amount} kommen zu deiner Vergütung dazu.", pt: "Sua contagem de {flyers} folhetos em {area} foi aprovada. {amount} foram somados ao seu pagamento." },
+  "Your count of {flyers} flyers in {area} wasn't approved. Open your page to see why.": {
+    es: "Tu recuento de {flyers} folletos en {area} no se ha aprobado. Abre tu página para ver por qué.", fr: "Votre décompte de {flyers} flyers à {area} n'a pas été approuvé. Ouvrez votre page pour savoir pourquoi.",
+    de: "Deine Zählung von {flyers} Flyern in {area} wurde nicht bestätigt. Öffne deine Seite, um den Grund zu sehen.", pt: "Sua contagem de {flyers} folhetos em {area} não foi aprovada. Abra sua página para ver o motivo." },
+  "PairMundo paid you {amount} for your flyer deliveries. Thank you!": {
+    es: "PairMundo te ha pagado {amount} por tus repartos de folletos. ¡Gracias!", fr: "PairMundo vous a versé {amount} pour vos distributions de flyers. Merci !",
+    de: "PairMundo hat dir {amount} für deine Flyer-Verteilungen ausgezahlt. Danke!", pt: "A PairMundo pagou {amount} pelas suas entregas de folhetos. Obrigado!" },
 };
 
 // Swedish lives in its own file, keyed by the same English text.

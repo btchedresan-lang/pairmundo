@@ -560,7 +560,13 @@ CREATE TABLE IF NOT EXISTS flyer_sessions (
   delivered_on TEXT NOT NULL,                     -- YYYY-MM-DD
   note TEXT,
   paid_at TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  -- A distributor can send their own count from their page: it waits as pending until the admin approves it (and
+  -- only then earns anything) or turns it down with a reason. Sessions the admin logs are approved straight away.
+  status TEXT NOT NULL DEFAULT 'approved',        -- pending | approved | rejected
+  submitted_by INTEGER REFERENCES users(id) ON DELETE SET NULL, -- the distributor's account, when they sent it
+  review_note TEXT,                               -- why it was turned down, shown to the distributor
+  reviewed_at TEXT
 );
 CREATE INDEX IF NOT EXISTS flyer_sessions_amb ON flyer_sessions(ambassador_id, delivered_on);
 -- One bonus per family email, ever: a family on the waitlist who later signs up counts once, for one distributor.
@@ -575,6 +581,20 @@ CREATE TABLE IF NOT EXISTS flyer_bonuses (
   paid_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Automatic payouts to a flyer distributor's Stripe account (see payouts.js). The sessions and bonuses a payout covers
+-- point at it while it's being sent, and get paid_at once Stripe accepts the transfer; a failed one lets them go again.
+CREATE TABLE IF NOT EXISTS flyer_payouts (
+  id INTEGER PRIMARY KEY,
+  ambassador_id INTEGER NOT NULL REFERENCES ambassadors(id) ON DELETE CASCADE,
+  amount_ore INTEGER NOT NULL,
+  currency TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'sending',         -- sending | paid | failed
+  transfer_id TEXT,
+  error TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS flyer_payouts_amb ON flyer_payouts(ambassador_id, created_at);
 
 -- The partnerships pipeline: agencies and other partners PairMundo is courting, from first research to an active
 -- partner, worked by the admin and partner managers (staff with their own login who see only this).
@@ -765,6 +785,20 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
       ALTER TABLE ambassadors ADD COLUMN network_countries TEXT NOT NULL DEFAULT '[]';
       ALTER TABLE ambassadors ADD COLUMN network_about TEXT;
       ALTER TABLE ambassadors ADD COLUMN website TEXT`);
+  }
+  // Distributors send their own flyer counts for the admin to approve. Sessions logged before this were approved.
+  if (!db.prepare('PRAGMA table_info(flyer_sessions)').all().some((c) => c.name === 'status')) {
+    db.exec(`ALTER TABLE flyer_sessions ADD COLUMN status TEXT NOT NULL DEFAULT 'approved';
+      ALTER TABLE flyer_sessions ADD COLUMN submitted_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+      ALTER TABLE flyer_sessions ADD COLUMN review_note TEXT;
+      ALTER TABLE flyer_sessions ADD COLUMN reviewed_at TEXT`);
+  }
+  // Flyer distributors can be paid automatically, to their own Stripe account.
+  if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'stripe_account')) {
+    db.exec(`ALTER TABLE ambassadors ADD COLUMN stripe_account TEXT;
+      ALTER TABLE ambassadors ADD COLUMN payouts_ready INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE flyer_sessions ADD COLUMN payout_id INTEGER REFERENCES flyer_payouts(id) ON DELETE SET NULL;
+      ALTER TABLE flyer_bonuses ADD COLUMN payout_id INTEGER REFERENCES flyer_payouts(id) ON DELETE SET NULL`);
   }
   // Which partner agency an introduction came through, when the family and the au pair are with different agencies.
   if (!db.prepare('PRAGMA table_info(agency_introductions)').all().some((c) => c.name === 'partner_name')) db.exec('ALTER TABLE agency_introductions ADD COLUMN partner_name TEXT');

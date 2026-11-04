@@ -9,6 +9,15 @@ let server; let base; let testDb; let app;
 const outbox = [];
 const pushed = []; let pushReply = null;
 let photoVerdict = null;
+// A stand-in for Stripe Connect: accounts become ready when the test says so, and transfers fail while failTransfer is set.
+const stripeFake = { accounts: new Map(), transfers: [], failTransfer: null };
+const fakePayouts = {
+  currency: 'sek',
+  async createAccount({ ambassadorId }) { const id = `acct_test_${ambassadorId}`; stripeFake.accounts.set(id, false); return id; },
+  async onboardingLink(id, { returnUrl }) { return `https://connect.stripe.test/setup/${id}?back=${encodeURIComponent(returnUrl)}`; },
+  async ready(id) { return !!stripeFake.accounts.get(id); },
+  async transfer(t) { if (stripeFake.failTransfer) throw new Error(stripeFake.failTransfer); stripeFake.transfers.push(t); return `tr_${stripeFake.transfers.length}`; },
+};
 const lastCode = (to) => [...outbox].reverse().find((m) => m.to === to)?.text.match(/\b(\d{6})\b/)[1];
 before(async () => {
   process.env.AUTH_RATE_LIMIT = '1000';
@@ -16,7 +25,7 @@ before(async () => {
   process.env.UPLOAD_DIR = (await import('node:fs')).mkdtempSync((await import('node:os')).tmpdir() + '/aupair-test-');
   testDb = openDb(':memory:');
   app = createApp(testDb, { mailer: async (m) => { outbox.push(m); }, pusher: async (msgs) => { pushed.push(...msgs); return pushReply ? msgs.map(pushReply) : msgs.map(() => ({ status: 'ok' })); },
-    moderator: async () => photoVerdict ?? { verdict: 'allow', category: 'none', note: '' } });
+    moderator: async () => photoVerdict ?? { verdict: 'allow', category: 'none', note: '' }, payouts: fakePayouts });
   await new Promise((r) => { server = app.listen(0, r); });
   base = `http://127.0.0.1:${server.address().port}/api`;
 });
@@ -1214,6 +1223,123 @@ test('flyer distributors: sessions the admin logs, family bonuses counted once f
   assert.equal(r.status, 200);
   assert.equal(r.body.stats.owed_ore, 0);
   assert.equal((await call(nils.token, 'POST', `/admin/ambassadors/${id}/sessions`, { area: 'door-nacka', flyers: 5, delivered_on: day(0) })).status, 403);
+});
+
+test('flyer distributors send their own counts: pending until the admin approves, then owed until paid', async () => {
+  const { hashPassword } = await import('../server/auth.js');
+  testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
+  const adminId = testDb.prepare("SELECT id FROM users WHERE email = 'admin@test.io'").get().id;
+  const maja = await register('maja-dist@test.io', 'ambassador', 'SE', 'Maja Lind', { complete: false });
+  let r = await call(admin, 'POST', '/admin/ambassadors', { code: 'MAJA-D', name: 'Maja Lind', kind: 'distributor', flyer_rate: '2', family_bonus: '50', areas: 'door-solna', account_email: 'maja-dist@test.io' });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  const id = r.body.id;
+  const day = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+
+  // Only distributors send counts, and only for their own areas and days that have happened.
+  const fam = await register('not-dist@test.io', 'family', 'SE', 'Familj', { complete: false });
+  assert.equal((await call(fam.token, 'POST', '/me/ambassador/sessions', { area: 'door-solna', flyers: 10, delivered_on: day(0) })).status, 404);
+  assert.equal((await call(maja.token, 'POST', '/me/ambassador/sessions', { area: 'door-nacka', flyers: 10, delivered_on: day(0) })).status, 400);
+  assert.equal((await call(maja.token, 'POST', '/me/ambassador/sessions', { area: 'door-solna', flyers: 10, delivered_on: day(1) })).status, 400);
+  r = await call(maja.token, 'POST', '/me/ambassador/sessions', { area: 'door-solna', flyers: 400, delivered_on: day(-1), note: 'Råsundavägen' });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  const first = r.body.id;
+  // The admin hears about it and sees it waiting; it earns nothing yet, and a family from Solna doesn't count yet.
+  assert.ok(testDb.prepare("SELECT 1 FROM notifications WHERE user_id = ? AND text LIKE 'Maja Lind sent a flyer count to approve: 400 flyers in Solna%'").get(adminId));
+  const list = (await call(admin, 'GET', '/admin/ambassadors')).body;
+  assert.deepEqual(list.pending_sessions.filter((s) => s.ambassador_id === id).map((s) => [s.id, s.flyers, s.amount_ore, s.note]), [[first, 400, 80000, 'Råsundavägen']]);
+  await call(null, 'POST', '/waitlist', { email: 'solna1@test.io', role: 'family', source: 'door-solna' });
+  let mine = (await call(maja.token, 'GET', '/me/ambassador')).body;
+  assert.deepEqual([mine.total.flyers, mine.total.owed_ore, mine.total.families, mine.total.pending], [0, 0, 0, { sessions: 1, flyers: 400, amount_ore: 80000 }]);
+  assert.equal(mine.sessions[0].status, 'pending');
+  // Marking paid leaves counts that wait for approval alone.
+  assert.equal((await call(admin, 'POST', `/admin/ambassadors/${id}/paid`, {})).body.marked, 0);
+
+  // A second count sent by mistake can be taken back while pending.
+  r = await call(maja.token, 'POST', '/me/ambassador/sessions', { area: 'door-solna', flyers: 50, delivered_on: day(0) });
+  assert.equal((await call(maja.token, 'DELETE', `/me/ambassador/sessions/${r.body.id}`)).status, 200);
+  // A third is rejected, with a reason she sees; rejecting needs one.
+  r = await call(maja.token, 'POST', '/me/ambassador/sessions', { area: 'door-solna', flyers: 900, delivered_on: day(0) });
+  const third = r.body.id;
+  assert.equal((await call(admin, 'POST', `/admin/ambassadors/${id}/sessions/${third}/review`, { decision: 'reject' })).status, 400);
+  assert.equal((await call(admin, 'POST', `/admin/ambassadors/${id}/sessions/${third}/review`, { decision: 'reject', note: 'Spot-check found most mailboxes empty.' })).status, 200);
+  assert.equal((await call(maja.token, 'DELETE', `/me/ambassador/sessions/${third}`)).status, 400);
+  assert.ok(testDb.prepare("SELECT 1 FROM notifications WHERE user_id = ? AND text LIKE '%900 flyers in Solna wasn''t approved%'").get(maja.id));
+
+  // The first is approved for fewer flyers after a spot-check; it pays the rate it was sent at even if the rate changes.
+  await call(admin, 'POST', `/admin/ambassadors/${id}`, { flyer_rate: '3' });
+  assert.equal((await call(admin, 'POST', `/admin/ambassadors/${id}/sessions/${first}/review`, { decision: 'approve', flyers: 401 })).status, 400);
+  assert.equal((await call(maja.token, 'POST', `/admin/ambassadors/${id}/sessions/${first}/review`, { decision: 'approve' })).status, 403);
+  r = await call(admin, 'POST', `/admin/ambassadors/${id}/sessions/${first}/review`, { decision: 'approve', flyers: 350 });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal((await call(admin, 'POST', `/admin/ambassadors/${id}/sessions/${first}/review`, { decision: 'approve' })).status, 400, 'already reviewed');
+  assert.ok(testDb.prepare("SELECT 1 FROM notifications WHERE user_id = ? AND text = 'Your count of 350 flyers in Solna was approved. 700 kr is added to your pay.'").get(maja.id));
+  mine = (await call(maja.token, 'GET', '/me/ambassador')).body;
+  assert.deepEqual([mine.total.sessions, mine.total.flyers, mine.total.families, mine.total.owed_ore, mine.total.pending.sessions], [1, 350, 1, 70000 + 5000, 0]);
+  assert.deepEqual(mine.sessions.map((s) => [s.status, s.review_note]), [['rejected', 'Spot-check found most mailboxes empty.'], ['approved', null]]);
+  assert.ok(!(await call(admin, 'GET', '/admin/ambassadors')).body.pending_sessions.some((s) => s.ambassador_id === id));
+
+  // Paying marks the approved count and bonus paid (not the rejected one), and tells her how much.
+  r = await call(admin, 'POST', `/admin/ambassadors/${id}/paid`, {});
+  assert.equal(r.body.marked, 2);
+  assert.equal(r.body.stats.owed_ore, 0);
+  assert.ok(testDb.prepare("SELECT 1 FROM notifications WHERE user_id = ? AND text = 'PairMundo paid you 750 kr for your flyer deliveries. Thank you!'").get(maja.id));
+  assert.equal(testDb.prepare('SELECT paid_at FROM flyer_sessions WHERE id = ?').get(third).paid_at, null);
+  assert.deepEqual((await call(maja.token, 'GET', '/me/ambassador')).body.sessions.map((s) => s.paid), [false, true]);
+});
+
+test('flyer distributors get paid automatically to their Stripe account once a count is approved', async () => {
+  const { hashPassword } = await import('../server/auth.js');
+  testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
+  const adminId = testDb.prepare("SELECT id FROM users WHERE email = 'admin@test.io'").get().id;
+  const olle = await register('olle-dist@test.io', 'ambassador', 'SE', 'Olle Berg', { complete: false });
+  let r = await call(admin, 'POST', '/admin/ambassadors', { code: 'OLLE-D', name: 'Olle Berg', country: 'SE', kind: 'distributor', flyer_rate: '1', family_bonus: '50', areas: 'door-sundbyberg', account_email: 'olle-dist@test.io' });
+  const id = r.body.id;
+  const day = new Date().toISOString().slice(0, 10);
+  const send = async (flyers) => (await call(olle.token, 'POST', '/me/ambassador/sessions', { area: 'door-sundbyberg', flyers, delivered_on: day })).body.id;
+  const approve = (sid) => call(admin, 'POST', `/admin/ambassadors/${id}/sessions/${sid}/review`, { decision: 'approve' });
+
+  // Before setting up payouts, an approved count is simply owed.
+  assert.deepEqual((await call(olle.token, 'GET', '/me/ambassador')).body.payouts, { enabled: true, started: false, ready: false });
+  r = await approve(await send(100));
+  assert.equal(r.body.payout, null);
+  assert.equal(r.body.stats.owed_ore, 10000);
+  assert.equal((await call(admin, 'POST', `/admin/ambassadors/${id}/payout`)).status, 400, 'no account yet');
+
+  // He sets up his account on Stripe's page; while Stripe still waits for his details, nothing is sent.
+  r = await call(olle.token, 'POST', '/me/ambassador/payouts');
+  assert.match(r.body.url, /^https:\/\/connect\.stripe\.test\/setup\/acct_test_\d+\?back=.*%23%2Fambassador$/);
+  assert.deepEqual((await call(olle.token, 'GET', '/me/ambassador')).body.payouts, { enabled: true, started: true, ready: false });
+  assert.equal(stripeFake.transfers.length, 0);
+  // Back from Stripe with everything filled in: his page notices, and what he's owed goes out.
+  stripeFake.accounts.set(`acct_test_${id}`, true);
+  const mine = (await call(olle.token, 'GET', '/me/ambassador')).body;
+  assert.deepEqual(mine.payouts, { enabled: true, started: true, ready: true });
+  assert.equal(mine.total.owed_ore, 0);
+  assert.deepEqual(stripeFake.transfers.map((t) => [t.accountId, t.amount]), [[`acct_test_${id}`, 10000]]);
+  assert.ok(testDb.prepare("SELECT 1 FROM notifications WHERE user_id = ? AND text = 'PairMundo paid you 100 kr for your flyer deliveries. Thank you!'").get(olle.id));
+
+  // From now on, approving a count pays it straight away, with a key so a retry can't pay twice.
+  r = await approve(await send(250));
+  assert.deepEqual([r.body.payout.status, r.body.payout.amount_ore, r.body.stats.owed_ore], ['paid', 25000, 0]);
+  assert.equal(stripeFake.transfers.at(-1).key, `flyer-payout-${r.body.payout.id}`);
+  assert.deepEqual(r.body.payouts.history.map((p) => [p.status, p.amount_ore]), [['paid', 25000], ['paid', 10000]]);
+
+  // A failed transfer leaves it owed, tells the admin, and the next try sends it.
+  stripeFake.failTransfer = 'Insufficient funds in Stripe balance';
+  r = await approve(await send(40));
+  assert.deepEqual([r.body.payout.status, r.body.stats.owed_ore], ['failed', 4000]);
+  assert.ok(testDb.prepare("SELECT 1 FROM notifications WHERE user_id = ? AND text LIKE 'Couldn''t pay Olle Berg 40 kr automatically: %Insufficient funds%'").get(adminId));
+  stripeFake.failTransfer = null;
+  // Family bonuses are picked up by the hourly run, together with the failed one.
+  await call(null, 'POST', '/waitlist', { email: 'sundbyberg1@test.io', role: 'family', source: 'door-sundbyberg' });
+  await app.sendFlyerPayouts();
+  assert.deepEqual(stripeFake.transfers.at(-1).amount, 4000 + 5000);
+  r = await call(admin, 'GET', `/admin/ambassadors/${id}`);
+  assert.equal(r.body.stats.owed_ore, 0);
+  assert.equal((await call(admin, 'POST', `/admin/ambassadors/${id}/payout`)).status, 400, 'nothing owed');
+  assert.equal((await call(olle.token, 'POST', `/admin/ambassadors/${id}/payout`)).status, 403);
 });
 
 test('agency accounts: own sign-up, hidden from members, linked to a code by the admin, then see their numbers', async () => {
