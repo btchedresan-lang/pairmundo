@@ -943,7 +943,10 @@ views.ambassador = async () => {
       <p>${tr("We're setting up your ambassador code. Once it's ready, it shows here with a link to share, and you can follow who joins and what you earn.")}</p>
       ${me.user.email_verified ? '' : `<p><a class="chip warn" href="#/verify">${tr('Not confirmed yet. Click to enter your code.')}</a></p>`}</div>`);
   }
-  if (amb.kind === 'distributor') return render(`<h1>${tr('Your flyer deliveries')}</h1>${distributorCard(amb)}`);
+  if (amb.kind === 'distributor') {
+    render(`<h1>${tr('Your flyer deliveries')}</h1>${distributorCard(amb)}`);
+    return wireDistributor();
+  }
   render(`<h1>${tr('Your ambassador code')}</h1>${ambassadorCard(amb)}`);
   wireCopy(amb.link);
 };
@@ -964,11 +967,36 @@ function distributorCard(d) {
       <tr><td>${tr('For flyers')}</td><td>${kr(d.this_month.flyers_ore)}</td><td>${kr(d.total.flyers_ore)}</td></tr>
       <tr><td>${tr('Family bonuses')}</td><td>${kr(d.this_month.bonus_ore)}</td><td>${kr(d.total.bonus_ore)}</td></tr>
       <tr><td><strong>${tr('Earned')}</strong></td><td><strong>${kr(d.this_month.earned_ore)}</strong></td><td><strong>${kr(d.total.earned_ore)}</strong></td></tr></table>
-    <p>${tr('Not paid out yet')}: <strong>${kr(d.total.owed_ore)}</strong></p>
-    <p class="muted small">${tr('You earn {flyer} for each flyer you deliver, and {family} for each family who joins through your flyers within {days} days of a delivery in that area. Your manager adds each delivery after checking it, so it can take a day or two to show here.', { flyer: kr(r.flyer_ore), family: kr(r.family_ore), days: r.bonus_days })}</p></div>
-  <div class="card table-wrap"><h3>${tr('Your deliveries')}</h3><table><tr><th>${tr('Day')}</th><th>${tr('Area')}</th><th>${tr('Flyers')}</th><th>${tr('Families')}</th><th>${tr('Pay')}</th><th>${tr('Paid')}</th></tr>
-    ${d.sessions.map((s) => `<tr><td>${fmtDate(s.delivered_on)}</td><td>${esc(areaName(s.area))}</td><td>${s.flyers}</td><td>${s.families}</td><td>${kr(s.amount_ore)}</td><td>${s.paid ? '✓' : `<span class="muted">${tr('not yet')}</span>`}</td></tr>`).join('')
-    || `<tr><td colspan="6" class="muted">${tr('No deliveries yet. They show here once your manager adds them.')}</td></tr>`}</table></div>`;
+    <p>${tr('Approved, not paid out yet')}: <strong>${kr(d.total.owed_ore)}</strong></p>
+    ${d.total.pending?.sessions ? `<p>${tr('Waiting for approval')}: <strong>${trn(d.total.pending.flyers, '{n} flyer', '{n} flyers')}, ${kr(d.total.pending.amount_ore)}</strong></p>` : ''}
+    <p class="muted small">${tr('You earn {flyer} for each flyer you deliver, and {family} for each family who joins through your flyers within {days} days of a delivery in that area. Send your count below after each delivery. PairMundo checks it, and once it is approved it is added to your pay.', { flyer: kr(r.flyer_ore), family: kr(r.family_ore), days: r.bonus_days })}</p></div>
+  ${d.areas.length ? `<form class="card" id="sendCount"><h3>📬 ${tr('Send your flyer count')}</h3>
+    <div class="form-grid"><div class="field"><label>${tr('Area')}</label><select name="area">${d.areas.map((x) => `<option value="${esc(x)}">${esc(areaName(x))}</option>`).join('')}</select></div>
+      <div class="field"><label>${tr('Flyers delivered')}</label><input name="flyers" type="number" min="1" step="1" inputmode="numeric" required placeholder="500"></div></div>
+    <div class="form-grid"><div class="field"><label>${tr('Day delivered')}</label><input name="delivered_on" type="date" required value="${new Date().toISOString().slice(0, 10)}" max="${new Date().toISOString().slice(0, 10)}"></div>
+      <div class="field"><label>${tr('Streets covered (optional)')}</label><input name="note" maxlength="300" placeholder="Storängsvägen, Värmdövägen"></div></div>
+    <div id="err"></div><button class="btn">${tr('Send for approval')}</button></form>` : ''}
+  <div class="card table-wrap"><h3>${tr('Your deliveries')}</h3><table><tr><th>${tr('Day')}</th><th>${tr('Area')}</th><th>${tr('Flyers')}</th><th>${tr('Pay')}</th></tr>
+    ${d.sessions.map((s) => `<tr><td>${fmtDate(s.delivered_on)}</td><td>${esc(areaName(s.area))}<div style="margin-top:4px">${distributorStatus(s)}</div></td><td>${s.flyers}${s.status === 'approved' && s.families ? `<div class="small muted">${trn(s.families, '{n} family', '{n} families')}</div>` : ''}</td><td>${kr(s.amount_ore)}</td></tr>`).join('')
+    || `<tr><td colspan="4" class="muted">${tr('No deliveries yet. Send your first count above.')}</td></tr>`}</table></div>`;
+}
+/** Where a delivery is: waiting for approval (and can be taken back), turned down with the reason, owed, or paid. */
+const distributorStatus = (s) => (s.status === 'pending' ? `<span class="chip">${tr('Waiting for approval')}</span> <button class="btn ghost sm" data-withdraw="${s.id}">${tr('Take back')}</button>`
+  : s.status === 'rejected' ? `<span class="chip warn">${tr('Not approved')}</span>${s.review_note ? `<div class="small muted">${esc(s.review_note)}</div>` : ''}`
+    : s.paid ? `<span class="chip ok">✓ ${tr('Paid')}</span>` : `<span class="muted">${tr('Approved, payment coming')}</span>`);
+function wireDistributor() {
+  const form = document.getElementById('sendCount');
+  if (form) form.onsubmit = async (e) => {
+    e.preventDefault();
+    const btn = form.querySelector('button');
+    btn.disabled = true;
+    try { await api('/me/ambassador/sessions', { method: 'POST', body: formData(form) }); toast(tr('Sent. PairMundo will check it and let you know.')); views.ambassador(); }
+    catch (err) { errBox(err); btn.disabled = false; }
+  };
+  document.querySelectorAll('[data-withdraw]').forEach((b) => { b.onclick = async () => {
+    if (!confirm(tr('Take back this count? You can send it again.'))) return;
+    try { await api(`/me/ambassador/sessions/${b.dataset.withdraw}`, { method: 'DELETE' }); views.ambassador(); } catch (err) { toast(err.message); }
+  }; });
 }
 
 /** An ambassador's code, link and what it has brought in. */
@@ -2246,6 +2274,21 @@ views.admin = async ([tab = 'overview', id], qs) => {
   }
 };
 
+/** Approve or reject buttons for a flyer count a distributor sent. */
+const reviewControls = (s) => `<span class="row" style="gap:6px;flex-wrap:nowrap"><input type="number" min="1" max="${s.flyers}" step="1" value="${s.flyers}" data-approve-n="${s.id}" style="width:90px" title="Flyers to approve">
+  <button class="btn sm" data-approve="${s.id}">Approve</button><button class="btn ghost sm" data-reject="${s.id}">Reject</button></span>`;
+function wireReviews(ambId, reload, only = null) {
+  const review = async (sid, body) => {
+    try { await api(`/admin/ambassadors/${ambId}/sessions/${sid}/review`, { method: 'POST', body }); toast(body.decision === 'approve' ? 'Approved. It is now owed to them.' : 'Rejected. They can see why.'); reload(); }
+    catch (err) { toast(err.message); }
+  };
+  const mine = (b, k) => only == null || Number(b.dataset[k]) === only;
+  document.querySelectorAll('[data-approve]').forEach((b) => { if (mine(b, 'approve')) b.onclick = () => review(b.dataset.approve, { decision: 'approve', flyers: document.querySelector(`[data-approve-n="${b.dataset.approve}"]`)?.value }); });
+  document.querySelectorAll('[data-reject]').forEach((b) => { if (mine(b, 'reject')) b.onclick = () => {
+    const note = prompt('Why is it not approved? They see this, so they know what to fix.');
+    if (note?.trim()) review(b.dataset.reject, { decision: 'reject', note });
+  }; });
+}
 const kindChip = (a) => ({ agency: '<span class="chip">Agency</span>', distributor: '<span class="chip">Flyer distributor</span>' })[a.kind] || '';
 /** Shows the flyer pay fields only when the type is flyer distributor. */
 const spaceFields = (form) => ({ ...Object.fromEntries(['closed_network', 'mask_contacts', 'covers_pass', 'approve_families', 'share_aupairs'].map((k) => [k, form[k].checked])), pilot_until: form.pilot_until.value });
@@ -2258,7 +2301,7 @@ async function adminAmbassadors(head, id, qs) {
   const role = (r) => (r === 'aupair' ? 'Au pair' : 'Family');
   const kinds = { profile: 'Au pair profile complete', pass: 'First Family Pass', placement: 'Stay started' };
   const statCells = (s, a) => (a?.kind === 'distributor'
-    ? `<td colspan="6">📬 ${s.flyers} flyers in ${s.sessions} session${s.sessions === 1 ? '' : 's'} · ${s.families} famil${s.families === 1 ? 'y' : 'ies'}</td><td>${kr(s.earned_ore)}</td><td><strong>${kr(s.owed_ore)}</strong></td>`
+    ? `<td colspan="6">📬 ${s.flyers} flyers in ${s.sessions} session${s.sessions === 1 ? '' : 's'} · ${s.families} famil${s.families === 1 ? 'y' : 'ies'}${s.pending?.sessions ? ` · <span class="chip warn">${s.pending.sessions} to approve</span>` : ''}</td><td>${kr(s.earned_ore)}</td><td><strong>${kr(s.owed_ore)}</strong></td>`
     : `<td>${s.waitlist}</td><td>${s.aupairs}</td><td>${s.families}</td><td>${s.profiles}</td><td>${s.passes}</td><td>${s.placements}</td><td>${usd(s.earned_cents)}</td><td><strong>${usd(s.owed_cents)}</strong></td>`);
   const statHead = '<th>Waitlist</th><th>Au pairs</th><th>Families</th><th>Profiles done</th><th>Passes</th><th>Stays</th><th>Earned</th><th>Owed now</th>';
   const fields = (a = {}) => `<div class="field"><label>Type</label><select name="kind">
@@ -2301,9 +2344,11 @@ async function adminAmbassadors(head, id, qs) {
         <div class="form-grid"><div class="field"><label>Day delivered</label><input name="delivered_on" type="date" required value="${new Date().toISOString().slice(0, 10)}"></div>
           <div class="field"><label>Note (only you see this)</label><input name="note" placeholder="Spot-checked Storängsvägen"></div></div>
         <button class="btn sm">Add session (${kr(a.flyer_rate)} per flyer)</button>` : '<p class="muted">Add their areas under Details first.</p>'}</form>
-      <div class="card table-wrap"><h3>Delivery sessions</h3><table><tr><th>Day</th><th>Area</th><th>Flyers</th><th>Families</th><th>Pay</th><th>Paid</th><th></th></tr>
-        ${a.sessions.map((s) => `<tr><td>${fmtDate(s.delivered_on)}</td><td>${esc(areaName(s.area))}${s.note ? ` <span class="muted small">${esc(s.note)}</span>` : ''}</td><td>${s.flyers}</td><td>${s.families}</td><td>${kr(s.amount_ore)}</td>
-          <td>${s.paid_at ? fmtDate(s.paid_at) : '<span class="muted">not yet</span>'}</td><td>${s.paid_at ? '' : `<button class="btn ghost sm" data-del-session="${s.id}">Remove</button>`}</td></tr>`).join('')
+      <div class="card table-wrap"><h3>Delivery sessions</h3><p class="muted small">Counts they send from their page wait here for your approval. Approved ones are owed until you mark them paid above.</p>
+        <table><tr><th>Day</th><th>Area</th><th>Flyers</th><th>Families</th><th>Pay</th><th>Status</th><th></th></tr>
+        ${a.sessions.map((s) => `<tr><td>${fmtDate(s.delivered_on)}</td><td>${esc(areaName(s.area))}${s.note ? ` <span class="muted small">${esc(s.note)}</span>` : ''}${s.submitted_by ? ' <span class="chip">sent by them</span>' : ''}</td><td>${s.flyers}</td><td>${s.status === 'approved' ? s.families : '—'}</td><td>${kr(s.amount_ore)}</td>
+          <td>${s.status === 'pending' ? reviewControls(s) : s.status === 'rejected' ? `<span class="chip warn">Rejected</span> <span class="muted small">${esc(s.review_note || '')}</span>`
+    : s.paid_at ? `Paid ${fmtDate(s.paid_at)}` : '<span class="muted">Approved, owed</span>'}</td><td>${s.paid_at ? '' : `<button class="btn ghost sm" data-del-session="${s.id}">Remove</button>`}</td></tr>`).join('')
         || '<tr><td colspan="7" class="muted">No sessions yet.</td></tr>'}</table></div>
       <div class="card table-wrap"><h3>Family bonuses</h3><p class="muted small">Counted automatically: each family who joins the waitlist or signs up through one of their areas' flyers within ${a.bonus_days} days of a session there, once per email.</p>
         <table><tr><th>Joined</th><th>Family</th><th>Area</th><th>Bonus</th><th>Paid</th></tr>
@@ -2323,6 +2368,7 @@ async function adminAmbassadors(head, id, qs) {
       try { const r = await api(`/admin/ambassadors/${a.id}/paid`, { method: 'POST', body: { month: m } }); toast(`${r.marked} ${a.kind === 'distributor' ? 'sessions and bonuses' : 'rewards'} marked as paid`); views.admin(['ambassadors', a.id], qs); }
       catch (err) { toast(err.message); }
     };
+    wireReviews(a.id, () => views.admin(['ambassadors', a.id], qs));
     const $sess = document.getElementById('sessNew');
     if ($sess) $sess.onsubmit = async (e) => {
       e.preventDefault();
@@ -2349,11 +2395,16 @@ async function adminAmbassadors(head, id, qs) {
     };
     return;
   }
-  const { ambassadors, rewards, partner_accounts: waiting } = await api(`/admin/ambassadors?month=${month}`);
+  const { ambassadors, rewards, partner_accounts: waiting, pending_sessions: pending = [] } = await api(`/admin/ambassadors?month=${month}`);
   const upd = await api('/admin/agency-update').catch(() => null);
   render(`${head}<div class="spread"><form id="monthPick" class="row"><label>Month</label><input type="month" name="month" value="${esc(month)}" style="width:auto"></form>
       <a class="btn sm" href="/api/admin/ambassadors.csv?month=${esc(month)}">⬇ Payout sheet for ${esc(month)} (CSV)</a></div>
     <p class="muted small">Rewards: ${usd(rewards.profile)} per completed, ID-verified au pair profile (up to ${usd(rewards.profile_monthly_cap)} a month), ${usd(rewards.pass)} for a family's first Family Pass, ${usd(rewards.placement)} per referred side when a stay starts.</p>
+    ${pending.length ? `<div class="card table-wrap"><h3>📬 Flyer counts to approve (${pending.length})</h3>
+      <p class="muted small">Sent by flyer distributors from their page. Approving adds the pay (at the rate when they sent it) to what you owe them; you can approve fewer flyers if a spot-check came up short. Rejecting needs a reason, which they see.</p>
+      <table><tr><th>Distributor</th><th>Day</th><th>Area</th><th>Flyers</th><th>Pay</th><th>Sent</th><th></th></tr>
+      ${pending.map((s) => `<tr><td><a href="#/admin/ambassadors/${s.ambassador_id}">${esc(s.name)}</a></td><td>${fmtDate(s.delivered_on)}</td><td>${esc(areaName(s.area))}${s.note ? ` <span class="muted small">${esc(s.note)}</span>` : ''}</td>
+        <td>${s.flyers}</td><td>${kr(s.amount_ore)}</td><td>${fmtTime(s.created_at)}</td><td>${reviewControls(s)}</td></tr>`).join('')}</table></div>` : ''}
     <div class="card table-wrap"><table><tr><th>Ambassador</th>${statHead}</tr>
       ${ambassadors.map((a) => `<tr><td><a href="#/admin/ambassadors/${a.id}"><strong>${esc(a.name)}</strong></a> ${kindChip(a)} ${a.active ? '' : '<span class="chip warn">Paused</span>'}
         <div class="muted small"><code>${esc(a.code)}</code>${a.country ? ` · ${cname(a.country)}` : ''}${a.gift_days ? ` · 🎁 ${a.gift_days} gift days` : ''}</div></td>${statCells(a.stats, a)}</tr>`).join('')
@@ -2372,6 +2423,7 @@ async function adminAmbassadors(head, id, qs) {
       <div class="field"><label>Referral code (letters, numbers and dashes; it can't change later)</label><input name="code" required placeholder="ANA-CO" autocapitalize="characters"></div>
       ${fields(qs?.get('new') ? { kind: qs.get('new'), name: qs.get('name'), country: qs.get('country'), account_email: qs.get('email') } : {})}<button class="btn sm">Add</button></form>`);
   wireKind(document.getElementById('ambNew'));
+  pending.forEach((s) => wireReviews(s.ambassador_id, () => go(`#/admin/ambassadors?month=${month}`), s.id));
   const su = document.getElementById('sendUpdate');
   if (su) su.onclick = async () => {
     if (!confirm('Send the update email to these agencies now? This cannot be undone.')) return;

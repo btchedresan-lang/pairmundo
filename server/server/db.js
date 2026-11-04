@@ -560,7 +560,13 @@ CREATE TABLE IF NOT EXISTS flyer_sessions (
   delivered_on TEXT NOT NULL,                     -- YYYY-MM-DD
   note TEXT,
   paid_at TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  -- A distributor can send their own count from their page: it waits as pending until the admin approves it (and
+  -- only then earns anything) or turns it down with a reason. Sessions the admin logs are approved straight away.
+  status TEXT NOT NULL DEFAULT 'approved',        -- pending | approved | rejected
+  submitted_by INTEGER REFERENCES users(id) ON DELETE SET NULL, -- the distributor's account, when they sent it
+  review_note TEXT,                               -- why it was turned down, shown to the distributor
+  reviewed_at TEXT
 );
 CREATE INDEX IF NOT EXISTS flyer_sessions_amb ON flyer_sessions(ambassador_id, delivered_on);
 -- One bonus per family email, ever: a family on the waitlist who later signs up counts once, for one distributor.
@@ -765,6 +771,13 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
       ALTER TABLE ambassadors ADD COLUMN network_countries TEXT NOT NULL DEFAULT '[]';
       ALTER TABLE ambassadors ADD COLUMN network_about TEXT;
       ALTER TABLE ambassadors ADD COLUMN website TEXT`);
+  }
+  // Distributors send their own flyer counts for the admin to approve. Sessions logged before this were approved.
+  if (!db.prepare('PRAGMA table_info(flyer_sessions)').all().some((c) => c.name === 'status')) {
+    db.exec(`ALTER TABLE flyer_sessions ADD COLUMN status TEXT NOT NULL DEFAULT 'approved';
+      ALTER TABLE flyer_sessions ADD COLUMN submitted_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+      ALTER TABLE flyer_sessions ADD COLUMN review_note TEXT;
+      ALTER TABLE flyer_sessions ADD COLUMN reviewed_at TEXT`);
   }
   // Which partner agency an introduction came through, when the family and the au pair are with different agencies.
   if (!db.prepare('PRAGMA table_info(agency_introductions)').all().some((c) => c.name === 'partner_name')) db.exec('ALTER TABLE agency_introductions ADD COLUMN partner_name TEXT');

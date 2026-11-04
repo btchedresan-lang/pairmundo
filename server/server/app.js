@@ -502,10 +502,14 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     return { aupairs: r.aupairs || 0, profiles: r.profiles || 0, verified: r.verified || 0, placements: r.placements || 0 };
   };
   // ---------- flyer distributors ----------
-  // Someone who delivers flyers to mailboxes, under the ambassador umbrella but paid differently: the admin logs each
-  // delivery session (area, flyers, date), which earns flyer_rate per flyer, and every family who joins through one of
-  // that distributor's areas within bonus_days of a session there earns family_bonus on its own. Amounts are in öre.
+  // Someone who delivers flyers to mailboxes, under the ambassador umbrella but paid differently: each delivery session
+  // (area, flyers, date) earns flyer_rate per flyer, and every family who joins through one of that distributor's areas
+  // within bonus_days of a session there earns family_bonus on its own. Amounts are in öre. The distributor sends their
+  // own count from their page and it earns once the admin approves it; the admin can also log a session directly.
   const areasOf = (a) => (Array.isArray(a.areas) ? a.areas : json.parse(a.areas, []));
+  // door-nacka → Nacka, as the website shows it.
+  const areaLabel = (src) => ({ taby: 'Täby' })[src.replace(/^door-/, '')] || src.replace(/^door-/, '').replace(/^./, (c) => c.toUpperCase());
+  const krText = (ore) => `${(ore / 100).toFixed(2).replace(/\.00$/, '')} kr`;
   /** Records the family bonuses a distributor's sessions have brought in so far. Safe to run any time: each family's
    *  email counts once, the first time it shows up on the waitlist or as a family account. */
   const syncFlyerBonuses = (a) => {
@@ -516,20 +520,35 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
         UNION ALL SELECT lower(trim(email)), source, created_at FROM users WHERE role = 'family' AND NOT suspended)
       WHERE source = ? AND created_at >= ? AND created_at < datetime(?, ?) GROUP BY email`);
     const areas = areasOf(a);
-    for (const s of db.prepare('SELECT * FROM flyer_sessions WHERE ambassador_id = ? ORDER BY delivered_on, id').all(a.id)) {
+    for (const s of db.prepare("SELECT * FROM flyer_sessions WHERE ambassador_id = ? AND status = 'approved' ORDER BY delivered_on, id").all(a.id)) {
       if (areas.includes(s.area)) families.run(a.id, s.id, s.area, a.family_bonus, s.area, s.delivered_on, s.delivered_on, `+${a.bonus_days} days`);
     }
   };
-  /** A distributor's sessions, flyers, families and pay, for one month (YYYY-MM) or all time. owed_ore is everything not paid yet. */
+  /** A distributor's approved sessions, flyers, families and pay, for one month (YYYY-MM) or all time. owed_ore is
+   *  everything approved and not paid yet; pending counts what still waits for the admin's approval. */
   const distributorStats = (a, month = null) => {
     syncFlyerBonuses(a);
     const s = db.prepare(`SELECT COUNT(*) sessions, COALESCE(SUM(flyers), 0) flyers, COALESCE(SUM(amount_ore), 0) n FROM flyer_sessions
-      WHERE ambassador_id = ?${month ? " AND substr(delivered_on, 1, 7) = ?" : ''}`).get(a.id, ...(month ? [month] : []));
+      WHERE ambassador_id = ? AND status = 'approved'${month ? " AND substr(delivered_on, 1, 7) = ?" : ''}`).get(a.id, ...(month ? [month] : []));
+    const p = db.prepare(`SELECT COUNT(*) sessions, COALESCE(SUM(flyers), 0) flyers, COALESCE(SUM(amount_ore), 0) n FROM flyer_sessions
+      WHERE ambassador_id = ? AND status = 'pending'`).get(a.id);
     const b = db.prepare(`SELECT COUNT(*) families, COALESCE(SUM(amount_ore), 0) n FROM flyer_bonuses
       WHERE ambassador_id = ?${month ? " AND strftime('%Y-%m', joined_at) = ?" : ''}`).get(a.id, ...(month ? [month] : []));
-    const owed = (t) => db.prepare(`SELECT COALESCE(SUM(amount_ore), 0) n FROM ${t} WHERE ambassador_id = ? AND paid_at IS NULL`).get(a.id).n;
+    const owed = (t, w = '') => db.prepare(`SELECT COALESCE(SUM(amount_ore), 0) n FROM ${t} WHERE ambassador_id = ? AND paid_at IS NULL${w}`).get(a.id).n;
     return { sessions: s.sessions, flyers: s.flyers, families: b.families, flyers_ore: s.n, bonus_ore: b.n, earned_ore: s.n + b.n,
-      owed_ore: owed('flyer_sessions') + owed('flyer_bonuses') };
+      owed_ore: owed('flyer_sessions', " AND status = 'approved'") + owed('flyer_bonuses'),
+      pending: { sessions: p.sessions, flyers: p.flyers, amount_ore: p.n } };
+  };
+  /** Checks a delivery session someone sends (the admin or the distributor) against the distributor's areas. */
+  const flyerSessionFields = (a, body) => {
+    if (a.kind !== 'distributor') throw bad('Only flyer distributors have delivery sessions.');
+    const area = String(body?.area ?? '').trim().toLowerCase();
+    if (!areasOf(a).includes(area)) throw bad('Choose one of their areas.');
+    const flyers = Number(body?.flyers);
+    if (!Number.isInteger(flyers) || flyers < 1 || flyers > 100000) throw bad('Flyers is a whole number, like 500.');
+    const day = String(body?.delivered_on ?? '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || Number.isNaN(Date.parse(day)) || day > new Date().toISOString().slice(0, 10)) throw bad('Enter the day they delivered, not in the future.');
+    return { area, flyers, day, note: str(body?.note, 300) || null };
   };
   /** A distributor's sessions, newest first, each with how many families it brought in. */
   const flyerSessions = (a) => db.prepare(`SELECT s.*, (SELECT COUNT(*) FROM flyer_bonuses b WHERE b.session_id = s.id) families
@@ -2596,10 +2615,41 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       return { kind: 'distributor', code: a.code, name: a.name, areas: areasOf(a),
         rates: { flyer_ore: a.flyer_rate, family_ore: a.family_bonus, bonus_days: a.bonus_days },
         this_month: distributorStats(a, new Date().toISOString().slice(0, 7)), total: distributorStats(a),
-        sessions: flyerSessions(a).map(({ id, area, flyers, amount_ore, delivered_on, families, paid_at }) => ({ id, area, flyers, amount_ore, delivered_on, families, paid: !!paid_at })) };
+        sessions: flyerSessions(a).map(({ id, area, flyers, amount_ore, delivered_on, families, paid_at, status, review_note }) => ({ id, area, flyers, amount_ore, delivered_on, families, paid: !!paid_at,
+          status, review_note: status === 'rejected' ? review_note : null })) };
     }
     return { kind: 'ambassador', code: a.code, name: a.name, link: referralLink(a), rewards: AMBASSADOR_REWARDS,
       this_month: ambassadorStats(a, new Date().toISOString().slice(0, 7)), total: ambassadorStats(a), people: ambassadorPeople(a) };
+  }));
+  // A flyer distributor sends how many flyers they delivered, where and when. It waits for the admin's approval and
+  // earns their current rate per flyer once approved.
+  const myDistributor = (req) => {
+    const a = db.prepare("SELECT * FROM ambassadors WHERE user_id = ? AND active = 1 AND kind = 'distributor'").get(req.user.id);
+    if (!a) throw notFound();
+    return a;
+  };
+  api.post('/me/ambassador/sessions', requireAuth, wrap((req, res) => {
+    const a = myDistributor(req);
+    const f = flyerSessionFields(a, req.body);
+    if (db.prepare("SELECT COUNT(*) n FROM flyer_sessions WHERE ambassador_id = ? AND status = 'pending'").get(a.id).n >= 50) {
+      throw bad('You have 50 counts waiting for approval. Send more once some are approved.');
+    }
+    const r = db.prepare("INSERT INTO flyer_sessions (ambassador_id, area, flyers, rate_ore, amount_ore, delivered_on, note, status, submitted_by) VALUES (?,?,?,?,?,?,?,'pending',?)")
+      .run(a.id, f.area, f.flyers, a.flyer_rate, f.flyers * a.flyer_rate, f.day, f.note, req.user.id);
+    for (const adm of db.prepare("SELECT id FROM users WHERE role = 'admin'").all()) {
+      notify(adm.id, 'ambassador', '{name} sent a flyer count to approve: {flyers} flyers in {area}.', { name: a.name, flyers: f.flyers, area: areaLabel(f.area) }, `#/admin/ambassadors/${a.id}`);
+    }
+    res.status(201);
+    return { ok: true, id: Number(r.lastInsertRowid) };
+  }));
+  // A count sent by mistake can be taken back while it still waits for approval.
+  api.delete('/me/ambassador/sessions/:sid', requireAuth, wrap((req) => {
+    const a = myDistributor(req);
+    const s = db.prepare('SELECT * FROM flyer_sessions WHERE id = ? AND ambassador_id = ?').get(Number(req.params.sid), a.id);
+    if (!s) throw notFound();
+    if (s.status !== 'pending') throw bad('Only counts waiting for approval can be taken back.');
+    db.prepare('DELETE FROM flyer_sessions WHERE id = ?').run(s.id);
+    return { ok: true };
   }));
 
   // ---------- admin ----------
@@ -2909,7 +2959,10 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       // Agencies and ambassadors that signed up and aren't linked to a code yet: the admin links them by their account email.
       partner_accounts: db.prepare(`SELECT id, role, name, email, country, created_at FROM users
         WHERE role IN ('agency', 'ambassador') AND id NOT IN (SELECT user_id FROM ambassadors WHERE user_id IS NOT NULL) ORDER BY created_at DESC`).all(),
-      ambassadors: db.prepare('SELECT id FROM ambassadors ORDER BY active DESC, created_at DESC, id DESC').all().map((a) => adminAmbassador(a.id, month, false)) };
+      ambassadors: db.prepare('SELECT id FROM ambassadors ORDER BY active DESC, created_at DESC, id DESC').all().map((a) => adminAmbassador(a.id, month, false)),
+      // Flyer counts distributors sent that wait for the admin's approval, oldest first.
+      pending_sessions: db.prepare(`SELECT s.id, s.ambassador_id, a.name, a.code, s.area, s.flyers, s.rate_ore, s.amount_ore, s.delivered_on, s.note, s.created_at
+        FROM flyer_sessions s JOIN ambassadors a ON a.id = s.ambassador_id WHERE s.status = 'pending' ORDER BY s.created_at, s.id`).all() };
   }));
   api.post('/admin/ambassadors', requireRole('admin'), wrap((req, res) => {
     const code = referralCode(req.body?.code);
@@ -2940,25 +2993,50 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const a = adminAmbassador(req.params.id, null, false);
     const month = monthParam(req.body?.month);
     const m = month ? [month] : [];
-    const mark = (table, when) => db.prepare(`UPDATE ${table} SET paid_at = datetime('now') WHERE ambassador_id = ? AND paid_at IS NULL${month ? ` AND ${when} <= ?` : ''}`).run(a.id, ...m).changes;
-    if (a.kind === 'distributor') syncFlyerBonuses(a);
-    const marked = mark('referral_rewards', "strftime('%Y-%m', created_at)") + mark('flyer_sessions', 'substr(delivered_on, 1, 7)') + mark('flyer_bonuses', "strftime('%Y-%m', joined_at)");
-    return { marked, ...adminAmbassador(a.id) };
+    const mark = (table, when, w = '') => db.prepare(`UPDATE ${table} SET paid_at = datetime('now') WHERE ambassador_id = ? AND paid_at IS NULL${w}${month ? ` AND ${when} <= ?` : ''}`).run(a.id, ...m).changes;
+    const owedBefore = a.kind === 'distributor' ? distributorStats(a).owed_ore : 0;
+    // Counts still waiting for approval (or turned down) aren't paid with the rest.
+    const marked = mark('referral_rewards', "strftime('%Y-%m', created_at)") + mark('flyer_sessions', 'substr(delivered_on, 1, 7)', " AND status = 'approved'") + mark('flyer_bonuses', "strftime('%Y-%m', joined_at)");
+    const out = adminAmbassador(a.id);
+    // A distributor hears that their pay went out, with how much.
+    const paidOre = owedBefore - (a.kind === 'distributor' ? out.stats.owed_ore : 0);
+    if (a.kind === 'distributor' && a.user_id && paidOre > 0) {
+      notify(a.user_id, 'ambassador', 'PairMundo paid you {amount} for your flyer deliveries. Thank you!', { amount: krText(paidOre) }, '#/ambassador');
+    }
+    return { marked, ...out };
   }));
   // A flyer distributor's delivery session: the admin logs it after spot-checking a few streets, and it earns the
   // distributor's current rate per flyer.
   api.post('/admin/ambassadors/:id/sessions', requireRole('admin'), wrap((req, res) => {
     const a = adminAmbassador(req.params.id, null, false);
-    if (a.kind !== 'distributor') throw bad('Only flyer distributors have delivery sessions.');
-    const area = String(req.body?.area ?? '').trim().toLowerCase();
-    if (!a.areas.includes(area)) throw bad('Choose one of their areas.');
-    const flyers = Number(req.body?.flyers);
-    if (!Number.isInteger(flyers) || flyers < 1 || flyers > 100000) throw bad('Flyers is a whole number, like 500.');
-    const day = String(req.body?.delivered_on ?? '');
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || Number.isNaN(Date.parse(day)) || day > new Date().toISOString().slice(0, 10)) throw bad('Enter the day they delivered, not in the future.');
-    db.prepare('INSERT INTO flyer_sessions (ambassador_id, area, flyers, rate_ore, amount_ore, delivered_on, note) VALUES (?,?,?,?,?,?,?)')
-      .run(a.id, area, flyers, a.flyer_rate, flyers * a.flyer_rate, day, str(req.body?.note, 300) || null);
+    const f = flyerSessionFields(a, req.body);
+    db.prepare("INSERT INTO flyer_sessions (ambassador_id, area, flyers, rate_ore, amount_ore, delivered_on, note, reviewed_at) VALUES (?,?,?,?,?,?,?,datetime('now'))")
+      .run(a.id, f.area, f.flyers, a.flyer_rate, f.flyers * a.flyer_rate, f.day, f.note);
     res.status(201);
+    return adminAmbassador(a.id);
+  }));
+  // A count the distributor sent: the admin approves it (correcting the number of flyers if the spot-check found
+  // fewer), and it earns the rate it was sent at and is owed until the next payout; or turns it down with a reason.
+  api.post('/admin/ambassadors/:id/sessions/:sid/review', requireRole('admin'), wrap((req) => {
+    const a = adminAmbassador(req.params.id, null, false);
+    const s = db.prepare('SELECT * FROM flyer_sessions WHERE id = ? AND ambassador_id = ?').get(Number(req.params.sid), a.id);
+    if (!s) throw notFound();
+    if (s.status !== 'pending') throw bad('That count was already reviewed.');
+    const decision = req.body?.decision;
+    if (decision === 'approve') {
+      const flyers = req.body?.flyers == null || req.body.flyers === '' ? s.flyers : Number(req.body.flyers);
+      if (!Number.isInteger(flyers) || flyers < 1 || flyers > s.flyers) throw bad('Approve a whole number of flyers, at most the number they sent.');
+      db.prepare("UPDATE flyer_sessions SET status = 'approved', flyers = ?, amount_ore = ?, reviewed_at = datetime('now') WHERE id = ?").run(flyers, flyers * s.rate_ore, s.id);
+      if (a.user_id) {
+        notify(a.user_id, 'ambassador', 'Your count of {flyers} flyers in {area} was approved. {amount} is added to your pay.',
+          { flyers, area: areaLabel(s.area), amount: krText(flyers * s.rate_ore) }, '#/ambassador');
+      }
+    } else if (decision === 'reject') {
+      const note = str(req.body?.note, 300);
+      if (!note) throw bad('Say why, so they know what to fix.');
+      db.prepare("UPDATE flyer_sessions SET status = 'rejected', review_note = ?, reviewed_at = datetime('now') WHERE id = ?").run(note, s.id);
+      if (a.user_id) notify(a.user_id, 'ambassador', "Your count of {flyers} flyers in {area} wasn't approved. Open your page to see why.", { flyers: s.flyers, area: areaLabel(s.area) }, '#/ambassador');
+    } else throw bad('Approve or reject it.');
     return adminAmbassador(a.id);
   }));
   // A session logged by mistake can go, until it's paid. Families it brought in move to another session in the same
