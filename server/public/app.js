@@ -158,7 +158,7 @@ function renderNav() {
   if (!me) { $nav.innerHTML = link('#/programs', tr('Country programs')) + link('#/login', tr('Sign in')) + `<a class="btn sm" href="#/register">${tr('Join free')}</a>`; return; }
   const c = me.counts;
   if (me.user.role === 'admin') {
-    $nav.innerHTML = [link('#/admin', 'Admin'), link('#/pipeline', 'Partnerships'), link('#/placements', 'Placements'), link('#/programs', 'Programs'), link('#/notifications', '🔔', c.notifications), `<a href="#/logout">${tr('Sign out')}</a>`].join('');
+    $nav.innerHTML = [link('#/admin', 'Admin'), link('#/pipeline', 'Partnerships'), link('#/placements', 'Placements'), link('#/programs', 'Programs'), link('#/resources', 'Resources'), link('#/notifications', '🔔', c.notifications), `<a href="#/logout">${tr('Sign out')}</a>`].join('');
     return;
   }
   if (me.user.role === 'partner_manager') {
@@ -167,11 +167,12 @@ function renderNav() {
   }
   if (me.user.role === 'agency') {
     $nav.innerHTML = [link('#/agency', tr('Your agency')), me.agency_network && me.ambassador ? link('#/network', tr('Partner agencies')) : '',
-      link('#/guides', tr('Guides')), link('#/account', tr('Account')), `<a href="#/logout">${tr('Sign out')}</a>`].join('');
+      me.ambassador ? link('#/resources', `🧰 ${tr('Resources')}`) : '', link('#/guides', tr('Guides')), link('#/account', tr('Account')), `<a href="#/logout">${tr('Sign out')}</a>`].join('');
     return;
   }
   if (me.user.role === 'ambassador') {
-    $nav.innerHTML = [link('#/ambassador', me.ambassador?.kind === 'distributor' ? tr('Your pay') : tr('Your code')), link('#/account', tr('Account')), `<a href="#/logout">${tr('Sign out')}</a>`].join('');
+    $nav.innerHTML = [link('#/ambassador', me.ambassador?.kind === 'distributor' ? tr('Your pay') : tr('Your code')),
+      me.ambassador?.kind === 'ambassador' ? link('#/resources', `🧰 ${tr('Resources')}`) : '', link('#/account', tr('Account')), `<a href="#/logout">${tr('Sign out')}</a>`].join('');
     return;
   }
   $nav.innerHTML = [
@@ -659,7 +660,8 @@ views.agency = async () => {
     ${amb.race ? raceCard(amb) : ''}
     <div class="card"><h2>${tr('Your agency code')}: <code>${esc(amb.code)}</code></h2>
       <p>${tr('Your au pairs type this code when they create their free account, or use your link. Families then see "Prepared by {agency}" on their profiles.', { agency: esc(amb.name) })}</p>
-      <div class="row"><input id="ambLink" readonly value="${esc(amb.link)}" style="flex:1"><button class="btn sm" id="ambCopy">${tr('Copy link')}</button></div></div>
+      <div class="row"><input id="ambLink" readonly value="${esc(amb.link)}" style="flex:1"><button class="btn sm" id="ambCopy">${tr('Copy link')}</button></div>
+      <a class="res-banner" href="#/resources"><span>🧰</span><span><strong>${tr('Your partner toolkit')}</strong><br><span class="small">${tr('One-pagers, flyers, posts with your links, training videos and answers')}</span></span><b>→</b></a></div>
     <div class="card"><h2>${tr('Your au pairs')}</h2>
       <table><tr><th></th><th>${tr('Joined this month')}</th><th>${tr('All time')}</th></tr>
       ${[[tr('Au pairs who joined'), 'aupairs'], [tr('Profiles families can see'), 'profiles'], [tr('ID verified'), 'verified'], [tr('Placements agreed'), 'placements']]
@@ -1070,6 +1072,7 @@ function ambassadorCard(amb) {
   return `<div class="card"><h2>🌍 ${tr('PairMundo ambassador')}</h2>
     <p>${tr('Your code')}: <strong>${esc(amb.code)}</strong></p>
     <div class="row"><input id="ambLink" readonly value="${esc(amb.link)}" style="flex:1"><button class="btn sm" id="ambCopy">${tr('Copy link')}</button></div>
+    <a class="res-banner" href="#/resources"><span>🧰</span><span><strong>${tr('Your partner toolkit')}</strong><br><span class="small">${tr('Flyers, posts with your link, guides and answers')}</span></span><b>→</b></a>
     <table style="margin-top:12px"><tr><th></th><th>${tr('This month')}</th><th>${tr('All time')}</th></tr>
       ${[[tr('On the waitlist'), 'waitlist'], [tr('Au pairs who joined'), 'aupairs'], [tr('Families who joined'), 'families'], [tr('Completed au pair profiles'), 'profiles'],
     [tr('Families who bought a Family Pass'), 'passes'], [tr('Stays that started'), 'placements']]
@@ -2020,6 +2023,134 @@ views.guides = async ([slug]) => {
     </div></div>`);
   const v = document.getElementById('guideVideo');
   document.querySelectorAll('.guide-chapters [data-t]').forEach((b) => { b.onclick = () => { v.currentTime = Number(b.dataset.t); v.play().catch(() => {}); v.scrollIntoView({ behavior: 'smooth', block: 'center' }); }; });
+};
+
+// ---------- partner resources ----------
+// One place for agencies and ambassadors: their code and links, files made for them, one-pagers, print files, social
+// posts with captions, training videos, agreements and answers. Shared files live in /media/resources (thumbnails in
+// /media/resources/thumbs); files with someone's own code come from the server. `for` says who sees an item.
+const RES = '/media/resources';
+const RESOURCE_FILES = {
+  pitch: [
+    { for: 'agency', file: 'PairMundo-for-host-agencies-EN.pdf', title: 'PairMundo for host agencies', lang: 'EN', about: 'What your agency gets, what it costs and how it works, on one page.' },
+    { for: 'agency', file: 'PairMundo-for-host-agencies-ES.pdf', title: 'PairMundo for host agencies', lang: 'ES', about: 'The same one-pager in Spanish.' },
+    { for: 'agency', file: 'PairMundo-for-sending-agencies-EN.pdf', title: 'PairMundo for sending agencies', lang: 'EN', about: 'Send it to the agencies abroad who prepare your au pairs.' },
+    { for: 'agency', file: 'PairMundo-for-sending-agencies-ES.pdf', title: 'PairMundo for sending agencies', lang: 'ES', about: 'The same one-pager in Spanish.' },
+    { for: 'agency', file: 'PairMundo-Closed-Loop-EN.pdf', title: 'Closed Loop', lang: 'EN', about: 'Your own closed space for your families and au pairs, and what it costs.' },
+    { for: 'agency', file: '/media/PairMundo-profile-guide-for-agencies.pdf', thumb: 'PairMundo-profile-guide-for-agencies.webp', title: 'Profile guide for your au pairs', lang: 'EN', about: 'Hand it to your au pairs so their profiles are ready for families.' },
+    { for: 'agency', file: 'PairMundo-partner-presentation.pdf', title: 'Partner presentation', lang: 'EN', about: 'The slides for your team meeting.' },
+    { for: 'ambassador', file: 'ambassador-social-media-guide.pdf', title: 'Social media guide', lang: 'EN', about: 'How to label posts as ads, which hashtags to use, post ideas and a checklist.' },
+    { for: 'ambassador', file: 'starter-kit-au-pair-ambassador-SAMPLE.pdf', title: 'Starter kit: au pair ambassadors', lang: 'EN', about: 'Texts you can post as they are, and where to find future au pairs. Yours comes with your own code.' },
+    { for: 'ambassador', file: 'starter-kit-family-ambassador-SAMPLE.pdf', title: 'Starter kit: family ambassadors', lang: 'EN', about: 'How to talk to families in salons, shops and activities. Yours comes with your own code.' },
+  ],
+  print: [
+    { for: 'all', file: 'flyer-au-pairs-A5-EN.pdf', title: 'Flyer for au pairs', lang: 'EN', size: 'A5' },
+    { for: 'all', file: 'flyer-au-pairs-A5-SV.pdf', title: 'Flyer for au pairs', lang: 'SV', size: 'A5' },
+    { for: 'all', file: 'flyer-families-A5-EN.pdf', title: 'Flyer for host families', lang: 'EN', size: 'A5' },
+    { for: 'all', file: 'flyer-families-A5-SV.pdf', title: 'Flyer for host families', lang: 'SV', size: 'A5' },
+    { for: 'all', file: 'poster-tear-off-A4-SV-EN.pdf', title: 'Tear-off poster', lang: 'SV/EN', size: 'A4' },
+    { for: 'ambassador', file: 'counter-card-A6.pdf', title: 'Counter card for salons and shops', lang: 'SV', size: 'A6' },
+    { for: 'ambassador', file: 'takeaway-card-front.pdf', title: 'Take-away card, front', lang: 'SV', size: '85×55' },
+    { for: 'ambassador', file: 'takeaway-card-back.pdf', title: 'Take-away card, back', lang: 'SV', size: '85×55' },
+    { for: 'ambassador', file: 'real-estate-leave-behind-EN.pdf', title: 'Leave-behind for real estate offices', lang: 'EN', size: 'A4' },
+    { for: 'ambassador', file: 'real-estate-leave-behind-SV.pdf', title: 'Leave-behind for real estate offices', lang: 'SV', size: 'A4' },
+    { for: 'ambassador', file: 'salon-pitch-script.pdf', title: 'What to say in a salon', lang: 'EN', size: 'A4' },
+    { for: 'ambassador', file: 'real-estate-walk-in-script-EN.pdf', title: 'What to say at a real estate office', lang: 'EN', size: 'A4' },
+  ],
+  agreements: [
+    { for: 'ambassador', file: 'PairMundo-Ambassador-Agreement-au-pair-edition.docx', title: 'Ambassador agreement: au pair edition', about: 'For ambassadors who bring in au pairs. PairMundo fills in your name and code before you sign.' },
+    { for: 'ambassador', file: 'PairMundo-Ambassador-Agreement-family-edition.docx', title: 'Ambassador agreement: family edition', about: 'For ambassadors who bring in host families.' },
+  ],
+};
+const SOCIAL_POSTS = ['02-au-pairs-worldwide', '03-how-it-works', '06-free-for-au-pairs', '10-year-abroad', '07-safety', '12-two-way-reviews',
+  '04-host-families', '11-little-ones', '05-the-app', '01-welcome', '08-sweden', '09-join-waitlist'];
+// Ready-to-post texts. {link} becomes the person's own link, so whoever signs up through it counts for them.
+const CAPTIONS = [
+  { for: 'agency', title: 'Tell your au pairs', text: 'Big news for our au pairs 🎉 We now work with PairMundo, the au pair app where host families find you. Create your free profile with our link, add a photo and a few lines about you, and families can see you straight away, marked "Prepared by" our agency.\n\n{aupair}' },
+  { for: 'agency', title: 'Tell your host families', text: 'Looking for your next au pair? 🏡 Our au pairs are now on PairMundo. Swipe through photo profiles, match when it\'s mutual, and we still take care of you from the first chat to arrival.\n\nCreate your free family account: {family}' },
+  { for: 'ambassador', title: 'For future au pairs', text: 'Dreaming of a year abroad? 🌍 PairMundo is a new app where au pairs and host families find each other. It\'s free for au pairs, families are ID-checked, and you can see reviews from past au pairs.\n\nSign up with my link: {aupair}\n\n#ad #aupair #aupairlife' },
+  { for: 'ambassador', title: 'For host families', text: 'Thinking about an au pair? 🧸 PairMundo shows you au pairs from around the world with photos, languages and childcare experience. Match, chat and plan the stay with the country\'s rules checked for you.\n\nHave a look: {family}\n\n#ad #aupair #hostfamily' },
+  { for: 'all', title: 'Short and sweet (WhatsApp)', text: 'Have you seen PairMundo? It\'s a new app for au pairs and host families 👋 {link}' },
+];
+const RESOURCE_FAQ = [
+  { for: 'agency', q: 'Do our au pairs or families pay anything?', a: 'Au pairs never pay. Families can create a free account and see profiles. What your agency pays, if anything, is in your agreement with PairMundo.' },
+  { for: 'agency', q: 'How do au pairs end up linked to our agency?', a: 'They sign up with your link or type your code when they create their account. If they forgot, they can add your code later in their account. Once a code is set it can\'t be changed.' },
+  { for: 'agency', q: 'When does a profile count as finished?', a: 'When it has a photo and an About me. That\'s also when families can see it.' },
+  { for: 'agency', q: 'Can we get the one-pagers with our logo or in another language?', a: 'Yes. Email Badji what you need, and we\'ll make a version for your agency.' },
+  { for: 'ambassador', q: 'When does someone count for me?', a: 'Only when they sign up with your link or QR code, or type your code when they register. The code can\'t be added afterwards, so remind them before they start.' },
+  { for: 'ambassador', q: 'When do I earn a reward?', a: 'When an au pair finishes their profile and verifies their ID, when a family buys their first Family Pass, and when a stay starts. You can follow each person on your code page.' },
+  { for: 'ambassador', q: 'Can I get flyers with my own QR code?', a: 'Yes. Email Badji the language you need, and we\'ll send you a flyer and a poster with your code. Printing costs are only paid back if agreed in writing beforehand.' },
+  { for: 'ambassador', q: 'Do I have to label my posts?', a: 'Yes. You earn from your code, so mark posts as an ad (for example #ad or "Paid partnership"). The social media guide shows how in each country.' },
+  { for: 'all', q: 'Can I edit the files?', a: 'Please share them as they are, so the links and the PairMundo look stay right. For changes, email Badji.' },
+];
+
+views.resources = async ([section], query) => {
+  const asParam = me.user.role === 'admin' && query.get('as') ? `?as=${encodeURIComponent(query.get('as'))}` : '';
+  let r;
+  try { r = await api(`/me/resources${asParam}`); } catch (e) {
+    if (e.status !== 404) throw e;
+    return render(`<h1>${tr('Resources')}</h1><div class="card"><p>${tr('Resources open once your code is ready. We\'ll let you know.')}</p></div>`);
+  }
+  const who = r.kind === 'agency' ? 'agency' : 'ambassador';
+  const mineOnly = (x) => x.for === 'all' || x.for === who;
+  const fileUrl = (f) => (f.startsWith('/') ? f : `${RES}/${f}`);
+  const thumbUrl = (x) => `${RES}/thumbs/${x.thumb || x.file.replace(/\.\w+$/, '.webp')}`;
+  const fill = (text) => text.replaceAll('{aupair}', r.links.aupair).replaceAll('{family}', r.links.family).replaceAll('{link}', r.link);
+  const ask = (subject) => `mailto:badji@pairmundo.com?subject=${encodeURIComponent(`${subject} (${r.name}, ${r.code})`)}`;
+  // A PDF opens in a new tab to look at first; pictures and Word files download.
+  const fileCard = (x) => {
+    const thumb = x.thumb === null || x.file.endsWith('.docx') ? null : x.thumb?.startsWith('/') ? x.thumb : thumbUrl(x);
+    return `<a class="res-file" href="${esc(fileUrl(x.file))}" target="_blank" rel="noopener"${x.file.endsWith('.pdf') ? '' : ' download'}>
+      <span class="res-thumb">${thumb ? `<img src="${esc(thumb)}" alt="" loading="lazy">` : '<span class="res-doc">📝</span>'}
+        ${x.lang || x.size ? `<span class="res-tags">${[x.size, x.lang].filter(Boolean).map((t) => `<span>${esc(t)}</span>`).join('')}</span>` : ''}</span>
+      <span class="res-meta"><strong>${tr(x.title)}</strong>${x.about ? `<span class="muted small">${tr(x.about)}</span>` : ''}<span class="res-dl">⬇ ${tr('Download')}</span></span></a>`;
+  };
+  const copyRow = (id, label, value) => `<div class="race-link"><label for="${id}">${label}</label><div class="row"><input id="${id}" readonly value="${esc(value)}"><button class="btn sm" data-copy="${id}">${tr('Copy')}</button></div></div>`;
+  const sections = [
+    ['mine', '⭐', tr('Made for you'), `<div class="res-cols"><div>
+        <p class="muted small">${tr('Share these links. Everyone who signs up through them counts for you.')}</p>
+        ${copyRow('resAupair', tr('Sign-up link for au pairs'), r.links.aupair)}${copyRow('resFamily', tr('Sign-up link for host families'), r.links.family)}
+        ${copyRow('resLink', tr('Your general link'), r.link)}</div>
+      <div class="res-files">${r.personal.map(fileCard).join('')}
+        <a class="res-file res-ask" href="${ask(who === 'agency' ? 'Files for our agency' : 'Flyer with my code')}"><span class="res-thumb"><span class="res-doc">✨</span></span>
+          <span class="res-meta"><strong>${who === 'agency' ? tr('Want files with your logo or code?') : tr('Want a flyer with your own QR code?')}</strong>
+          <span class="muted small">${tr('Tell Badji the language and size, and we\'ll make it for you.')}</span><span class="res-dl">✉️ ${tr('Ask for one')}</span></span></a></div></div>`],
+    ['pitch', '📄', who === 'agency' ? tr('One-pagers and presentations') : tr('Your guides'), `<div class="res-files">${RESOURCE_FILES.pitch.filter(mineOnly).map(fileCard).join('')}</div>`],
+    ['print', '🖨', tr('Flyers and posters'), `<p class="muted small">${tr('Ready to print. The QR codes on these go to pairmundo.com; for ones that count for you, use the files made for you above.')}</p>
+      <div class="res-files">${RESOURCE_FILES.print.filter(mineOnly).map(fileCard).join('')}</div>`],
+    ['social', '📱', tr('Social media'), `<p class="muted small">${tr('Download a picture, copy a text, and post. The texts already have your link in them.')}</p>
+      <div class="res-captions">${CAPTIONS.filter(mineOnly).map((c, i) => `<div class="res-caption"><div class="spread"><strong>${tr(c.title)}</strong><button class="btn sm secondary" data-copy-text="${i}">${tr('Copy text')}</button></div>
+        <p>${esc(fill(tr(c.text))).replace(/\n/g, '<br>')}</p></div>`).join('')}</div>
+      <div class="res-posts">${SOCIAL_POSTS.map((p) => `<a href="${RES}/social/${p}.jpg" download target="_blank" rel="noopener"><img src="${RES}/thumbs/social/${p}.webp" alt="" loading="lazy"><span>⬇</span></a>`).join('')}</div>`],
+    ['training', '🎬', tr('Training videos'), `<div class="res-videos">${GUIDES.map((g) => `<a class="res-video" href="#/guides/${g.slug}"><span class="res-play"><img src="/media/guides/${g.file}.jpg" alt="" loading="lazy"><i>▶</i></span>
+      <strong>${g.icon} ${tr(g.title)}</strong><span class="muted small">${tr('{n} min', { n: g.minutes })} · ${tr(g.about)}</span></a>`).join('')}</div>`],
+    ...(RESOURCE_FILES.agreements.some(mineOnly) ? [['agreements', '✍️', tr('Agreements'), `<div class="res-files">${RESOURCE_FILES.agreements.filter(mineOnly).map(fileCard).join('')}</div>`]] : []),
+    ['faq', '❓', tr('Questions'), `<div class="res-faq">${RESOURCE_FAQ.filter(mineOnly).map((f) => `<details><summary>${tr(f.q)}</summary><p>${tr(f.a)}</p></details>`).join('')}</div>`],
+  ];
+  render(`<div class="resources">
+    ${r.preview ? `<div class="alert ok">Preview with a sample code. <a href="#/resources?as=agency">As an agency</a> · <a href="#/resources?as=ambassador">As an ambassador</a></div>` : ''}
+    <section class="res-hero"><div>
+      <span class="race-pill">🧰 ${tr('Partner toolkit')}</span>
+      <h1>${tr('Everything you need to bring people to PairMundo')}</h1>
+      <p>${tr('Your links, files with your code, flyers, posts with texts ready to go, and short training videos. All in one place.')}</p>
+      <div class="res-code">${tr('Your code')} <strong>${esc(r.code)}</strong></div></div>
+      <nav class="res-jump">${sections.map(([id, icon, title]) => `<a href="#/resources/${id}${asParam}" data-jump="${id}"><span>${icon}</span>${title}</a>`).join('')}</nav></section>
+    ${sections.map(([id, icon, title, body]) => `<section class="card res-section" id="res-${id}"><h2><span class="res-icon">${icon}</span> ${title}</h2>${body}</section>`).join('')}
+    <section class="res-contact"><div><h2>💬 ${tr('Need something else?')}</h2><p>${tr('A file in another language, help with a talk, or a question about your code: Badji answers within a day.')}</p></div>
+      <a class="btn race-yellow" href="${ask('Question from a partner')}">✉️ ${tr('Email Badji')}</a></section></div>`);
+  document.querySelectorAll('.resources [data-copy]').forEach((b) => { b.onclick = async () => {
+    const input = document.getElementById(b.dataset.copy);
+    try { await navigator.clipboard.writeText(input.value); } catch { input.select(); document.execCommand('copy'); }
+    toast(tr('Link copied'));
+  }; });
+  const caps = CAPTIONS.filter(mineOnly);
+  document.querySelectorAll('.resources [data-copy-text]').forEach((b) => { b.onclick = async () => {
+    try { await navigator.clipboard.writeText(fill(tr(caps[b.dataset.copyText].text))); toast(tr('Text copied')); } catch { toast(tr('Select the text and copy it.')); }
+  }; });
+  document.querySelectorAll('.res-jump [data-jump]').forEach((a) => { a.onclick = (e) => {
+    e.preventDefault(); document.getElementById(`res-${a.dataset.jump}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }; });
+  if (section) document.getElementById(`res-${section}`)?.scrollIntoView({ block: 'start' });
 };
 
 // ---------- notifications ----------

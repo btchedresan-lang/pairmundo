@@ -2,6 +2,7 @@ import express from 'express';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
+import { existsSync, readdirSync } from 'node:fs';
 import { json, tx } from './db.js';
 import { hashPassword, verifyPassword, createSession, sessionMiddleware, requireAuth, requireRole, rateLimit } from './auth.js';
 import { scoreMatch, checkCompliance, ageOn } from './matching.js';
@@ -3306,6 +3307,39 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     });
     const skipped = db.prepare("SELECT name FROM ambassadors WHERE kind = 'agency' AND active = 1 AND user_id IS NULL ORDER BY name").all().map((r) => r.name);
     return { sent: pending.length, agencies: pending.map((a) => a.name), skipped };
+  }));
+
+  // ---------- partner resources ----------
+  // The Resources page for agencies and ambassadors: their own code and sign-up links, and the files made for them
+  // (public/media/resources/personal/<CODE>/, plus the race one-pager while the race runs). The shared files are listed
+  // in the page itself. The admin previews it as an agency or an ambassador with ?as=.
+  const PERSONAL_DIR = join(PUBLIC_DIR, 'media', 'resources', 'personal');
+  const PERSONAL_KINDS = [[/starter-kit/, 'Your starter kit', 'Your personal guide, with your code and QR code on the cover.'],
+    [/flyer/, 'Your flyer', 'A5 flyer with your own QR code. Print it and hand it out.'],
+    [/poster/, 'Your tear-off poster', 'A4 poster with tear-off strips that carry your code.'],
+    [/./, 'Made for you', 'A file with your code on it.']];
+  const personalFiles = (code) => {
+    const dir = join(PERSONAL_DIR, code.toUpperCase());
+    if (!/^[A-Z0-9_-]+$/i.test(code) || !existsSync(dir)) return [];
+    return readdirSync(dir).filter((f) => /\.(pdf|jpg|png)$/i.test(f)).sort().map((f) => {
+      const [, title, about] = PERSONAL_KINDS.find(([re]) => re.test(f));
+      const thumb = `thumbs/personal/${code.toUpperCase()}/${f.replace(/\.\w+$/, '.webp')}`;
+      return { title, about, file: `/media/resources/personal/${code.toUpperCase()}/${f}`,
+        thumb: existsSync(join(PUBLIC_DIR, 'media', 'resources', thumb)) ? `/media/resources/${thumb}` : null };
+    });
+  };
+  api.get('/me/resources', requireAuth, wrap((req) => {
+    let a = db.prepare("SELECT * FROM ambassadors WHERE user_id = ? AND active = 1 AND kind IN ('agency', 'ambassador')").get(req.user.id);
+    if (!a && req.user.role === 'admin') a = { code: 'YOURCODE', name: 'Your agency', kind: req.query.as === 'ambassador' ? 'ambassador' : 'agency', preview: true };
+    if (!a) throw notFound();
+    const personal = personalFiles(a.code);
+    const race = a.kind === 'agency' && !a.preview ? raceFor(a) : null;
+    if (race || (a.preview && a.kind === 'agency')) {
+      const file = race?.one_pager ?? '/media/race/PairMundo-Founding-Partner-Race.pdf';
+      personal.unshift({ title: 'Founding Partner Race one-pager', about: 'The race, the prizes and your links, to share with your team.', file,
+        thumb: `/media/resources/thumbs/race/${file.split('/').pop().replace(/\.pdf$/, '.webp')}` });
+    }
+    return { kind: a.kind, name: a.name, code: a.code, preview: !!a.preview, link: referralLink(a), links: raceLinks(a), personal };
   }));
 
   app.use('/api', api);

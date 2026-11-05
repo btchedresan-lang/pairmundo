@@ -2929,3 +2929,53 @@ test('the Founding Partner Race: the admin announces it in the app, and each age
   // Each agency is told once.
   assert.equal((await call(admin, 'POST', '/admin/agency-race')).body.sent, 0);
 });
+
+test('partner resources: agencies and ambassadors get their links and their own files; others are turned away', async () => {
+  const { hashPassword } = await import('../server/auth.js');
+  const { existsSync } = await import('node:fs');
+  testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
+  const served = (path) => existsSync(new URL(`../public${path}`, import.meta.url));
+
+  const ag = await register('kit@agency.test', 'agency', 'BE', 'Kit Agency', { complete: false });
+  assert.equal((await call(admin, 'POST', '/admin/ambassadors', { code: 'KITAGENCY', name: 'Kit Agency', kind: 'agency', account_email: 'kit@agency.test' })).status, 201);
+  const a = (await call(ag.token, 'GET', '/me/resources')).body;
+  assert.equal(a.kind, 'agency');
+  assert.equal(a.code, 'KITAGENCY');
+  assert.ok(a.links.aupair.endsWith('/?ref=KITAGENCY#/register?role=aupair'));
+  assert.ok(a.link.endsWith('/?ref=KITAGENCY'));
+  for (const p of a.personal) assert.ok(served(p.file), p.file);
+
+  // An ambassador with files made for their code sees them, with thumbnails.
+  const res = await call(null, 'POST', '/auth/register', { email: 'maria@amb.test', password: 'password123', role: 'ambassador', name: 'Maria', country: 'CO' });
+  await call(res.body.token, 'POST', '/auth/verify-email', { code: lastCode('maria@amb.test') });
+  assert.equal((await call(res.body.token, 'GET', '/me/resources')).status, 404, 'no code yet');
+  assert.equal((await call(admin, 'POST', '/admin/ambassadors', { code: 'MARIA', name: 'Maria', kind: 'ambassador', account_email: 'maria@amb.test' })).status, 201);
+  const m = (await call(res.body.token, 'GET', '/me/resources')).body;
+  assert.equal(m.kind, 'ambassador');
+  assert.ok(m.personal.some((p) => p.title === 'Your starter kit'), JSON.stringify(m.personal));
+  for (const p of m.personal) { assert.ok(served(p.file), p.file); assert.ok(p.thumb && served(p.thumb), p.thumb); }
+
+  // The admin previews either view; members without a code can't open it.
+  assert.equal((await call(admin, 'GET', '/me/resources?as=ambassador')).body.kind, 'ambassador');
+  const pa = (await call(admin, 'GET', '/me/resources')).body;
+  assert.equal(pa.preview, true);
+  assert.ok(pa.personal.every((p) => served(p.file) && served(p.thumb)));
+  const fam = await register('kit-fam@test.io', 'family', 'SE', 'Kit Family');
+  assert.equal((await call(fam.token, 'GET', '/me/resources')).status, 404);
+});
+
+test('partner resources: every shared file and thumbnail the page lists is served', async () => {
+  const { readFileSync, existsSync } = await import('node:fs');
+  const web = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  const block = web.slice(web.indexOf('const RESOURCE_FILES = {'), web.indexOf('const RESOURCE_FAQ'));
+  const files = [...block.matchAll(/file: '([^']+)'/g)].map((x) => x[1]);
+  assert.ok(files.length > 15);
+  const pub = (p) => new URL(`../public${p.startsWith('/') ? p : `/media/resources/${p}`}`, import.meta.url);
+  for (const f of files) assert.ok(existsSync(pub(f)), f);
+  for (const t of [...block.matchAll(/thumb: '([^']+)'/g)].map((x) => x[1])) assert.ok(existsSync(pub(`thumbs/${t}`)), t);
+  for (const f of files.filter((x) => !x.startsWith('/') && !x.endsWith('.docx'))) assert.ok(existsSync(pub(`thumbs/${f.replace(/\.\w+$/, '.webp')}`)), `thumb for ${f}`);
+  for (const p of [...block.matchAll(/'(\d\d-[a-z-]+)'/g)].map((x) => x[1])) {
+    assert.ok(existsSync(pub(`social/${p}.jpg`)) && existsSync(pub(`thumbs/social/${p}.webp`)), p);
+  }
+});
