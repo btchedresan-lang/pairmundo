@@ -1238,5 +1238,6 @@
   "Payouts are set up. Your pay goes to your bank account automatically once a count is approved.": "Les versements sont configurés. Votre paie est versée automatiquement sur votre compte bancaire dès qu'un décompte est approuvé.",
   "Set up payouts": "Configurer les versements",
   "Their payout account isn't ready yet: Stripe is still waiting for their details.": "Son compte de versement n'est pas encore prêt : Stripe attend encore ses informations.",
-  "They haven't set up their payout account yet. They do it from their pay page.": "Il n'a pas encore configuré son compte de versement. Cela se fait depuis sa page de paie."
+  "They haven't set up their payout account yet. They do it from their pay page.": "Il n'a pas encore configuré son compte de versement. Cela se fait depuis sa page de paie.",
+  "This permanently deletes your agency account. Your families and au pairs keep their own accounts, matches, messages and placements; only they can delete them.": "Cela supprime définitivement le compte de votre agence. Vos familles et au pairs gardent leurs propres comptes, matchs, messages et placements ; eux seuls peuvent les supprimer."
 }

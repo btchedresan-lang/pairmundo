@@ -1116,7 +1116,7 @@ views.account = async () => {
     ${['agency', 'ambassador'].includes(me.user.role) ? '' : `<div class="card"><h2>${tr('ID check')}</h2>${idCard}</div>
     <div class="card"><h2>${tr('Blocked people')}</h2>${blocked.length ? blocked.map((u) => `<div class="row" style="padding:6px 0">${avatar(u, 'sm')}<strong style="flex:1">${esc(u.name)}</strong>
       <button class="btn ghost sm" data-unblock="${u.id}">${tr('Unblock')}</button></div>`).join('') : `<p class="muted">${tr("You haven't blocked anyone.")}</p>`}</div>`}
-    <div class="card"><h2>${tr('Delete account')}</h2><p class="muted small">${tr('This permanently deletes your profile, photos, matches, messages, placements and reviews.')}</p>
+    <div class="card"><h2>${tr('Delete account')}</h2><p class="muted small">${me.user.role === 'agency' ? tr('This permanently deletes your agency account. Your families and au pairs keep their own accounts, matches, messages and placements; only they can delete them.') : tr('This permanently deletes your profile, photos, matches, messages, placements and reviews.')}</p>
       <form id="del"><div class="field"><label>${tr('Your password')}</label><input name="password" type="password" required autocomplete="current-password"></div>
       <div id="err"></div><button class="btn danger">${tr('Delete my account')}</button></form></div>`);
   if (ambCard) wireCopy(amb.link);
