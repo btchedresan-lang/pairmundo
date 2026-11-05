@@ -2830,3 +2830,60 @@ test('agency update email: the admin previews who gets it and the text, then sen
     assert.equal((await (await fetch(`${b2}/admin/agency-update`, { method: 'POST', headers: h })).json()).sent, 0, 'sent once');
   } finally { srv.close(); }
 });
+
+test('an agency leaving never takes its families and au pairs with it: they keep their accounts, data and access', async () => {
+  const { hashPassword } = await import('../server/auth.js');
+  testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
+  const ag = await register('boss@leaving.test', 'agency', 'SE', 'Leaving Agency', { complete: false });
+  let r = await call(admin, 'POST', '/admin/ambassadors', { code: 'LEAVING', name: 'Leaving Agency', kind: 'agency', account_email: 'boss@leaving.test',
+    closed_network: true, mask_contacts: true, approve_families: true });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  const agencyId = r.body.id;
+  const fam = await register('leavefam@test.io', 'family', 'SE', 'Familjen Kvar');
+  const ap = await register('leaveap@test.io', 'aupair', 'PL', 'Ola Kvar');
+  for (const u of [fam, ap]) assert.deepEqual((await call(u.token, 'POST', '/me/agency', { code: 'LEAVING' })).body, { agency: 'Leaving Agency' });
+  // While the agency is there, its family waits for its approval.
+  assert.equal((await call(fam.token, 'GET', '/search')).body.awaiting_agency, 'Leaving Agency');
+  // A placement between its family and au pair, and one only the agency's account set up (never possible through the API).
+  const ins = testDb.prepare(`INSERT INTO placements (aupair_id, family_id, country, start_date, end_date, weekly_hours, pocket_money, status, created_by)
+    VALUES (?, ?, 'SE', '2027-01-01', '2027-12-31', 25, 4000, 'confirmed', ?)`);
+  const p1 = Number(ins.run(ap.id, fam.id, fam.id).lastInsertRowid);
+  const p2 = Number(ins.run(ap.id, fam.id, ag.id).lastInsertRowid);
+
+  // The agency can't delete, remove or take its members anywhere: there is no route for it.
+  for (const [method, path] of [['DELETE', `/agency/families/${fam.id}`], ['DELETE', `/users/${fam.id}`], ['DELETE', `/users/${ap.id}`], ['GET', '/agency/families.csv'], ['POST', `/agency/families/${fam.id}/transfer`]]) {
+    assert.equal((await call(ag.token, method, path)).status, 404, `${method} ${path}`);
+  }
+  // Admins can't delete members either; a member's account is only ever deleted by themselves.
+  assert.equal((await call(admin, 'DELETE', `/users/${fam.id}`)).status, 404);
+  assert.equal((await call(admin, 'DELETE', `/admin/users/${fam.id}`)).status, 404);
+
+  // The agency deletes its own account.
+  r = await call(ag.token, 'DELETE', '/me', { password: 'password123' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(testDb.prepare('SELECT 1 FROM users WHERE id = ?').get(ag.id), undefined);
+
+  // Its family and au pair are still here, with their agency code kept and their placements untouched.
+  for (const u of [fam, ap]) {
+    const row = testDb.prepare('SELECT * FROM users WHERE id = ?').get(u.id);
+    assert.ok(row, 'member kept');
+    assert.equal(row.ref_code, 'LEAVING');
+    assert.equal((await call(u.token, 'GET', '/me')).status, 200, 'still signed in');
+  }
+  assert.deepEqual(testDb.prepare('SELECT id, created_by FROM placements WHERE id IN (?, ?) ORDER BY id').all(p1, p2).map((x) => ({ ...x })),
+    [{ id: p1, created_by: fam.id }, { id: p2, created_by: fam.id }]);
+  // The agency's code stays (for its records) but its space closes, so nobody waits on an agency that's gone.
+  const a = testDb.prepare('SELECT active, user_id FROM ambassadors WHERE id = ?').get(agencyId);
+  assert.deepEqual({ ...a }, { active: 0, user_id: null });
+  assert.equal((await call(fam.token, 'GET', '/search')).body.awaiting_agency, undefined);
+  assert.equal((await call(fam.token, 'GET', `/users/${ap.id}`)).body.user.agency, null);
+  // Both are told their account stays theirs.
+  for (const u of [fam, ap]) {
+    const n = (await call(u.token, 'GET', '/notifications')).body.notifications;
+    assert.ok(n.some((x) => x.kind === 'agency' && /Leaving Agency left PairMundo/.test(x.text)), JSON.stringify(n));
+  }
+  // Only they can delete their own accounts.
+  assert.equal((await call(fam.token, 'DELETE', '/me', { password: 'password123' })).status, 200);
+  assert.ok(testDb.prepare('SELECT 1 FROM users WHERE id = ?').get(ap.id), 'the au pair is untouched by the family leaving');
+});

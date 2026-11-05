@@ -140,5 +140,6 @@
   "Button not working? Copy this link into your browser:": "Fungerar inte knappen? Kopiera den här länken till din webbläsare:",
   "Your count of {flyers} flyers in {area} was approved. {amount} is added to your pay.": "Din rapport om {flyers} flygblad i {area} är godkänd. {amount} läggs till din ersättning.",
   "Your count of {flyers} flyers in {area} wasn't approved. Open your page to see why.": "Din rapport om {flyers} flygblad i {area} godkändes inte. Öppna din sida för att se varför.",
-  "PairMundo paid you {amount} for your flyer deliveries. Thank you!": "PairMundo har betalat dig {amount} för dina flygbladsutdelningar. Tack!"
+  "PairMundo paid you {amount} for your flyer deliveries. Thank you!": "PairMundo har betalat dig {amount} för dina flygbladsutdelningar. Tack!",
+  "{agency} left PairMundo. Your account, matches, messages and placements stay yours.": "{agency} har lämnat PairMundo. Ditt konto, dina matchningar, meddelanden och placeringar är fortfarande dina."
 }

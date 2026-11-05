@@ -404,6 +404,9 @@ export const DICT = {
   "PairMundo paid you {amount} for your flyer deliveries. Thank you!": {
     es: "PairMundo te ha pagado {amount} por tus repartos de folletos. ¡Gracias!", fr: "PairMundo vous a versé {amount} pour vos distributions de flyers. Merci !",
     de: "PairMundo hat dir {amount} für deine Flyer-Verteilungen ausgezahlt. Danke!", pt: "A PairMundo pagou {amount} pelas suas entregas de folhetos. Obrigado!" },
+  '{agency} left PairMundo. Your account, matches, messages and placements stay yours.': {
+    es: '{agency} ha dejado PairMundo. Tu cuenta, tus matches, mensajes y colocaciones siguen siendo tuyos.', fr: '{agency} a quitté PairMundo. Votre compte, vos matchs, messages et placements restent à vous.',
+    de: '{agency} hat PairMundo verlassen. Dein Konto, deine Matches, Nachrichten und Vermittlungen bleiben deine.', pt: '{agency} saiu da PairMundo. Sua conta, seus matches, mensagens e colocações continuam sendo seus.' },
 };
 
 // Swedish lives in its own file, keyed by the same English text.

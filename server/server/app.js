@@ -915,23 +915,34 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   }));
 
   // Deletes the account and everything tied to it. Placements and reviews with the other person go too.
+  // Only the person can delete their own account. Nobody deletes, moves or takes away anyone else's: when an agency
+  // deletes its account, its families and au pairs keep theirs, with their matches, messages, placements and reviews,
+  // and its space closes so they use PairMundo like everyone else (no approval to wait for, no hidden contacts).
   api.delete('/me', requireAuth, wrap((req, res) => {
     const u = req.user;
     if (u.role === 'admin') throw forbidden('Admin accounts cannot be deleted here.');
     if (!verifyPassword(String(req.body?.password || ''), u.password_hash)) throw new HttpError(401, 'Wrong password.');
     const photos = photosOf(u).filter(storage.owns);
+    const spaces = u.role === 'agency' ? db.prepare("SELECT * FROM ambassadors WHERE user_id = ? AND kind = 'agency'").all(u.id) : [];
+    const members = spaces.filter((a) => a.active).flatMap((a) => db.prepare("SELECT id FROM users WHERE ref_code = ? AND role IN ('aupair', 'family')").all(a.code)
+      .map((m) => ({ id: m.id, agency: a.name })));
     tx(db, () => {
       const mine = 'SELECT id FROM placements WHERE aupair_id = ? OR family_id = ?';
       const reviews = `SELECT id FROM reviews WHERE reviewer_id = ? OR reviewee_id = ? OR placement_id IN (${mine})`;
       db.prepare(`DELETE FROM reports WHERE reporter_id = ? OR target_user_id = ? OR review_id IN (${reviews})`).run(u.id, u.id, u.id, u.id, u.id, u.id);
       db.prepare(`DELETE FROM reviews WHERE id IN (${reviews})`).run(u.id, u.id, u.id, u.id);
-      db.prepare('DELETE FROM placements WHERE aupair_id = ? OR family_id = ? OR created_by = ?').run(u.id, u.id, u.id);
+      // Only placements the person is part of go. One they only set up for others stays, credited to the family.
+      db.prepare('UPDATE placements SET created_by = family_id WHERE created_by = ? AND aupair_id != ? AND family_id != ?').run(u.id, u.id, u.id);
+      db.prepare('DELETE FROM placements WHERE aupair_id = ? OR family_id = ?').run(u.id, u.id);
+      // The agency's code stays (its members keep pointing at it), but its space closes.
+      for (const a of spaces) db.prepare('UPDATE ambassadors SET active = 0, user_id = NULL WHERE id = ?').run(a.id);
       // A used early family bonus stays recorded by email, so a new account can't get it again.
       db.prepare('DELETE FROM early_bonus WHERE user_id = ? AND redeemed_at IS NULL').run(u.id);
       db.prepare('DELETE FROM ref_gifts WHERE user_id = ? AND redeemed_at IS NULL').run(u.id);
       db.prepare('DELETE FROM users WHERE id = ?').run(u.id);
     });
     for (const p of photos) storage.remove(p);
+    for (const m of members) notify(m.id, 'agency', '{agency} left PairMundo. Your account, matches, messages and placements stay yours.', { agency: m.agency }, '#/discover');
     res.set('Set-Cookie', 'sid=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
     return { ok: true };
   }));
