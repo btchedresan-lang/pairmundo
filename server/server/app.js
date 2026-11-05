@@ -2684,7 +2684,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
           aupairs: db.prepare("SELECT COUNT(*) n FROM users WHERE ref_code = ? AND role = 'aupair'").get(a.code).n,
           families: db.prepare("SELECT COUNT(*) n FROM users WHERE ref_code = ? AND role = 'family'").get(a.code).n },
         introductions: db.prepare('SELECT family_name, aupair_name, how, partner_name, created_at FROM agency_introductions WHERE ambassador_id = ? ORDER BY created_at DESC, id DESC LIMIT 200').all(a.id),
-        flags: db.prepare('SELECT user_name, kind, created_at FROM agency_flags WHERE ambassador_id = ? ORDER BY created_at DESC, id DESC LIMIT 100').all(a.id) };
+        flags: db.prepare('SELECT user_name, kind, created_at FROM agency_flags WHERE ambassador_id = ? ORDER BY created_at DESC, id DESC LIMIT 100').all(a.id),
+        race: raceFor(a) };
     }
     // A flyer distributor sees their sessions and pay. Which families joined stays with the admin.
     if (a.kind === 'distributor') {
@@ -3257,6 +3258,54 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       sent++;
     }
     return { sent, missing };
+  }));
+
+  // ---------- the Founding Partner Race (4 to 23 November 2026) ----------
+  // Partner agencies race to get the most finished au pair profiles live before launch. Once the admin announces it,
+  // every agency sees it on its agency page with its own code, links, count and place, and gets a notification.
+  const RACE = { starts: '2026-11-04', spotlight_by: '2026-11-13', ends: '2026-11-23', launch: '2026-11-24', goal: 10, top: 3 };
+  // The one-pagers made for single agencies, by code. Everyone else gets the general one.
+  const RACE_ONE_PAGERS = { YAIJ: 'YAIJ', ALPHA: 'Alpha-Academy', AUPAIRBELGIUM: 'Au-Pair-Belgium' };
+  const raceAnnounced = () => !!db.prepare("SELECT 1 FROM ambassadors WHERE kind = 'agency' AND race_notified_at IS NOT NULL").get();
+  const raceLive = () => new Date().toISOString().slice(0, 10) <= RACE.ends;
+  /** Every active agency's finished profiles, most first. */
+  const raceStandings = () => db.prepare("SELECT * FROM ambassadors WHERE kind = 'agency' AND active = 1").all()
+    .map((x) => ({ id: x.id, name: x.name, profiles: agencyStats(x).profiles })).sort((x, y) => y.profiles - x.profiles);
+  const raceLinks = (a) => ({ aupair: `${publicBase()}/?ref=${encodeURIComponent(a.code)}#/register?role=aupair`,
+    family: `${publicBase()}/?ref=${encodeURIComponent(a.code)}#/register?role=family` });
+  /** What an agency sees of the race: its count, its place and how many more profiles it needs for the top 3. */
+  const raceFor = (a) => {
+    if (!raceAnnounced() || !raceLive()) return null;
+    const all = raceStandings();
+    const profiles = all.find((x) => x.id === a.id)?.profiles ?? agencyStats(a).profiles;
+    const rank = 1 + all.filter((x) => x.profiles > profiles).length;
+    const third = all.filter((x) => x.id !== a.id)[RACE.top - 1]?.profiles ?? 0;
+    return { ...RACE, profiles, rank, agencies: all.length, to_top: rank <= RACE.top ? 0 : third - profiles + 1,
+      // Host agencies in a Closed Loop pilot also win 3 extra free months; sending agencies are free already.
+      extra_months: !!a.closed_network || (!!a.covers_pass && !!a.mask_contacts),
+      links: raceLinks(a), one_pager: `/media/race/PairMundo-Founding-Partner-Race${RACE_ONE_PAGERS[a.code] ? `-${RACE_ONE_PAGERS[a.code]}` : ''}.pdf` };
+  };
+  const RACE_NOTE = '🏁 The Founding Partner Race is on! Get 10 au pair profiles live with your code {code} by Friday 13 November for a spotlight on our Instagram and Facebook. The top 3 agencies on 23 November are in our launch ads. See where you stand.';
+  api.get('/admin/agency-race', requireRole('admin'), wrap(() => {
+    const standings = raceStandings();
+    const rows = db.prepare("SELECT a.*, u.email account_email FROM ambassadors a LEFT JOIN users u ON u.id = a.user_id WHERE a.kind = 'agency' AND a.active = 1 ORDER BY a.name").all();
+    return { ...RACE, live: raceLive(), announced: raceAnnounced(),
+      sample: translate('en', RACE_NOTE, { code: '[their code]' }),
+      recipients: rows.map((a) => ({ id: a.id, code: a.code, name: a.name, account: !!a.user_id, email: a.account_email || a.invite_email || null,
+        notified_at: a.race_notified_at, profiles: standings.find((x) => x.id === a.id)?.profiles ?? 0 })) };
+  }));
+  // Tells every agency with an account that hasn't been told yet. Agencies that get an account later can be told by sending again.
+  api.post('/admin/agency-race', requireRole('admin'), wrap(() => {
+    if (!raceLive()) throw bad('The race is over.');
+    const pending = db.prepare("SELECT * FROM ambassadors WHERE kind = 'agency' AND active = 1 AND user_id IS NOT NULL AND race_notified_at IS NULL ORDER BY name").all();
+    tx(db, () => {
+      for (const a of pending) {
+        db.prepare("UPDATE ambassadors SET race_notified_at = datetime('now') WHERE id = ?").run(a.id);
+        notify(a.user_id, 'agency', RACE_NOTE, { code: a.code }, '#/agency');
+      }
+    });
+    const skipped = db.prepare("SELECT name FROM ambassadors WHERE kind = 'agency' AND active = 1 AND user_id IS NULL ORDER BY name").all().map((r) => r.name);
+    return { sent: pending.length, agencies: pending.map((a) => a.name), skipped };
   }));
 
   app.use('/api', api);

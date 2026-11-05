@@ -656,6 +656,7 @@ views.agency = async () => {
       ${me.user.email_verified ? '' : `<p><a class="chip warn" href="#/verify">${tr('Not confirmed yet. Click to enter your code.')}</a></p>`}</div>`);
   }
   render(`<h1>${tr('{agency} on PairMundo', { agency: esc(amb.name) })}</h1>
+    ${amb.race ? raceCard(amb) : ''}
     <div class="card"><h2>${tr('Your agency code')}: <code>${esc(amb.code)}</code></h2>
       <p>${tr('Your au pairs type this code when they create their free account, or use your link. Families then see "Prepared by {agency}" on their profiles.', { agency: esc(amb.name) })}</p>
       <div class="row"><input id="ambLink" readonly value="${esc(amb.link)}" style="flex:1"><button class="btn sm" id="ambCopy">${tr('Copy link')}</button></div></div>
@@ -755,11 +756,64 @@ views.agency = async () => {
       toast(r.already ? tr('Already invited') : tr('Invitation sent')); e.target.reset(); document.getElementById('famInviteErr').innerHTML = ''; loadFamilyInvites();
     } catch (err) { document.getElementById('famInviteErr').innerHTML = `<div class="alert error">${esc(err.message)}</div>`; }
   };
+  document.querySelectorAll('.race [data-copy]').forEach((b) => { b.onclick = async () => {
+    const input = document.getElementById(b.dataset.copy);
+    try { await navigator.clipboard.writeText(input.value); } catch { input.select(); document.execCommand('copy'); }
+    toast(tr('Link copied'));
+  }; });
+  const raceInvite = document.getElementById('raceInvite');
+  if (raceInvite) raceInvite.onclick = (e) => {
+    const form = document.getElementById('famInvite');
+    if (!form) return;
+    e.preventDefault();
+    form.role.value = 'aupair';
+    form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    form.email.focus();
+  };
   document.getElementById('ambCopy').onclick = async () => {
     try { await navigator.clipboard.writeText(amb.link); } catch { document.getElementById('ambLink').select(); document.execCommand('copy'); }
     toast(tr('Link copied'));
   };
 };
+
+// The Founding Partner Race, at the top of the agency page while it runs: the agency's own count, place, prizes and links.
+function raceCard(amb) {
+  const r = amb.race;
+  const day = (d) => new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+  const daysLeft = Math.max(0, Math.ceil((new Date(`${r.ends}T23:59:59`) - new Date()) / 86400000));
+  const pct = Math.min(100, Math.round((r.profiles / r.goal) * 100));
+  const place = r.profiles === 0 ? tr('Get your first profile live to join the leaderboard.')
+    : r.rank <= r.top ? tr("You're #{rank} of {n} agencies. That's a top 3 spot: keep it!", { rank: r.rank, n: r.agencies })
+      : trn(r.to_top, "You're #{rank} of {agencies} agencies. {n} more profile puts you in the top 3.", "You're #{rank} of {agencies} agencies. {n} more profiles put you in the top 3.", { rank: r.rank, agencies: r.agencies });
+  const prizes = [['📣', tr('Top 3: in our launch ads'), tr('The 3 agencies with the most finished profiles on {date} are named in our launch-week ads.', { date: day(r.ends) })],
+    ['⭐', tr('{goal} by {date}: a spotlight', { goal: r.goal, date: day(r.spotlight_by) }), tr('Every agency with {goal} finished profiles by {date} gets its own post on our Instagram and Facebook.', { goal: r.goal, date: day(r.spotlight_by) })],
+    ['🏅', tr('Top 3: Founding partner'), r.extra_months ? tr('A "Founding partner" label next to your name on your au pairs\' profiles, and 3 extra free months after your Closed Loop pilot.')
+      : tr('A "Founding partner" label next to your name on your au pairs\' profiles.')]];
+  const link = (id, label, value) => `<div class="race-link"><label for="${id}">${label}</label><div class="row"><input id="${id}" readonly value="${esc(value)}"><button class="btn sm race-ghost" data-copy="${id}">${tr('Copy')}</button></div></div>`;
+  return `<section class="race">
+    <div class="race-hero">
+      <div class="race-top"><span class="race-pill">🚀 ${tr('Launch: {date}', { date: day(r.launch) })}</span><span class="race-pill dark">⏱ ${trn(daysLeft, '{n} day left', '{n} days left')}</span></div>
+      <h2>${tr('The Founding Partner')} <span>${tr('Race')}</span></h2>
+      <p>${tr('Families are already signed up and waiting to swipe. The au pairs they see on day one get the first likes, chats and placements. Get yours in front of them first.')}</p>
+      <div class="race-progress"><div class="spread"><strong>${trn(r.profiles, '{n} finished profile', '{n} finished profiles')} <span class="race-dim">/ ${r.goal}</span></strong>
+        <span class="race-dim">${tr('Spotlight goal by {date}', { date: day(r.spotlight_by) })}</span></div>
+        <div class="race-bar"><i style="width:${pct}%"></i></div>
+        <p class="race-place">${r.profiles >= r.goal ? `🎉 ${tr('Spotlight goal reached!')} ` : ''}${place}</p></div>
+      <div class="race-cta"><a class="btn race-yellow" id="raceInvite" href="#/agency">✉️ ${tr('Invite your au pairs')}</a>
+        <a class="btn race-ghost" href="${esc(r.one_pager)}" target="_blank" rel="noopener">📄 ${tr('Download the one-pager')}</a></div>
+    </div>
+    <div class="race-body">
+      <h3>${tr('What you can win')}</h3>
+      <div class="race-prizes">${prizes.map(([icon, title, text]) => `<div class="race-prize"><div class="race-icon">${icon}</div><strong>${title}</strong><p>${text}</p></div>`).join('')}</div>
+      <div class="race-cols">
+        <div><h3>${tr('Share your links')}</h3><p class="muted small">${tr('Your code {code} is filled in for them. Families then see "Prepared by {agency}" on their profiles. Au pairs never pay.', { code: `<code>${esc(amb.code)}</code>`, agency: esc(amb.name) })}</p>
+          ${link('raceAupair', tr('For your au pairs'), r.links.aupair)}${link('raceFamily', tr('For your host families'), r.links.family)}</div>
+        <div><h3>${tr('Or we do the typing')}</h3><p class="small">${tr('Send Badji a list of candidates who agreed to join (name, email, the country they\'d like to go to). We email each one a sign-up link with your code filled in. They add a photo and a few lines, and they\'re live.')}</p>
+          <a class="btn sm secondary" href="mailto:badji@pairmundo.com?subject=${encodeURIComponent(`Founding Partner Race: candidates from ${amb.name}`)}">${tr('Email Badji your list')}</a>
+          <p class="muted small">${tr('A finished profile has a photo and a few lines, from someone who joined with your code. The race ends on {date}; winners are announced in launch week.', { date: day(r.ends) })}</p></div>
+      </div>
+    </div></section>`;
+}
 
 const FAMILY_STAGE_LABELS = () => ({ enquiry: tr('New enquiry'), approved: tr('Approved'), matching: tr('Matching'), matched: tr('Matched'),
   placed: tr('Placed'), finished: tr('Finished'), not_going: tr('Not going ahead') });
@@ -2426,6 +2480,7 @@ async function adminAmbassadors(head, id, qs) {
   }
   const { ambassadors, rewards, partner_accounts: waiting, pending_sessions: pending = [] } = await api(`/admin/ambassadors?month=${month}`);
   const upd = await api('/admin/agency-update').catch(() => null);
+  const race = await api('/admin/agency-race').catch(() => null);
   render(`${head}<div class="spread"><form id="monthPick" class="row"><label>Month</label><input type="month" name="month" value="${esc(month)}" style="width:auto"></form>
       <a class="btn sm" href="/api/admin/ambassadors.csv?month=${esc(month)}">⬇ Payout sheet for ${esc(month)} (CSV)</a></div>
     <p class="muted small">Rewards: ${usd(rewards.profile)} per completed, ID-verified au pair profile (up to ${usd(rewards.profile_monthly_cap)} a month), ${usd(rewards.pass)} for a family's first Family Pass, ${usd(rewards.placement)} per referred side when a stay starts.</p>
@@ -2448,6 +2503,12 @@ async function adminAmbassadors(head, id, qs) {
       ${upd.sample ? `<details><summary>Read the email</summary><p><strong>${esc(upd.sample.subject)}</strong></p><pre style="white-space:pre-wrap">${esc(upd.sample.text)}</pre>
         <p>Attached: <a href="${esc(upd.sample.attachment)}" target="_blank">profile set-up guide (PDF)</a></p></details>` : ''}
       <button class="btn sm" id="sendUpdate">Send to ${upd.recipients.filter((r) => r.to).length} agencies</button></div>` : ''}
+    ${race?.live && race.recipients.length ? `<div class="card"><h3>🏁 Founding Partner Race in the app</h3>
+      <p class="muted small">Sending shows the race at the top of each agency's page, with its own code, links, count and place, and puts this in its notifications (🔔): <em>${esc(race.sample)}</em> Each agency is told once. Agencies without an account can't get it in the app; link their account first, then send again.</p>
+      <div class="table-wrap"><table><tr><th>Agency</th><th>Account</th><th>Finished profiles</th><th>In the app</th></tr>${race.recipients.map((r) => `<tr><td>${esc(r.name)} <code>${esc(r.code)}</code></td>
+        <td>${r.account ? esc(r.email || '') : '<span class="muted">No account</span>'}</td><td>${r.profiles}</td>
+        <td>${r.notified_at ? `✓ Told ${fmtTime(r.notified_at)}` : r.account ? '<span class="chip">Will be told</span>' : '<span class="muted">Skipped</span>'}</td></tr>`).join('')}</table></div>
+      ${race.recipients.some((r) => r.account && !r.notified_at) ? `<button class="btn sm" id="sendRace">Announce to ${race.recipients.filter((r) => r.account && !r.notified_at).length} agencies</button>` : ''}</div>` : ''}
     <form class="card" id="ambNew"><h3>Add an ambassador, partner agency or flyer distributor</h3>
       <div class="field"><label>Referral code (letters, numbers and dashes; it can't change later)</label><input name="code" required placeholder="ANA-CO" autocapitalize="characters"></div>
       ${fields(qs?.get('new') ? { kind: qs.get('new'), name: qs.get('name'), country: qs.get('country'), account_email: qs.get('email') } : {})}<button class="btn sm">Add</button></form>`);
@@ -2457,6 +2518,11 @@ async function adminAmbassadors(head, id, qs) {
   if (su) su.onclick = async () => {
     if (!confirm('Send the update email to these agencies now? This cannot be undone.')) return;
     try { const r = await api('/admin/agency-update', { method: 'POST' }); toast(`Sent to ${r.sent} agencies`); go(`#/admin/ambassadors?month=${month}`); } catch (err) { toast(err.message); }
+  };
+  const sr = document.getElementById('sendRace');
+  if (sr) sr.onclick = async () => {
+    if (!confirm('Announce the Founding Partner Race to these agencies now? They are notified straight away, and this cannot be undone.')) return;
+    try { const r = await api('/admin/agency-race', { method: 'POST' }); toast(`Announced to ${r.sent} agencies`); go(`#/admin/ambassadors?month=${month}`); } catch (err) { toast(err.message); }
   };
   if (qs?.get('new')) document.getElementById('ambNew').scrollIntoView({ block: 'start' });
   document.querySelector('#monthPick input').onchange = (e) => go(`#/admin/ambassadors?month=${e.target.value}`);

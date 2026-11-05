@@ -2887,3 +2887,45 @@ test('an agency leaving never takes its families and au pairs with it: they keep
   assert.equal((await call(fam.token, 'DELETE', '/me', { password: 'password123' })).status, 200);
   assert.ok(testDb.prepare('SELECT 1 FROM users WHERE id = ?').get(ap.id), 'the au pair is untouched by the family leaving');
 });
+
+test('the Founding Partner Race: the admin announces it in the app, and each agency sees its own code, links and place', async () => {
+  const { hashPassword } = await import('../server/auth.js');
+  testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
+  const ag = await register('boss@racer.test', 'agency', 'BE', 'Racer Agency', { complete: false });
+  assert.equal((await call(admin, 'POST', '/admin/ambassadors', { code: 'RACER', name: 'Racer Agency', kind: 'agency', account_email: 'boss@racer.test' })).status, 201);
+  assert.equal((await call(admin, 'POST', '/admin/ambassadors', { code: 'NOACCOUNT', name: 'No Account Agency', kind: 'agency' })).status, 201);
+  const ap = await register('racer-ap@test.io', 'aupair', 'ID', 'Racer Au Pair');
+  await call(ap.token, 'POST', '/me/agency', { code: 'RACER' });
+
+  if (new Date().toISOString().slice(0, 10) > '2026-11-23') {
+    assert.equal((await call(admin, 'POST', '/admin/agency-race')).status, 400, 'no announcing after the race');
+    return;
+  }
+  // Nothing shows before the admin announces it.
+  assert.equal((await call(ag.token, 'GET', '/me/ambassador')).body.race, null);
+  const preview = (await call(admin, 'GET', '/admin/agency-race')).body;
+  const row = (code) => preview.recipients.find((r) => r.code === code);
+  assert.equal(row('RACER').account, true);
+  assert.equal(row('RACER').profiles, 1);
+  assert.equal(row('NOACCOUNT').account, false);
+  assert.ok(preview.sample.includes('[their code]'));
+
+  const sent = (await call(admin, 'POST', '/admin/agency-race')).body;
+  assert.ok(sent.agencies.includes('Racer Agency'));
+  assert.ok(sent.skipped.includes('No Account Agency'));
+  const note = (await call(ag.token, 'GET', '/notifications')).body.notifications.find((n) => n.text.includes('Founding Partner Race'));
+  assert.ok(note.text.includes('RACER') && note.link === '#/agency', note.text);
+
+  const race = (await call(ag.token, 'GET', '/me/ambassador')).body.race;
+  assert.equal(race.profiles, 1);
+  assert.equal(race.goal, 10);
+  assert.ok(race.rank >= 1 && race.rank <= race.agencies);
+  assert.ok(race.links.aupair.endsWith('/?ref=RACER#/register?role=aupair'));
+  assert.ok(race.links.family.endsWith('/?ref=RACER#/register?role=family'));
+  assert.equal(race.one_pager, '/media/race/PairMundo-Founding-Partner-Race.pdf');
+  assert.ok((await import('node:fs')).existsSync(new URL(`../public${race.one_pager}`, import.meta.url)), 'the one-pager is served');
+
+  // Each agency is told once.
+  assert.equal((await call(admin, 'POST', '/admin/agency-race')).body.sent, 0);
+});

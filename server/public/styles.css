@@ -424,3 +424,31 @@ body { overflow-x: clip; }
   .guide-tab { flex-direction: column; text-align: center; gap: 4px; padding: 10px 6px; font-size: .9rem; }
   .guide-chapters { columns: 1; }
 }
+
+/* The Founding Partner Race card on the agency page, in the colours of its one-pager. */
+.race { --race-navy: #1f2a6b; --race-yellow: #f5c84c; border-radius: var(--radius); overflow: hidden; margin-bottom: 16px; background: var(--card); border: 1px solid var(--line); }
+.race-hero { padding: 24px; color: #fff; background: radial-gradient(circle at 100% 0, #5a74e6 0, transparent 45%), linear-gradient(135deg, var(--race-navy), #3b5bdb); }
+.race-hero h2 { font-size: 2rem; font-weight: 600; margin: 14px 0 8px; color: #fff; }
+.race-hero h2 span { color: var(--race-yellow); }
+.race-hero p { margin: 0 0 14px; opacity: .92; max-width: 60ch; }
+.race-top { display: flex; gap: 8px; flex-wrap: wrap; }
+.race-pill { background: var(--race-yellow); color: var(--race-navy); font-weight: 700; border-radius: 999px; padding: 4px 12px; font-size: .85rem; }
+.race-pill.dark { background: rgba(255,255,255,.16); color: #fff; }
+.race-progress { background: rgba(255,255,255,.1); border-radius: 10px; padding: 14px; margin-bottom: 14px; }
+.race-progress strong { font-size: 1.15rem; }
+.race-dim { opacity: .75; font-weight: 400; font-size: .9rem; }
+.race-bar { height: 12px; border-radius: 999px; background: rgba(255,255,255,.2); margin: 10px 0 8px; overflow: hidden; }
+.race-bar i { display: block; height: 100%; min-width: 6px; border-radius: inherit; background: linear-gradient(90deg, var(--race-yellow), #ffe08a); }
+.race-hero .race-place { margin: 0; font-weight: 600; opacity: 1; }
+.race-cta { display: flex; gap: 10px; flex-wrap: wrap; }
+.btn.race-yellow { background: var(--race-yellow); border-color: var(--race-yellow); color: var(--race-navy); }
+.btn.race-ghost { background: transparent; border-color: rgba(255,255,255,.7); color: #fff; }
+.race-body { padding: 20px 24px; }
+.race-prizes { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.race-prize { border: 1px solid var(--line); border-top: 4px solid var(--race-yellow); border-radius: 10px; padding: 14px; }
+.race-prize p { margin: 4px 0 0; color: var(--muted); font-size: .9rem; }
+.race-icon { font-size: 1.6rem; margin-bottom: 4px; }
+.race-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
+.race-link { margin-bottom: 10px; } .race-link label { font-size: .85rem; font-weight: 600; display: block; margin-bottom: 4px; }
+.race-link input { flex: 1; min-width: 0; }
+.race-body .btn.race-ghost { border-color: var(--brand); color: var(--brand); }
