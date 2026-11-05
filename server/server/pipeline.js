@@ -10,7 +10,8 @@ const ACTIVITY_KINDS = ['note', 'email', 'reply', 'call', 'meeting'];
  *  other partner once a placement or referral of theirs starts. Commission counts if that happens within window_days. */
 export const ACTIVATION = { sending_aupairs: 10, window_days: 183 };
 /** Days without an answer before a step is due again. */
-const WAIT = { contacted: 7, agreement: 5, signed: 30, declined: 30 };
+// Active partners are managed, not left alone: a check-in is due a month after the last contact with them.
+const WAIT = { contacted: 7, agreement: 5, signed: 30, declined: 30, active: 30 };
 
 const day = (d = new Date()) => d.toISOString().slice(0, 10);
 const addDays = (n, from = new Date()) => day(new Date(from.getTime() + n * 86400000));
@@ -130,6 +131,9 @@ export function mountPipeline(api, { db, wrap, requireRole, HttpError, str, isDa
     }
   };
 
+  /** The last time someone on the team was in touch with a lead (emails, calls, meetings, replies and notes). */
+  const lastTouch = (l) => db.prepare("SELECT MAX(created_at) t FROM partner_activity WHERE lead_id = ? AND user_id IS NOT NULL AND kind <> 'stage'").get(l.id)?.t;
+
   /** The suggested next step for a lead, and whether it is due, from its stage and how long it has waited. */
   const suggest = (l) => {
     const type = { host: 'host agency', sending: 'sending agency', sponsor: 'sponsor', other: 'partner' }[l.kind];
@@ -145,7 +149,8 @@ export function mountPipeline(api, { db, wrap, requireRole, HttpError, str, isDa
       signed: [l.kind === 'sending'
         ? `Onboard: share their code link and help their au pairs create profiles (${ACTIVATION.sending_aupairs} activate them).`
         : 'Onboard: set up their referral offer and check in until the first referred au pair starts.', daysSince(l.signed_at) >= WAIT.signed],
-      active: ['Keep in touch monthly and ask for introductions to other agencies.', false],
+      active: ['Monthly check-in: how is it going, what is in the way, any au pairs or families to help with? Ask for introductions to other agencies.',
+        daysSince([l.activated_at, lastTouch(l)].filter(Boolean).sort().at(-1)) >= WAIT.active],
       declined: [l.objection ? `Find a way around "${l.objection}": a new angle, tailored terms or a smaller first step.` : 'Note why they said no, then try a smaller first step.', daysSince(l.declined_at) >= WAIT.declined],
     }[l.stage];
     const due = (l.next_action_on && l.next_action_on <= day()) || (!l.next_action_on && s[1]);
@@ -208,7 +213,7 @@ export function mountPipeline(api, { db, wrap, requireRole, HttpError, str, isDa
       .all(...[stage, mine].filter((x) => x != null), ...(q ? [`%${q}%`, `%${q}%`, q] : [])).map(leadView);
     const counts = Object.fromEntries(LEAD_STAGES.map((s) => [s, 0]));
     for (const r of db.prepare('SELECT stage, COUNT(*) n FROM partner_leads GROUP BY stage').all()) counts[r.stage] = r.n;
-    const due = db.prepare("SELECT * FROM partner_leads WHERE stage <> 'active'").all().map(leadView).filter((l) => l.next.due && (!mine || l.owner_id === mine))
+    const due = db.prepare('SELECT * FROM partner_leads').all().map(leadView).filter((l) => l.next.due && (!mine || l.owner_id === mine))
       .sort((a, b) => LEAD_STAGES.indexOf(b.stage) - LEAD_STAGES.indexOf(a.stage)).slice(0, 200);
     return { stages: LEAD_STAGES, kinds: LEAD_KINDS, counts, leads, due, activation: ACTIVATION,
       team: db.prepare("SELECT id, name, role FROM users WHERE role = 'admin' OR id IN (SELECT user_id FROM partner_team WHERE active = 1) ORDER BY role, name").all(),

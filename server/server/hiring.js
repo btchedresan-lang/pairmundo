@@ -11,16 +11,18 @@ export const JOBS = {
   'partnerships-onboarding-manager': {
     open: true,
     country: 'PH', region: 'the Philippines',
-    title: 'Partnerships Onboarding Manager',
+    title: 'Partnerships Manager',
     meta: 'Remote from the Philippines · Part-time (20 hours a week) · Base + commission',
     about: 'PairMundo is an app where au pairs and host families find each other, with ID checks and two-way reviews. We work with au pair agencies worldwide: sending agencies list their au pairs for free, and host agencies get referrals when families want full service. We are a small, early-stage US company.',
-    role: 'You run our agency partnerships end to end, in every country: finding agencies, emailing them, following up, booking calls and onboarding the ones who say yes. You work in our own partnerships system, which shows your follow-ups each day and tracks your commission.',
+    role: 'You run our agency partnerships end to end, in every country: finding agencies, emailing them, booking calls, onboarding the ones who say yes, and then managing those partners so they stay active and keep sending au pairs and families our way. You work in our own partnerships system, which shows your follow-ups each day and tracks your commission.',
     tasks: [
       'Research au pair agencies and sponsors worldwide and add them to our pipeline',
       'Send personalised email campaigns and follow-ups from ready-made templates',
       'Answer replies within a day, handle objections and book 15-minute calls',
       'Run intro calls, or brief our co-founder before larger ones',
       'Onboard new partners: agreement, one-pager, agency code, and their first au pair profiles',
+      'Manage partners after they join: monthly check-ins, help with their au pairs\' profiles and questions, fixing what gets in the way, and asking for introductions to other agencies',
+      'Spot partners who have gone quiet and bring them back',
       'Send a short Friday report',
     ],
     needs: [

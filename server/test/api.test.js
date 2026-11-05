@@ -2667,6 +2667,16 @@ test('partnerships pipeline: partner manager login, leads, follow-ups, import, s
   assert.ok(lead.activity.some((a) => /Activated automatically/.test(a.body)));
   assert.equal(lead.commissions.find((c) => c.kind === 'activated').amount_cents, 8000);
 
+  // Active partners are managed: a monthly check-in shows on Today once a month passes without contact, and logging one clears it.
+  const checkInDue = async () => (await call(pm, 'GET', '/pipeline')).body.due.some((l) => l.id === sunny.id && /Monthly check-in/.test(l.next.text));
+  assert.equal(await checkInDue(), false);
+  testDb.prepare("UPDATE partner_leads SET activated_at = datetime('now', '-31 days') WHERE id = ?").run(sunny.id);
+  testDb.prepare("UPDATE partner_activity SET created_at = datetime('now', '-31 days') WHERE lead_id = ?").run(sunny.id);
+  assert.equal(await checkInDue(), true);
+  assert.equal((await call(pm, 'POST', `/pipeline/leads/${sunny.id}/activity`, { kind: 'call', body: 'Monthly check-in: 3 new au pairs coming.' })).status, 201);
+  assert.equal(await checkInDue(), false);
+  testDb.prepare("UPDATE partner_leads SET activated_at = datetime('now') WHERE id = ?").run(sunny.id);
+
   // A lead the admin found and handed over earns half.
   r = await call(admin, 'POST', '/pipeline/leads', { name: 'Big Host', email: 'big@host.test', kind: 'host', owner_id: pmId, agreement_url: 'x', onboarding_done: true });
   await call(admin, 'PUT', `/pipeline/leads/${r.body.id}`, { stage: 'signed' });
@@ -2706,7 +2716,7 @@ test('hiring: job page, application with CV, test task, interview on PairMundo v
   assert.ok(open.some((j) => j.slug === slug && /Partnerships/.test(j.title)));
   let r = await call(null, 'GET', `/jobs/${slug}`);
   assert.equal(r.status, 200);
-  assert.match(r.body.title, /Partnerships Onboarding Manager/);
+  assert.match(r.body.title, /Partnerships Manager/);
   assert.equal(r.body.test, undefined);
   assert.equal(r.body.pay, undefined, 'market-specific pay stays private');
   assert.doesNotMatch(JSON.stringify(r.body), /US\$4\d\d/);
