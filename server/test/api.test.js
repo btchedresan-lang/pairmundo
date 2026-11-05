@@ -12,7 +12,7 @@ let photoVerdict = null;
 // A stand-in for Stripe Connect: accounts become ready when the test says so, and transfers fail while failTransfer is set.
 const stripeFake = { accounts: new Map(), transfers: [], failTransfer: null };
 const fakePayouts = {
-  currency: 'sek',
+  async quote(amountOre) { return stripeFake.usd ? { currency: 'usd', amount: Math.round(amountOre * 0.1), rate: 0.1 } : { currency: 'sek', amount: amountOre, rate: 1 }; },
   async createAccount({ ambassadorId }) { const id = `acct_test_${ambassadorId}`; stripeFake.accounts.set(id, false); return id; },
   async onboardingLink(id, { returnUrl }) { return `https://connect.stripe.test/setup/${id}?back=${encodeURIComponent(returnUrl)}`; },
   async ready(id) { return !!stripeFake.accounts.get(id); },
@@ -1252,6 +1252,10 @@ test('flyer distributors send their own counts: pending until the admin approves
   let mine = (await call(maja.token, 'GET', '/me/ambassador')).body;
   assert.deepEqual([mine.total.flyers, mine.total.owed_ore, mine.total.families, mine.total.pending], [0, 0, 0, { sessions: 1, flyers: 400, amount_ore: 80000 }]);
   assert.equal(mine.sessions[0].status, 'pending');
+  // Automatic payouts are only for distributors based in the US; Maja, in Sweden, is paid by hand.
+  assert.equal(mine.payouts.enabled, false);
+  assert.equal((await call(maja.token, 'POST', '/me/ambassador/payouts')).status, 400);
+  assert.equal((await call(admin, 'POST', `/admin/ambassadors/${id}/payout`)).status, 400);
   // Marking paid leaves counts that wait for approval alone.
   assert.equal((await call(admin, 'POST', `/admin/ambassadors/${id}/paid`, {})).body.marked, 0);
 
@@ -1286,15 +1290,28 @@ test('flyer distributors send their own counts: pending until the admin approves
   assert.ok(testDb.prepare("SELECT 1 FROM notifications WHERE user_id = ? AND text = 'PairMundo paid you 750 kr for your flyer deliveries. Thank you!'").get(maja.id));
   assert.equal(testDb.prepare('SELECT paid_at FROM flyer_sessions WHERE id = ?').get(third).paid_at, null);
   assert.deepEqual((await call(maja.token, 'GET', '/me/ambassador')).body.sessions.map((s) => s.paid), [false, true]);
+
+  // The kronor payout sheet for paying distributors by hand: what's approved and unpaid up to the month's end, and what waits.
+  await call(maja.token, 'POST', '/me/ambassador/sessions', { area: 'door-solna', flyers: 120, delivered_on: day(0) });
+  const sid = (await call(maja.token, 'POST', '/me/ambassador/sessions', { area: 'door-solna', flyers: 80, delivered_on: day(0) })).body.id;
+  await call(admin, 'POST', `/admin/ambassadors/${id}/sessions/${sid}/review`, { decision: 'approve' });
+  const month = day(0).slice(0, 7);
+  const sheet = await (await fetch(`${base}/admin/distributors.csv?month=${month}`, { headers: { Authorization: `Bearer ${admin}` } })).text();
+  assert.match(sheet.split('\n')[0], new RegExp(`^code,name,.*,to pay now \\(up to end of ${month}\\) \\(SEK\\),counts waiting for approval,waiting for approval \\(SEK\\)$`));
+  const row = sheet.split('\n').find((l) => l.startsWith('MAJA-D,')).split(',');
+  // At her current 3 kr a flyer, 80 flyers are owed and 120 wait for approval.
+  assert.deepEqual(row.slice(-3), ['240.00', '1', '360.00']);
+  assert.equal(row[4], 'maja-dist@test.io');
+  assert.equal((await fetch(`${base}/admin/distributors.csv`, { headers: { Authorization: `Bearer ${maja.token}` } })).status, 403);
 });
 
-test('flyer distributors get paid automatically to their Stripe account once a count is approved', async () => {
+test('flyer distributors in the US get paid automatically to their Stripe account once a count is approved', async () => {
   const { hashPassword } = await import('../server/auth.js');
   testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
   const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
   const adminId = testDb.prepare("SELECT id FROM users WHERE email = 'admin@test.io'").get().id;
   const olle = await register('olle-dist@test.io', 'ambassador', 'SE', 'Olle Berg', { complete: false });
-  let r = await call(admin, 'POST', '/admin/ambassadors', { code: 'OLLE-D', name: 'Olle Berg', country: 'SE', kind: 'distributor', flyer_rate: '1', family_bonus: '50', areas: 'door-sundbyberg', account_email: 'olle-dist@test.io' });
+  let r = await call(admin, 'POST', '/admin/ambassadors', { code: 'OLLE-D', name: 'Olle Berg', country: 'US', kind: 'distributor', flyer_rate: '1', family_bonus: '50', areas: 'door-sundbyberg', account_email: 'olle-dist@test.io' });
   const id = r.body.id;
   const day = new Date().toISOString().slice(0, 10);
   const send = async (flyers) => (await call(olle.token, 'POST', '/me/ambassador/sessions', { area: 'door-sundbyberg', flyers, delivered_on: day })).body.id;
@@ -1340,6 +1357,15 @@ test('flyer distributors get paid automatically to their Stripe account once a c
   assert.equal(r.body.stats.owed_ore, 0);
   assert.equal((await call(admin, 'POST', `/admin/ambassadors/${id}/payout`)).status, 400, 'nothing owed');
   assert.equal((await call(olle.token, 'POST', `/admin/ambassadors/${id}/payout`)).status, 403);
+
+  // From a US Stripe balance, the kronor he earned go out in dollars at the day's rate, and the payout records both.
+  stripeFake.usd = true;
+  r = await approve(await send(300));
+  stripeFake.usd = false;
+  assert.deepEqual([r.body.payout.status, r.body.payout.amount_ore], ['paid', 30000]);
+  assert.deepEqual([stripeFake.transfers.at(-1).currency, stripeFake.transfers.at(-1).amount], ['usd', 3000]);
+  assert.deepEqual(['currency', 'sent_amount', 'amount_ore'].map((k) => r.body.payouts.history[0][k]), ['usd', 3000, 30000]);
+  assert.ok(testDb.prepare("SELECT 1 FROM notifications WHERE user_id = ? AND text = 'PairMundo paid you 300 kr for your flyer deliveries. Thank you!'").get(olle.id));
 });
 
 test('agency accounts: own sign-up, hidden from members, linked to a code by the admin, then see their numbers', async () => {
