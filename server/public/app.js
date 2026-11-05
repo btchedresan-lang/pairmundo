@@ -1008,7 +1008,7 @@ views.ambassador = async () => {
 // Flyer distributors are paid in Swedish kronor; amounts come in öre.
 const kr = (ore) => `${(ore / 100).toFixed(2).replace(/\.00$/, '')} kr`;
 // door-nacka → Nacka
-const areaName = (src) => ({ taby: 'Täby' })[src.replace(/^door-/, '')] || src.replace(/^door-/, '').replace(/^./, (c) => c.toUpperCase());
+const areaName = (src) => ({ taby: 'Täby', saltsjobaden: 'Saltsjöbaden' })[src.replace(/^door-/, '')] || src.replace(/^door-/, '').replace(/^./, (c) => c.toUpperCase());
 
 /** A flyer distributor's delivery sessions, the families their flyers brought in, and their pay. */
 function distributorCard(d) {
