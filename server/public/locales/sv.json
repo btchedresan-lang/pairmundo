@@ -1356,5 +1356,6 @@
   "Set up payouts": "Ställ in utbetalningar",
   "Their payout account isn't ready yet: Stripe is still waiting for their details.": "Deras utbetalningskonto är inte klart än: Stripe väntar fortfarande på deras uppgifter.",
   "They haven't set up their payout account yet. They do it from their pay page.": "De har inte ställt in sitt utbetalningskonto än. Det gör de från sin ersättningssida.",
-  "This permanently deletes your agency account. Your families and au pairs keep their own accounts, matches, messages and placements; only they can delete them.": "Detta raderar ditt byråkonto permanent. Dina familjer och au pairer behåller sina egna konton, matchningar, meddelanden och placeringar; bara de själva kan radera dem."
+  "This permanently deletes your agency account. Your families and au pairs keep their own accounts, matches, messages and placements; only they can delete them.": "Detta raderar ditt byråkonto permanent. Dina familjer och au pairer behåller sina egna konton, matchningar, meddelanden och placeringar; bara de själva kan radera dem.",
+  "Automatic payouts are only for distributors based in the United States. PairMundo pays you by hand.": "Automatiska utbetalningar gäller bara utdelare som bor i USA. PairMundo betalar dig manuellt."
 }

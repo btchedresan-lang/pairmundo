@@ -70,7 +70,11 @@ Stripe asks you to activate Identity once (Stripe → Identity) before live chec
 
 ## Flyer distributor payouts
 
-Flyer distributors send their delivery count from their pay page. It reaches you in Admin → Ambassadors, and once you approve it, it's owed to them. You can pay them yourself and press **Mark as paid**, or let the app pay them automatically through Stripe Connect:
+Flyer distributors send their delivery count from their pay page. It reaches you in Admin → Ambassadors, and once you approve it, it's owed to them.
+
+**Distributors in Sweden** are paid by hand by Ansökan AB: download **Flyer distributors, kr (CSV)** in Admin → Ambassadors for the month (the "to pay now" column is what's approved and unpaid up to the end of that month), pay them, then press **Mark as paid** on each distributor's page for that month.
+
+**Distributors based in the United States** (Country set to United States on their admin page) can be paid automatically by PairMundo's US company through Stripe Connect:
 
 1. In Stripe → Connect, finish the platform setup (Express accounts). It uses the same `STRIPE_SECRET_KEY` as the ID check.
 2. In Render → Environment, set `FLYER_PAYOUTS` to `stripe`.

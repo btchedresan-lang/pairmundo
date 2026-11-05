@@ -2482,7 +2482,8 @@ async function adminAmbassadors(head, id, qs) {
   const upd = await api('/admin/agency-update').catch(() => null);
   const race = await api('/admin/agency-race').catch(() => null);
   render(`${head}<div class="spread"><form id="monthPick" class="row"><label>Month</label><input type="month" name="month" value="${esc(month)}" style="width:auto"></form>
-      <a class="btn sm" href="/api/admin/ambassadors.csv?month=${esc(month)}">⬇ Payout sheet for ${esc(month)} (CSV)</a></div>
+      <span class="row" style="gap:8px"><a class="btn sm" href="/api/admin/ambassadors.csv?month=${esc(month)}">⬇ Payout sheet for ${esc(month)} (CSV)</a>
+      ${ambassadors.some((a) => a.kind === 'distributor') ? `<a class="btn sm ghost" href="/api/admin/distributors.csv?month=${esc(month)}" title="Flyer distributors' pay in kronor, for Ansökan AB">⬇ Flyer distributors, kr (CSV)</a>` : ''}</span></div>
     <p class="muted small">Rewards: ${usd(rewards.profile)} per completed, ID-verified au pair profile (up to ${usd(rewards.profile_monthly_cap)} a month), ${usd(rewards.pass)} for a family's first Family Pass, ${usd(rewards.placement)} per referred side when a stay starts.</p>
     ${pending.length ? `<div class="card table-wrap"><h3>📬 Flyer counts to approve (${pending.length})</h3>
       <p class="muted small">Sent by flyer distributors from their page. Approving adds the pay (at the rate when they sent it) to what you owe them; you can approve fewer flyers if a spot-check came up short. Rejecting needs a reason, which they see.</p>
