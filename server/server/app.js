@@ -509,7 +509,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   // own count from their page and it earns once the admin approves it; the admin can also log a session directly.
   const areasOf = (a) => (Array.isArray(a.areas) ? a.areas : json.parse(a.areas, []));
   // door-nacka → Nacka, as the website shows it.
-  const areaLabel = (src) => ({ taby: 'Täby' })[src.replace(/^door-/, '')] || src.replace(/^door-/, '').replace(/^./, (c) => c.toUpperCase());
+  const areaLabel = (src) => ({ taby: 'Täby', saltsjobaden: 'Saltsjöbaden' })[src.replace(/^door-/, '')] || src.replace(/^door-/, '').replace(/^./, (c) => c.toUpperCase());
   const krText = (ore) => `${(ore / 100).toFixed(2).replace(/\.00$/, '')} kr`;
   /** Records the family bonuses a distributor's sessions have brought in so far. Safe to run any time: each family's
    *  email counts once, the first time it shows up on the waitlist or as a family account. */

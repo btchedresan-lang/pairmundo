@@ -1225,6 +1225,21 @@ test('flyer distributors: sessions the admin logs, family bonuses counted once f
   assert.equal((await call(nils.token, 'POST', `/admin/ambassadors/${id}/sessions`, { area: 'door-nacka', flyers: 5, delivered_on: day(0) })).status, 403);
 });
 
+test('flyer areas with Swedish letters keep them: door-saltsjobaden shows as Saltsjöbaden', async () => {
+  const { hashPassword } = await import('../server/auth.js');
+  testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
+  const adminId = testDb.prepare("SELECT id FROM users WHERE email = 'admin@test.io'").get().id;
+  await register('sara-dist@test.io', 'ambassador', 'SE', 'Sara Berg', { complete: false });
+  const sara = (await call(null, 'POST', '/auth/login', { email: 'sara-dist@test.io', password: 'password123' })).body.token;
+  const r = await call(admin, 'POST', '/admin/ambassadors', { code: 'SARA-D', name: 'Sara Berg', kind: 'distributor', flyer_rate: '1', family_bonus: '50', areas: 'door-danderyd, door-saltsjobaden', account_email: 'sara-dist@test.io' });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.deepEqual(r.body.areas, ['door-danderyd', 'door-saltsjobaden']);
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  assert.equal((await call(sara, 'POST', '/me/ambassador/sessions', { area: 'door-saltsjobaden', flyers: 300, delivered_on: yesterday })).status, 201);
+  assert.ok(testDb.prepare("SELECT 1 FROM notifications WHERE user_id = ? AND text LIKE 'Sara Berg sent a flyer count to approve: 300 flyers in Saltsjöbaden%'").get(adminId));
+});
+
 test('flyer distributors send their own counts: pending until the admin approves, then owed until paid', async () => {
   const { hashPassword } = await import('../server/auth.js');
   testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
