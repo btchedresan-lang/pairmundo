@@ -2,7 +2,8 @@
 // on a page hosted by Stripe (their bank details and ID stay with Stripe), and approved pay is sent to it as a
 // transfer from PairMundo's Stripe balance. Stripe then pays it out to their bank on its usual schedule.
 // Off unless STRIPE_SECRET_KEY is set and FLYER_PAYOUTS=stripe. Connect must be turned on in the Stripe dashboard,
-// and the balance needs money in FLYER_PAYOUT_CURRENCY (default sek) for transfers to go through.
+// and the balance needs Swedish kronor for transfers to go through. Pay is kept in öre, so transfers are always in
+// SEK: sending those numbers as another currency's cents would pay the wrong amount, so any other currency is refused.
 
 const API = 'https://api.stripe.com/v1';
 
@@ -17,6 +18,11 @@ function form(obj, prefix = '', out = new URLSearchParams()) {
 export function createPayouts({ secretKey = process.env.STRIPE_SECRET_KEY, mode = process.env.FLYER_PAYOUTS, currency = process.env.FLYER_PAYOUT_CURRENCY || 'sek',
   platformCountry = process.env.STRIPE_PLATFORM_COUNTRY || 'SE', fetchImpl = fetch } = {}) {
   if (!secretKey || mode !== 'stripe') return null;
+  if (String(currency).toLowerCase() !== 'sek') {
+    console.error(`Flyer payouts are off: FLYER_PAYOUT_CURRENCY is ${currency}, but flyer pay is in Swedish kronor. Remove it or set it to sek.`);
+    return null;
+  }
+  currency = 'sek';
   const call = async (method, path, body, idempotencyKey) => {
     const res = await fetchImpl(`${API}${path}`, {
       method,

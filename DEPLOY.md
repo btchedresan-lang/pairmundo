@@ -73,8 +73,8 @@ Stripe asks you to activate Identity once (Stripe → Identity) before live chec
 Flyer distributors send their delivery count from their pay page. It reaches you in Admin → Ambassadors, and once you approve it, it's owed to them. You can pay them yourself and press **Mark as paid**, or let the app pay them automatically through Stripe Connect:
 
 1. In Stripe → Connect, finish the platform setup (Express accounts). It uses the same `STRIPE_SECRET_KEY` as the ID check.
-2. In Render → Environment, set `FLYER_PAYOUTS` to `stripe`. Optional: `FLYER_PAYOUT_CURRENCY` (default `sek`), and `STRIPE_PLATFORM_COUNTRY` (the country of PairMundo's Stripe account, default `SE`; distributors elsewhere sign Stripe's recipient agreement).
-3. Keep money in your Stripe balance in that currency (Stripe → Balance → Add funds, or let card payments build it up). Each payout is a transfer from it.
+2. In Render → Environment, set `FLYER_PAYOUTS` to `stripe`. Optional: `STRIPE_PLATFORM_COUNTRY` (the country of PairMundo's Stripe account, default `SE`; distributors elsewhere sign Stripe's recipient agreement).
+3. Keep Swedish kronor (SEK) in your Stripe balance. Transfers are always in SEK, so a Stripe account that can't hold SEK (for example a US account) can't send them; the payout fails and stays owed (Stripe → Balance → Add funds, or let card payments build it up). Each payout is a transfer from it.
 
 Each distributor then gets a **Set up payouts** button on their pay page. It opens Stripe's page, where they enter their bank details and ID. From then on, whatever is approved goes out right away: after you approve a count, when their account becomes ready, and every hour (which also picks up family bonuses). Stripe pays it into their bank on its usual schedule. If a transfer fails, for example because the balance is short, you get a notification. It is tried again every hour, and the distributor's page has a **Pay now** button you can use.
 
