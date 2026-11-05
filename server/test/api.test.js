@@ -12,7 +12,7 @@ let photoVerdict = null;
 // A stand-in for Stripe Connect: accounts become ready when the test says so, and transfers fail while failTransfer is set.
 const stripeFake = { accounts: new Map(), transfers: [], failTransfer: null };
 const fakePayouts = {
-  currency: 'sek',
+  async quote(amountOre) { return stripeFake.usd ? { currency: 'usd', amount: Math.round(amountOre * 0.1), rate: 0.1 } : { currency: 'sek', amount: amountOre, rate: 1 }; },
   async createAccount({ ambassadorId }) { const id = `acct_test_${ambassadorId}`; stripeFake.accounts.set(id, false); return id; },
   async onboardingLink(id, { returnUrl }) { return `https://connect.stripe.test/setup/${id}?back=${encodeURIComponent(returnUrl)}`; },
   async ready(id) { return !!stripeFake.accounts.get(id); },
@@ -1340,6 +1340,15 @@ test('flyer distributors get paid automatically to their Stripe account once a c
   assert.equal(r.body.stats.owed_ore, 0);
   assert.equal((await call(admin, 'POST', `/admin/ambassadors/${id}/payout`)).status, 400, 'nothing owed');
   assert.equal((await call(olle.token, 'POST', `/admin/ambassadors/${id}/payout`)).status, 403);
+
+  // From a US Stripe balance, the kronor he earned go out in dollars at the day's rate, and the payout records both.
+  stripeFake.usd = true;
+  r = await approve(await send(300));
+  stripeFake.usd = false;
+  assert.deepEqual([r.body.payout.status, r.body.payout.amount_ore], ['paid', 30000]);
+  assert.deepEqual([stripeFake.transfers.at(-1).currency, stripeFake.transfers.at(-1).amount], ['usd', 3000]);
+  assert.deepEqual(['currency', 'sent_amount', 'amount_ore'].map((k) => r.body.payouts.history[0][k]), ['usd', 3000, 30000]);
+  assert.ok(testDb.prepare("SELECT 1 FROM notifications WHERE user_id = ? AND text = 'PairMundo paid you 300 kr for your flyer deliveries. Thank you!'").get(olle.id));
 });
 
 test('agency accounts: own sign-up, hidden from members, linked to a code by the admin, then see their numbers', async () => {

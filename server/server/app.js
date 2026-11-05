@@ -551,20 +551,26 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     syncFlyerBonuses(a);
     // A payout left half-sent (the server stopped mid-transfer) is sent again first, under the same key, so Stripe
     // makes it once either way.
-    const stuck = db.prepare("SELECT id, amount_ore amount FROM flyer_payouts WHERE ambassador_id = ? AND status = 'sending' AND created_at < datetime('now', '-15 minutes') ORDER BY id LIMIT 1").get(a.id);
+    const stuck = db.prepare("SELECT id, amount_ore amount, currency, sent_amount FROM flyer_payouts WHERE ambassador_id = ? AND status = 'sending' AND created_at < datetime('now', '-15 minutes') ORDER BY id LIMIT 1").get(a.id);
     // Otherwise claim the rows first, so a second call while this transfer is on its way can't send them again.
     const p = stuck || tx(db, () => {
       const owed = db.prepare("SELECT COALESCE(SUM(amount_ore), 0) n FROM flyer_sessions WHERE ambassador_id = ? AND status = 'approved' AND paid_at IS NULL AND payout_id IS NULL").get(a.id).n
         + db.prepare('SELECT COALESCE(SUM(amount_ore), 0) n FROM flyer_bonuses WHERE ambassador_id = ? AND paid_at IS NULL AND payout_id IS NULL').get(a.id).n;
       if (owed <= 0) return null;
-      const id = Number(db.prepare('INSERT INTO flyer_payouts (ambassador_id, amount_ore, currency) VALUES (?,?,?)').run(a.id, owed, payouts.currency).lastInsertRowid);
+      const id = Number(db.prepare('INSERT INTO flyer_payouts (ambassador_id, amount_ore, currency) VALUES (?,?,?)').run(a.id, owed, 'sek').lastInsertRowid);
       db.prepare("UPDATE flyer_sessions SET payout_id = ? WHERE ambassador_id = ? AND status = 'approved' AND paid_at IS NULL AND payout_id IS NULL").run(id, a.id);
       db.prepare('UPDATE flyer_bonuses SET payout_id = ? WHERE ambassador_id = ? AND paid_at IS NULL AND payout_id IS NULL').run(id, a.id);
       return { id, amount: owed };
     });
     if (!p) return null;
     try {
-      const transferId = await payouts.transfer({ accountId: a.stripe_account, amount: p.amount, key: `flyer-payout-${p.id}`,
+      // Fix the amount in the balance's currency once, so a retry under the same key sends exactly the same transfer.
+      if (p.sent_amount == null) {
+        const q = await payouts.quote(p.amount);
+        db.prepare('UPDATE flyer_payouts SET currency = ?, sent_amount = ? WHERE id = ?').run(q.currency, q.amount, p.id);
+        Object.assign(p, { currency: q.currency, sent_amount: q.amount });
+      }
+      const transferId = await payouts.transfer({ accountId: a.stripe_account, amount: p.sent_amount, currency: p.currency, key: `flyer-payout-${p.id}`,
         description: `PairMundo flyer deliveries (${a.code})`, metadata: { ambassador_id: String(a.id), payout_id: String(p.id) } });
       tx(db, () => {
         db.prepare("UPDATE flyer_payouts SET status = 'paid', transfer_id = ? WHERE id = ?").run(transferId, p.id);
