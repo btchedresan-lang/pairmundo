@@ -134,3 +134,13 @@ For private rooms with no sign-in, create a free account at [daily.co](https://d
 ## Pointing the phone app at the live server
 
 Build the app with `EXPO_PUBLIC_API_URL=https://your-render-address` (or `https://api.pairmundo.com` once the domain is set up). See `mobile/README.md`.
+
+## Demo accounts for app review
+
+Apple and Google need logins that show every feature with other members in them. Set `DEMO_PASSWORD` in Render → Environment (8+ characters) and save. On the next start the server builds a small demo world and keeps it working:
+
+- `family@demo.pairmundo.com`: host family in Austin with the Family Pass. Matches and chats, two likes waiting, a confirmed placement with its checklist and an agreement to sign, and a finished placement to review.
+- `family2@demo.pairmundo.com`: host family in Boston without the Pass, to try the in-app purchase. Its likes and messages are behind the paywall.
+- `aupair@demo.pairmundo.com`: au pair from Colombia. Matches and chats (including with the first family), two likes waiting, a placement to confirm and a finished placement to review.
+
+All three use `DEMO_PASSWORD` and need no email code. The other demo members have illustrated photos and random passwords. Demo members and real members never see each other, and nothing is emailed to demo addresses. The server checks every hour: it restores the password, confirmed email and Family Pass, and rebuilds the whole demo world if a reviewer deleted one of the accounts. Admin → Overview counts leave demo accounts out. To remove them, delete `DEMO_PASSWORD`; the accounts stay but nobody knows a password for them until it is set again.
