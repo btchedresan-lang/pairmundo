@@ -61,6 +61,9 @@ services:
         sync: false
       - key: REVENUECAT_WEBHOOK_AUTH
         sync: false
+      # Password for the App Store / Google Play review logins (family@, family2@ and aupair@demo.pairmundo.com). See DEPLOY.md.
+      - key: DEMO_PASSWORD
+        sync: false
       - key: PUBLIC_URL
         value: https://pairmundo.com
       # The day the apps go live. It closes the early family bonus to new families and gives them 12 months to use it.

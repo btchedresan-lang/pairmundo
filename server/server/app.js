@@ -7,6 +7,7 @@ import { hashPassword, verifyPassword, createSession, sessionMiddleware, require
 import { scoreMatch, checkCompliance, ageOn } from './matching.js';
 import { LEGACY_CRITERIA, PROGRAMS, REVIEW_CRITERIA, familyDocuments, reviewScore, placementTaskList, visaRoute } from './programs.js';
 import { buildAgreement, buildHostLetter, cleanTerms, defaultTerms, REQUIRED_TERMS } from './agreement.js';
+import { isDemoEmail } from './demo.js';
 import { createMailer, agencyFamilyInviteEmail, agencyUpdateEmail, agencyLeadEmail, agencyNetworkInviteEmail, ambassadorInviteEmail, codeEmail, launchEmail, accountInviteEmail, profileInviteEmail, referenceEmail, teamInviteEmail, waitlistEmail } from './mailer.js';
 import { mountPipeline } from './pipeline.js';
 import { mountHiring } from './hiring.js';
@@ -111,6 +112,9 @@ export function seedPrograms(db) {
 
 export function createApp(db, { mailer = createMailer(), pusher = createPusher(), storage, identity = createIdentity(), checkout = createCheckout(), revenuecat = createRevenueCat(), backups = createBackups(db), moderator = createModerator(), video = createVideo(), payouts = createPayouts() } = {}) {
   const UPLOAD_DIR = process.env.UPLOAD_DIR || 'data/uploads';
+  // Demo accounts' addresses don't exist, so nothing is sent to them.
+  const sendMail = mailer;
+  mailer = (m) => (isDemoEmail(m?.to) ? Promise.resolve({ skipped: 'demo' }) : sendMail(m));
   storage ??= createStorage({ dir: UPLOAD_DIR });
   seedPrograms(db);
   const app = express();
@@ -210,6 +214,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
    *  (family_criteria); {only_own: true} means none. Its own members and its partner agencies' always meet.
    *  The older closed network keeps a space to itself, except for au pairs it shares and au pairs that fit its criteria. */
   const closedApart = (a, b) => {
+    // Demo accounts for app store review live in their own world (server/demo.js).
+    if (!!a.demo !== !!b.demo) return true;
     const sa = agencySpace(a), sb = agencySpace(b);
     if (sa?.id === sb?.id || partnered(sa, sb)) return false;
     const blocks = (u, s, other) => {
@@ -2779,7 +2785,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const sent = new Set(db.prepare('SELECT email FROM launch_emails').all().map((r) => r.email));
     const seen = new Set();
     const out = [];
-    for (const u of db.prepare("SELECT * FROM users WHERE role != 'admin' AND suspended = 0 AND email_verified = 1 ORDER BY created_at, id").all()) {
+    for (const u of db.prepare("SELECT * FROM users WHERE role != 'admin' AND suspended = 0 AND email_verified = 1 AND demo = 0 ORDER BY created_at, id").all()) {
       const email = normEmail(u.email);
       if (seen.has(email)) continue;
       seen.add(email);
@@ -2885,7 +2891,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   };
   const inviteStatus = () => {
     const n = (sql, ...a) => db.prepare(sql).get(...a).n;
-    const families = db.prepare("SELECT * FROM users WHERE role = 'family' AND suspended = 0").all();
+    const families = db.prepare("SELECT * FROM users WHERE role = 'family' AND suspended = 0 AND demo = 0").all();
     const onList = new Set(db.prepare("SELECT email FROM waitlist WHERE role = 'family'").all().map((r) => r.email));
     const fromList = families.filter((u) => onList.has(normEmail(u.email)));
     return {
@@ -3178,20 +3184,20 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   api.get('/admin/stats', requireRole('admin'), wrap(() => {
     const n = (q, ...a) => db.prepare(q).get(...a).n;
     return {
-      aupairs: n("SELECT COUNT(*) n FROM users WHERE role = 'aupair'"),
-      families: n("SELECT COUNT(*) n FROM users WHERE role = 'family'"),
-      pending_verification: n("SELECT COUNT(*) n FROM users WHERE role != 'admin' AND id_verified = 0"),
+      aupairs: n("SELECT COUNT(*) n FROM users WHERE role = 'aupair' AND demo = 0"),
+      families: n("SELECT COUNT(*) n FROM users WHERE role = 'family' AND demo = 0"),
+      pending_verification: n("SELECT COUNT(*) n FROM users WHERE role != 'admin' AND id_verified = 0 AND demo = 0"),
       pending_certificates: n("SELECT COUNT(*) n FROM certificate_proofs WHERE status = 'pending'"),
-      open_requests: n("SELECT COUNT(*) n FROM match_requests WHERE status = 'pending'"),
-      matches: n("SELECT COUNT(*) n FROM match_requests WHERE status = 'accepted'"),
-      placements_active: n("SELECT COUNT(*) n FROM placements WHERE status IN ('confirmed','active')"),
-      placements_completed: n("SELECT COUNT(*) n FROM placements WHERE status = 'completed'"),
-      reviews: n('SELECT COUNT(*) n FROM reviews'),
+      open_requests: n("SELECT COUNT(*) n FROM match_requests WHERE status = 'pending' AND from_user NOT IN (SELECT id FROM users WHERE demo = 1)"),
+      matches: n("SELECT COUNT(*) n FROM match_requests WHERE status = 'accepted' AND from_user NOT IN (SELECT id FROM users WHERE demo = 1)"),
+      placements_active: n("SELECT COUNT(*) n FROM placements WHERE status IN ('confirmed','active') AND family_id NOT IN (SELECT id FROM users WHERE demo = 1)"),
+      placements_completed: n("SELECT COUNT(*) n FROM placements WHERE status = 'completed' AND family_id NOT IN (SELECT id FROM users WHERE demo = 1)"),
+      reviews: n('SELECT COUNT(*) n FROM reviews WHERE reviewer_id NOT IN (SELECT id FROM users WHERE demo = 1)'),
       open_reports: n("SELECT COUNT(*) n FROM reports WHERE status = 'open'"),
       waitlist: n('SELECT COUNT(*) n FROM waitlist'),
       sitter_interest: Object.fromEntries([...SITTER_ANSWERS, null].map((a) => [a ?? 'unanswered',
-        n(`SELECT COUNT(*) n FROM users u JOIN family_profiles f ON f.user_id = u.id WHERE u.role = 'family' AND f.wants_sitter ${a ? '= ?' : 'IS NULL'}`, ...(a ? [a] : []))])),
-      by_country: db.prepare("SELECT country, role, COUNT(*) n FROM users WHERE role != 'admin' GROUP BY country, role ORDER BY n DESC").all(),
+        n(`SELECT COUNT(*) n FROM users u JOIN family_profiles f ON f.user_id = u.id WHERE u.role = 'family' AND u.demo = 0 AND f.wants_sitter ${a ? '= ?' : 'IS NULL'}`, ...(a ? [a] : []))])),
+      by_country: db.prepare("SELECT country, role, COUNT(*) n FROM users WHERE role != 'admin' AND demo = 0 GROUP BY country, role ORDER BY n DESC").all(),
     };
   }));
   api.get('/admin/users', requireRole('admin'), wrap((req) => {

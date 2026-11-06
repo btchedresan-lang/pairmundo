@@ -721,6 +721,8 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
   if (!cols.includes('photos')) db.exec("ALTER TABLE users ADD COLUMN photos TEXT NOT NULL DEFAULT '[]'");
   // Accounts created before email verification existed count as verified.
   if (!cols.includes('lang')) db.exec('ALTER TABLE users ADD COLUMN lang TEXT');
+  // Demo accounts for app store review (server/demo.js): they and real members never see each other.
+  if (!cols.includes('demo')) db.exec('ALTER TABLE users ADD COLUMN demo INTEGER NOT NULL DEFAULT 0');
   if (!cols.includes('email_verified')) db.exec('ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0; UPDATE users SET email_verified = 1');
   const apcols = db.prepare('PRAGMA table_info(aupair_profiles)').all().map((c) => c.name);
   if (!apcols.includes('traits')) db.exec(`ALTER TABLE aupair_profiles ADD COLUMN traits TEXT NOT NULL DEFAULT '[]';
