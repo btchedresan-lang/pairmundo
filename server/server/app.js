@@ -8,7 +8,7 @@ import { scoreMatch, checkCompliance, ageOn } from './matching.js';
 import { LEGACY_CRITERIA, PROGRAMS, REVIEW_CRITERIA, familyDocuments, reviewScore, placementTaskList, visaRoute } from './programs.js';
 import { buildAgreement, buildHostLetter, cleanTerms, defaultTerms, REQUIRED_TERMS } from './agreement.js';
 import { isDemoEmail } from './demo.js';
-import { createMailer, agencyFamilyInviteEmail, agencyUpdateEmail, agencyLeadEmail, agencyNetworkInviteEmail, ambassadorInviteEmail, codeEmail, launchEmail, accountInviteEmail, profileInviteEmail, referenceEmail, teamInviteEmail, waitlistEmail } from './mailer.js';
+import { createMailer, agencyFamilyInviteEmail, agencyUpdateEmail, agencyUploadOfferEmail, agencyLeadEmail, agencyNetworkInviteEmail, ambassadorInviteEmail, codeEmail, launchEmail, accountInviteEmail, profileInviteEmail, referenceEmail, teamInviteEmail, waitlistEmail } from './mailer.js';
 import { mountPipeline } from './pipeline.js';
 import { mountHiring } from './hiring.js';
 import { countryName, pickLang, t as translate } from './i18n.js';
@@ -2490,6 +2490,34 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     db.prepare('UPDATE ambassadors SET family_criteria = ? WHERE id = ?').run(JSON.stringify(c), a.id);
     return { family_criteria: c };
   }));
+  /**
+   * Records an agency's invitation of one family or au pair and emails it (later, by the queue). Used by the agency
+   * itself and by the admin, who can upload an agency's list for it. Returns false if this email was already invited.
+   */
+  const inviteQueue = [];
+  let inviteQueueBusy = false;
+  const drainInvites = async () => {
+    if (inviteQueueBusy) return;
+    inviteQueueBusy = true;
+    // One at a time, a little apart, so a long list stays under the mail service's rate limit.
+    while (inviteQueue.length) {
+      const m = inviteQueue.shift();
+      try { await mailer(m); } catch (e) { console.error('Email failed:', e.message); }
+      if (inviteQueue.length) await new Promise((r) => setTimeout(r, Number(process.env.INVITE_GAP_MS ?? 600)));
+    }
+    inviteQueueBusy = false;
+  };
+  const inviteForAgency = (a, { email, name, message, role }) => {
+    if (db.prepare('SELECT 1 FROM agency_family_invites WHERE ambassador_id = ? AND email = ?').get(a.id, email)) return false;
+    name = str(name, 120) || null;
+    message = str(message, 1000) || null;
+    role = role === 'aupair' ? 'aupair' : 'family';
+    db.prepare('INSERT INTO agency_family_invites (ambassador_id, email, name, message, role) VALUES (?,?,?,?,?)').run(a.id, email, name, message, role);
+    const link = `${referralLink(a)}#/register?role=${role}&email=${encodeURIComponent(email)}`;
+    inviteQueue.push({ to: email, ...agencyFamilyInviteEmail({ from: a.name, name, message, link, email, role }) });
+    drainInvites();
+    return true;
+  };
   // Families and au pairs the agency invited by email, and whether they joined.
   api.get('/agency/family-invites', requireRole('agency'), wrap((req) => {
     const a = myAgency(req);
@@ -2504,14 +2532,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (db.prepare("SELECT COUNT(*) n FROM agency_family_invites WHERE ambassador_id = ? AND created_at > datetime('now', '-1 day')").get(a.id).n >= 50) {
       throw new HttpError(429, 'You can send up to 50 invitations a day. Try again tomorrow.');
     }
-    if (db.prepare('SELECT 1 FROM agency_family_invites WHERE ambassador_id = ? AND email = ?').get(a.id, email)) return { invited: true, already: true };
-    const name = str(req.body?.name, 120) || null;
-    const message = str(req.body?.message, 1000) || null;
-    const role = req.body?.role === 'aupair' ? 'aupair' : 'family';
-    db.prepare('INSERT INTO agency_family_invites (ambassador_id, email, name, message, role) VALUES (?,?,?,?,?)').run(a.id, email, name, message, role);
-    const link = `${referralLink(a)}#/register?role=${role}&email=${encodeURIComponent(email)}`;
-    Promise.resolve(mailer({ to: email, ...agencyFamilyInviteEmail({ from: a.name, name, message, link, email, role }) })).catch((e) => console.error('Email failed:', e.message));
-    return { invited: true };
+    const sent = inviteForAgency(a, { email, name: req.body?.name, message: req.body?.message, role: req.body?.role });
+    return sent ? { invited: true } : { invited: true, already: true };
   }));
   // Every family who joined with the agency's code, with where they are and the agency's own notes.
   api.get('/agency/families', requireRole('agency'), wrap((req) => {
@@ -3346,6 +3368,45 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       sent++;
     }
     return { sent, missing };
+  }));
+
+  // ---------- agencies with nobody on PairMundo yet ----------
+  // Partner agencies whose code has brought in no au pair or family account. The admin writes to each one from their
+  // own mailbox, offering to upload the agency's list for it once, for free, and then pastes that list on the agency's
+  // page (POST /admin/ambassadors/:id/invites): everyone on it gets the agency's invitation, tagged to its code.
+  api.get('/admin/agency-nudge', requireRole('admin'), wrap(() => {
+    const rows = db.prepare(`SELECT a.*, u.email account_email,
+        (SELECT COUNT(*) FROM users m WHERE m.ref_code = a.code AND m.role IN ('aupair', 'family') AND m.demo = 0 AND m.id IS NOT a.user_id) members,
+        (SELECT COUNT(*) FROM agency_family_invites i WHERE i.ambassador_id = a.id) invited,
+        (SELECT COUNT(*) FROM waitlist w WHERE w.ref_code = a.code) waitlist
+      FROM ambassadors a LEFT JOIN users u ON u.id = a.user_id WHERE a.kind = 'agency' AND a.active = 1 ORDER BY a.created_at, a.name`).all();
+    const empty = rows.filter((a) => !a.members);
+    return { agencies: rows.length, empty: empty.map((a) => {
+      const to = a.account_email || a.invite_email || null;
+      const signup = a.user_id ? null : `${publicBase()}/#/agency-signup${to ? `?email=${encodeURIComponent(to)}` : ''}`;
+      return { id: a.id, code: a.code, name: a.name, country: a.country, created_at: a.created_at, account: !!a.user_id, email: to,
+        invited: a.invited, waitlist: a.waitlist, ...agencyUploadOfferEmail({ name: a.name, code: a.code, signup }) };
+    }) };
+  }));
+  // The admin uploads an agency's list: one person per line, with an email, an optional name, and "au pair" or
+  // "family" (otherwise the default role). Each one gets the agency's invitation, as if the agency had sent it.
+  api.post('/admin/ambassadors/:id/invites', requireRole('admin'), wrap((req) => {
+    const a = db.prepare("SELECT * FROM ambassadors WHERE id = ? AND kind = 'agency'").get(Number(req.params.id));
+    if (!a) throw notFound();
+    const lines = String(req.body?.list || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    if (!lines.length) throw bad('Paste at least one line with an email.');
+    if (lines.length > 1000) throw bad('Up to 1,000 lines at a time.');
+    const fallback = req.body?.role === 'aupair' ? 'aupair' : 'family';
+    let invited = 0; let already = 0; const skipped = [];
+    for (const line of lines) {
+      const email = normEmail(line.match(/[^\s,;<>"']+@[^\s,;<>"']+\.[^\s,;<>"']+/)?.[0] || '');
+      if (!email) { skipped.push(line); continue; }
+      const rest = line.replace(/[^\s,;<>"']+@[^\s,;<>"']+\.[^\s,;<>"']+/, ' ');
+      const role = /au[\s-]?pair/i.test(rest) ? 'aupair' : /famil|host/i.test(rest) ? 'family' : fallback;
+      const name = rest.replace(/au[\s-]?pairs?|host\s*famil(y|ies)|famil(y|ies)/ig, ' ').replace(/[\t,;<>"']+/g, ' ').replace(/\s+/g, ' ').trim() || null;
+      if (inviteForAgency(a, { email, name, role })) invited++; else already++;
+    }
+    return { invited, already, skipped };
   }));
 
   // ---------- the Founding Partner Race (4 to 23 November 2026) ----------
