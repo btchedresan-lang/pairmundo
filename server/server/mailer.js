@@ -282,21 +282,23 @@ export const agencyFamilyInviteEmail = ({ from, name, message, link, email, role
 });
 
 /**
- * Badji's one-to-one email to a partner agency that has no au pairs or families on PairMundo yet, offering to put
- * them on for the agency as a one-time free help. The admin sends it from their own mailbox (it opens in their mail
- * app), so it reads as a plain personal email, not a newsletter. In English, like agencyUpdateEmail.
+ * Badji's one-to-one email to a partner agency that is short of the au pairs it should have on PairMundo before launch
+ * (target, 50), offering to upload them for the agency as a one-time free help. The admin sends it from their own
+ * mailbox (it opens in their mail app), so it reads as a plain personal email, not a newsletter. In English, like
+ * agencyUpdateEmail.
  */
-export const agencyUploadOfferEmail = ({ name, code, signup = null }) => ({
+export const agencyUploadOfferEmail = ({ name, code, signup = null, aupairs = 0, target = 50 }) => ({
   subject: `We'll put your au pairs on ${APP_NAME} for you, free`,
   text: [`Dear ${name} team,`, '',
-    `Thank you for joining ${APP_NAME}. Your agency is set up with the code ${code}, but none of your au pairs or families are on it yet, so the families who are signing up can't see them. With launch on 24 November, I'd like to change that for you.`, '',
+    aupairs
+      ? `Thank you for joining ${APP_NAME}. ${aupairs === 1 ? '1 au pair has' : `${aupairs} au pairs have`} joined with your code ${code} so far. We're aiming for at least ${target} au pairs from each partner agency before launch on 24 November, so that the families signing up have plenty of your candidates to choose from. I'd like to help you get there.`
+      : `Thank you for joining ${APP_NAME}. Your agency is set up with the code ${code}, but none of your au pairs are on it yet, so the families who are signing up can't see them. We're aiming for at least ${target} au pairs from each partner agency before launch on 24 November, and I'd like to help you get there.`, '',
     "As a one-time free help, we'll do the uploading for you:",
-    '1. Send me a simple list, as a spreadsheet or just in an email: the name and email of each au pair or family who agreed to join, and whether they are an au pair or a family.',
+    '1. Send me a simple list, as a spreadsheet or just in an email: the name and email of each au pair (or family) who agreed to join, and whether they are an au pair or a family.',
     `2. We invite each of them in your name, tagged to your agency, so families see "Prepared by ${name}" on their profile.`,
     '3. They add a photo and a few lines, and they are live. You follow every one of them on your agency page.', '',
-    "It takes you about 10 minutes and costs nothing. If a full list is too much right now, send me just your 3 strongest candidates and we'll start with those.", '',
-    signup ? `Your agency page is ready for you here: ${signup}
-` : null,
+    "It takes you about 10 minutes and costs nothing. If a full list is too much right now, send me the candidates you have ready and we'll start with those.", '',
+    signup ? `Your agency page is ready for you here: ${signup}\n` : null,
     `The agencies with the most finished profiles on 23 November are named in our launch ads, so the sooner your candidates are on, the better.`, '',
     'Could you send me your list this week?', '',
     'Warm regards,',

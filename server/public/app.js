@@ -2527,11 +2527,11 @@ async function adminAmbassadors(head, id, qs) {
         <td>${r.account ? esc(r.email || '') : '<span class="muted">No account</span>'}</td><td>${r.profiles}</td>
         <td>${r.notified_at ? `✓ Told ${fmtTime(r.notified_at)}` : r.account ? '<span class="chip">Will be told</span>' : '<span class="muted">Skipped</span>'}</td></tr>`).join('')}</table></div>
       ${race.recipients.some((r) => r.account && !r.notified_at) ? `<button class="btn sm" id="sendRace">Announce to ${race.recipients.filter((r) => r.account && !r.notified_at).length} agencies</button>` : ''}</div>` : ''}
-    ${nudge?.empty.length ? `<div class="card"><h3>🫥 Agencies with nobody on PairMundo yet (${nudge.empty.length} of ${nudge.agencies})</h3>
-      <p class="muted small">No au pair or family has joined with their code. Write to each one from your own mailbox: the button opens your email app with the offer ready (we upload their list for them, once, for free). When they send the list, open the agency and paste it under "Upload their list for them".</p>
-      <div class="table-wrap"><table><tr><th>Agency</th><th>Email</th><th>Invited by them</th><th>On the waitlist</th><th></th></tr>${nudge.empty.map((r) => `<tr>
+    ${nudge?.short.length ? `<div class="card"><h3>📉 Agencies with fewer than ${nudge.below} au pairs (${nudge.short.length} of ${nudge.agencies})</h3>
+      <p class="muted small">Each partner agency should have at least ${nudge.target} au pairs on PairMundo before launch. Write to each one from your own mailbox: the button opens your email app with the offer ready (we upload their list for them, once, for free), with their own count in it. When they send the list, open the agency and paste it under "Upload their list for them".</p>
+      <div class="table-wrap"><table><tr><th>Agency</th><th>Email</th><th>Au pairs</th><th>Families</th><th>Invited by them</th><th>On the waitlist</th><th></th></tr>${nudge.short.map((r) => `<tr>
         <td><a href="#/admin/ambassadors/${r.id}"><strong>${esc(r.name)}</strong></a> <code>${esc(r.code)}</code>${r.account ? '' : ' <span class="chip warn">No account</span>'}<div class="muted small">Added ${fmtDate(r.created_at)}</div></td>
-        <td>${r.email ? esc(r.email) : '<span class="muted">None: add one under the agency</span>'}</td><td>${r.invited}</td><td>${r.waitlist}</td>
+        <td>${r.email ? esc(r.email) : '<span class="muted">None: add one under the agency</span>'}</td><td><strong>${r.aupairs}</strong> / ${nudge.target}</td><td>${r.families}</td><td>${r.invited}</td><td>${r.waitlist}</td>
         <td><a class="btn sm" href="${esc(mailto(r))}">✉️ Write email</a> <details><summary class="small">Read it</summary><p><strong>${esc(r.subject)}</strong></p><pre style="white-space:pre-wrap">${esc(r.text)}</pre></details></td></tr>`).join('')}</table></div></div>` : ''}
     <form class="card" id="ambNew"><h3>Add an ambassador, partner agency or flyer distributor</h3>
       <div class="field"><label>Referral code (letters, numbers and dashes; it can't change later)</label><input name="code" required placeholder="ANA-CO" autocapitalize="characters"></div>

@@ -3370,22 +3370,27 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     return { sent, missing };
   }));
 
-  // ---------- agencies with nobody on PairMundo yet ----------
-  // Partner agencies whose code has brought in no au pair or family account. The admin writes to each one from their
-  // own mailbox, offering to upload the agency's list for it once, for free, and then pastes that list on the agency's
-  // page (POST /admin/ambassadors/:id/invites): everyone on it gets the agency's invitation, tagged to its code.
+  // ---------- agencies that are short of au pairs before launch ----------
+  // Every partner agency is meant to have at least NUDGE_TARGET au pairs on PairMundo before launch. The admin sees the
+  // active ones with fewer than NUDGE_BELOW and writes to each from their own mailbox, offering to upload the agency's
+  // list for it once, for free, and then pastes that list on the agency's page (POST /admin/ambassadors/:id/invites):
+  // everyone on it gets the agency's invitation, tagged to its code.
+  const NUDGE_BELOW = 10;
+  const NUDGE_TARGET = 50;
   api.get('/admin/agency-nudge', requireRole('admin'), wrap(() => {
     const rows = db.prepare(`SELECT a.*, u.email account_email,
-        (SELECT COUNT(*) FROM users m WHERE m.ref_code = a.code AND m.role IN ('aupair', 'family') AND m.demo = 0 AND m.id IS NOT a.user_id) members,
+        (SELECT COUNT(*) FROM users m WHERE m.ref_code = a.code AND m.role = 'aupair' AND m.demo = 0 AND m.id IS NOT a.user_id) aupairs,
+        (SELECT COUNT(*) FROM users m WHERE m.ref_code = a.code AND m.role = 'family' AND m.demo = 0 AND m.id IS NOT a.user_id) families,
         (SELECT COUNT(*) FROM agency_family_invites i WHERE i.ambassador_id = a.id) invited,
         (SELECT COUNT(*) FROM waitlist w WHERE w.ref_code = a.code) waitlist
       FROM ambassadors a LEFT JOIN users u ON u.id = a.user_id WHERE a.kind = 'agency' AND a.active = 1 ORDER BY a.created_at, a.name`).all();
-    const empty = rows.filter((a) => !a.members);
-    return { agencies: rows.length, empty: empty.map((a) => {
+    const short = rows.filter((a) => a.aupairs < NUDGE_BELOW).sort((x, y) => x.aupairs - y.aupairs);
+    return { agencies: rows.length, below: NUDGE_BELOW, target: NUDGE_TARGET, short: short.map((a) => {
       const to = a.account_email || a.invite_email || null;
       const signup = a.user_id ? null : `${publicBase()}/#/agency-signup${to ? `?email=${encodeURIComponent(to)}` : ''}`;
       return { id: a.id, code: a.code, name: a.name, country: a.country, created_at: a.created_at, account: !!a.user_id, email: to,
-        invited: a.invited, waitlist: a.waitlist, ...agencyUploadOfferEmail({ name: a.name, code: a.code, signup }) };
+        aupairs: a.aupairs, families: a.families, invited: a.invited, waitlist: a.waitlist,
+        ...agencyUploadOfferEmail({ name: a.name, code: a.code, signup, aupairs: a.aupairs, target: NUDGE_TARGET }) };
     }) };
   }));
   // The admin uploads an agency's list: one person per line, with an email, an optional name, and "au pair" or
