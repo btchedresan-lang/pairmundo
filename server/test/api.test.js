@@ -2996,3 +2996,26 @@ test('agencies short of au pairs: the admin sees those under 10 with a ready off
   assert.equal(after.families, 1);
   assert.ok(after.text.includes('1 au pair has joined with your code QUIET'), after.text);
 });
+
+test('admin emails carry media: a designed version with a picture and a button, or an attachment for partners', async () => {
+  const { withMedia, agencyUploadOfferEmail } = await import('../server/mailer.js');
+  const m = withMedia({ subject: 'Hi <there>', text: 'Hello,\n\nOpen https://pairmundo.com/x?a=1&b=2 now.' }, { image: 'hero-family.jpg', alt: 'The app', cta: { label: 'Go', link: 'https://pairmundo.com/go' }, base: 'https://example.test/' });
+  assert.ok(m.html.includes('src="https://example.test/media/email/hero-family.jpg"'));
+  assert.ok(m.html.includes('href="https://pairmundo.com/go"') && m.html.includes('Go &rarr;'));
+  assert.ok(m.html.includes('Hi &lt;there&gt;'), 'text is escaped');
+  assert.equal(m.text, 'Hello,\n\nOpen https://pairmundo.com/x?a=1&b=2 now.', 'the plain version is kept');
+  for (const f of ['hero-family.jpg', 'hero-aupair.jpg', 'swipe-match-chat.jpg', 'icon.png']) {
+    assert.ok((await import('node:fs')).existsSync(new URL(`../public/media/email/${f}`, import.meta.url)), f);
+  }
+  assert.ok(agencyUploadOfferEmail({ name: 'A', code: 'A', onePager: 'https://x.test/p.pdf' }).text.includes('https://x.test/p.pdf'));
+  assert.ok((await import('node:fs')).existsSync(new URL('../public/media/PairMundo-we-upload-your-au-pairs.pdf', import.meta.url)));
+
+  const { hashPassword } = await import('../server/auth.js');
+  testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
+  const launch = (await call(admin, 'GET', '/admin/launch-email')).body;
+  assert.ok(launch.samples.length && launch.samples.every((x) => x.html && x.html.includes('/media/email/hero-')), 'launch emails have a picture');
+  const invites = (await call(admin, 'GET', '/admin/profile-invites')).body;
+  assert.ok(invites.samples.every((x) => x.html && x.html.includes('hero-family.jpg') && x.html.includes('#/register?role=family')), 'profile invites have a picture and a button');
+  assert.ok((await call(admin, 'GET', '/admin/agency-nudge')).body.one_pager.endsWith('.pdf'));
+});

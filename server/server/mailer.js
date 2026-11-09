@@ -165,6 +165,33 @@ const accountInviteHtml = (lang, { kind, role, email, link, leaveUrl, linkDays, 
 </table></td></tr></table></body></html>`;
 };
 
+/**
+ * Every email the admin sends carries media that supports what the email asks for (Badji, 9 Nov 2026). withMedia
+ * adds a designed HTML version to a plain email: the brand, a picture, the same words and, when given, a button.
+ * The text stays as the plain-text version for mail apps that don't show HTML. image is a file in /media/email (or a
+ * full URL); cta is { label, link }. One-to-one partner emails stay plain and get an attachment instead.
+ */
+export const withMedia = (mail, { image, alt = '', cta = null, base = 'https://pairmundo.com', lang = 'en' }) => {
+  const BLUE = '#3b5bdb'; const INK = '#2b2a33'; const SERIF = "Georgia, 'Times New Roman', serif";
+  const SANS = "-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+  const root = base.replace(/\/$/, '');
+  const src = /^https?:/.test(image) ? image : `${root}/media/email/${image}`;
+  const linkify = (x) => esc(x).replace(/https?:\/\/[^\s<]+/g, (u) => `<a href="${u}" style="color:${BLUE};word-break:break-all">${u}</a>`);
+  const paras = mail.text.split(/\n{2,}/).map((p) => `<p style="margin:0 0 14px;font:16px/1.5 ${SANS};color:${INK}">${linkify(p).replace(/\n/g, '<br>')}</p>`).join('');
+  const button = cta ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:6px auto 18px"><tr><td align="center" bgcolor="${BLUE}" style="border-radius:999px">
+      <a href="${esc(cta.link)}" style="display:inline-block;padding:15px 32px;font:700 16px/1.2 ${SANS};color:#fff;text-decoration:none;border-radius:999px">${esc(cta.label)} &rarr;</a></td></tr></table>` : '';
+  const html = `<!doctype html><html lang="${esc(lang)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>${esc(mail.subject)}</title></head>
+<body style="margin:0;padding:0;background:#edf1fd"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#edf1fd"><tr><td align="center" style="padding:24px 12px">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px">
+  <tr><td style="padding:0 4px 16px"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+    <td><img src="${root}/media/email/icon.png" width="36" height="36" alt="" style="display:block;border:0;border-radius:9px"></td>
+    <td style="padding-left:10px;font:600 22px/1 ${SERIF};color:${BLUE}">${esc(APP_NAME)}</td></tr></table></td></tr>
+  <tr><td style="line-height:0"><img src="${esc(src)}" width="600" alt="${esc(alt)}" style="display:block;width:100%;max-width:600px;height:auto;border:0;border-radius:20px 20px 0 0"></td></tr>
+  <tr><td bgcolor="#ffffff" style="background:#fff;border-radius:0 0 20px 20px;padding:26px 28px 14px">${button}${paras}${button}</td></tr>
+</table></td></tr></table></body></html>`;
+  return { ...mail, html };
+};
+
 /** Asks a family an au pair looked after children for to review them; answering takes a free account on that email. */
 export const referenceEmail = (lang, { aupair, link }) => {
   const v = { app: APP_NAME, aupair, link };
@@ -287,7 +314,7 @@ export const agencyFamilyInviteEmail = ({ from, name, message, link, email, role
  * mailbox (it opens in their mail app), so it reads as a plain personal email, not a newsletter. In English, like
  * agencyUpdateEmail.
  */
-export const agencyUploadOfferEmail = ({ name, code, signup = null, aupairs = 0, target = 50 }) => ({
+export const agencyUploadOfferEmail = ({ name, code, signup = null, aupairs = 0, target = 50, onePager = null }) => ({
   subject: `We'll put your au pairs on ${APP_NAME} for you, free`,
   text: [`Dear ${name} team,`, '',
     aupairs
@@ -299,6 +326,7 @@ export const agencyUploadOfferEmail = ({ name, code, signup = null, aupairs = 0,
     '3. They add a photo and a few lines, and they are live. You follow every one of them on your agency page.', '',
     "It takes you about 10 minutes and costs nothing. If a full list is too much right now, send me the candidates you have ready and we'll start with those.", '',
     signup ? `Your agency page is ready for you here: ${signup}\n` : null,
+    onePager ? `I've attached a one-page overview of how it works. You can also open it here: ${onePager}\n` : null,
     `The agencies with the most finished profiles on 23 November are named in our launch ads, so the sooner your candidates are on, the better.`, '',
     'Could you send me your list this week?', '',
     'Warm regards,',

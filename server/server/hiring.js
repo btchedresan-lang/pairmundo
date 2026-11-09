@@ -2,6 +2,7 @@
 // screening scores, a paid test task the candidate answers on PairMundo, an interview on PairMundo's video calls, and
 // a Hire button that turns the candidate into a partner manager.
 import { randomBytes } from 'node:crypto';
+import { withMedia } from './mailer.js';
 
 /** Open roles, shown at pairmundo.com/#/careers and #/jobs/<slug>. Set open to false to stop new applications.
  *  apply: 'full' (default: CV, screening questions, test task, interview), 'short' (contact details and the job's own
@@ -118,7 +119,9 @@ export function mountHiring(api, { db, wrap, requireRole, rateLimit, HttpError, 
   const notFound = () => new HttpError(404, 'Not found.');
   const admin = requireRole('admin');
   const applyLimit = rateLimit({ windowMs: 60 * 60000, max: Number(process.env.APPLY_RATE_LIMIT || 10) });
-  const send = (to, subject, text) => Promise.resolve(mailer({ to, subject, text })).catch((e) => console.error('Email failed:', e.message));
+  // Every email to an applicant shows the app they would be working on.
+  const send = (to, subject, text) => Promise.resolve(mailer(withMedia({ to, subject, text }, { image: 'swipe-match-chat.jpg', alt: 'Swipe, match and chat in the PairMundo app', base: publicBase() })))
+    .catch((e) => console.error('Email failed:', e.message));
   const jobOf = (slug) => { const j = JOBS[slug]; if (!j) throw notFound(); return j; };
   const getApp = (id) => db.prepare('SELECT * FROM job_applications WHERE id = ?').get(Number(id));
   const byToken = (t) => (/^[a-f0-9]{32}$/.test(String(t)) ? db.prepare('SELECT * FROM job_applications WHERE token = ?').get(String(t)) : undefined);

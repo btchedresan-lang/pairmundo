@@ -8,7 +8,7 @@ import { scoreMatch, checkCompliance, ageOn } from './matching.js';
 import { LEGACY_CRITERIA, PROGRAMS, REVIEW_CRITERIA, familyDocuments, reviewScore, placementTaskList, visaRoute } from './programs.js';
 import { buildAgreement, buildHostLetter, cleanTerms, defaultTerms, REQUIRED_TERMS } from './agreement.js';
 import { isDemoEmail } from './demo.js';
-import { createMailer, agencyFamilyInviteEmail, agencyUpdateEmail, agencyUploadOfferEmail, agencyLeadEmail, agencyNetworkInviteEmail, ambassadorInviteEmail, codeEmail, launchEmail, accountInviteEmail, profileInviteEmail, referenceEmail, teamInviteEmail, waitlistEmail } from './mailer.js';
+import { createMailer, withMedia, agencyFamilyInviteEmail, agencyUpdateEmail, agencyUploadOfferEmail, agencyLeadEmail, agencyNetworkInviteEmail, ambassadorInviteEmail, codeEmail, launchEmail, accountInviteEmail, profileInviteEmail, referenceEmail, teamInviteEmail, waitlistEmail } from './mailer.js';
 import { mountPipeline } from './pipeline.js';
 import { mountHiring } from './hiring.js';
 import { countryName, pickLang, t as translate } from './i18n.js';
@@ -2514,7 +2514,9 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     role = role === 'aupair' ? 'aupair' : 'family';
     db.prepare('INSERT INTO agency_family_invites (ambassador_id, email, name, message, role) VALUES (?,?,?,?,?)').run(a.id, email, name, message, role);
     const link = `${referralLink(a)}#/register?role=${role}&email=${encodeURIComponent(email)}`;
-    inviteQueue.push({ to: email, ...agencyFamilyInviteEmail({ from: a.name, name, message, link, email, role }) });
+    inviteQueue.push({ to: email, ...withMedia(agencyFamilyInviteEmail({ from: a.name, name, message, link, email, role }),
+      { image: role === 'aupair' ? 'hero-aupair.jpg' : 'hero-family.jpg', alt: 'Profiles in the PairMundo app', base: publicBase(),
+        cta: { label: 'Create my free account', link } }) });
     drainInvites();
     return true;
   };
@@ -2915,8 +2917,11 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const lang = r.lang || 'en';
     let useBy = early?.use_by || null;
     if (useBy) try { useBy = new Date(`${useBy}T00:00:00Z`).toLocaleDateString(lang, { dateStyle: 'long', timeZone: 'UTC' }); } catch { /* keep the ISO date */ }
-    return launchEmail(lang, { kind: r.kind, role: r.role, email: r.email, links: storeLinks(), earlyDays: early?.days || 0, useBy,
-      leaveUrl: r.token ? `${publicBase()}/api/waitlist/leave?t=${r.token}` : null });
+    const links = storeLinks();
+    return withMedia(launchEmail(lang, { kind: r.kind, role: r.role, email: r.email, links, earlyDays: early?.days || 0, useBy,
+      leaveUrl: r.token ? `${publicBase()}/api/waitlist/leave?t=${r.token}` : null }),
+    { image: r.role === 'aupair' ? 'hero-aupair.jpg' : 'hero-family.jpg', alt: 'The PairMundo app', base: publicBase(), lang,
+      cta: links[0] ? { label: translate(lang, 'Get the app'), link: links[0][1] } : null });
   };
   const launchJob = { running: false, sent: 0, error: null, finished_at: null };
   const launchStatus = () => {
@@ -2966,7 +2971,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   };
   api.get('/admin/launch-email', requireRole('admin'), wrap(() => ({ ...launchStatus(), samples: launchSamples() })));
   api.post('/admin/launch-email/test', requireRole('admin'), wrap(async (req) => {
-    for (const s of launchSamples()) await mailer({ to: req.user.email, subject: `[Test: ${s.label}] ${s.subject}`, text: s.text });
+    for (const s of launchSamples()) await mailer({ to: req.user.email, subject: `[Test: ${s.label}] ${s.subject}`, text: s.text, html: s.html });
     return { ok: true, to: req.user.email, count: launchSamples().length };
   }));
   api.post('/admin/launch-email/send', requireRole('admin'), wrap((req) => {
@@ -2990,8 +2995,11 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     ORDER BY w.created_at, w.rowid`).all(...(kind === 'reminder' ? [kind, `-${reminderDays()} days`] : [kind]));
   const inviteEmailFor = (w, kind) => {
     const b = earlyDays() && db.prepare('SELECT redeemed_at FROM early_bonus WHERE email = ?').get(w.email);
-    return profileInviteEmail(w.lang || 'en', { kind, email: w.email, earlyDays: b && !b.redeemed_at ? earlyDays() : 0,
-      signupUrl: `${publicBase()}/#/register?role=family&email=${encodeURIComponent(w.email)}`, leaveUrl: `${publicBase()}/api/waitlist/leave?t=${w.token}` });
+    const signupUrl = `${publicBase()}/#/register?role=family&email=${encodeURIComponent(w.email)}`;
+    return withMedia(profileInviteEmail(w.lang || 'en', { kind, email: w.email, earlyDays: b && !b.redeemed_at ? earlyDays() : 0,
+      signupUrl, leaveUrl: `${publicBase()}/api/waitlist/leave?t=${w.token}` }),
+    { image: 'hero-family.jpg', alt: 'Au pair profiles in the PairMundo app', base: publicBase(), lang: w.lang || 'en',
+      cta: { label: translate(w.lang || 'en', 'Make our family profile'), link: signupUrl } });
   };
   const inviteStatus = () => {
     const n = (sql, ...a) => db.prepare(sql).get(...a).n;
@@ -3026,7 +3034,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   }));
   api.post('/admin/profile-invites/test', requireRole('admin'), wrap(async (req) => {
     const { samples } = inviteStatus();
-    for (const m of samples) await mailer({ to: req.user.email, subject: `[Test: ${m.kind}] ${m.subject}`, text: m.text });
+    for (const m of samples) await mailer({ to: req.user.email, subject: `[Test: ${m.kind}] ${m.subject}`, text: m.text, html: m.html });
     return { ok: true, to: req.user.email, count: samples.length };
   }));
 
@@ -3137,7 +3145,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     // Agencies and ambassadors have their own sign-up pages; the au pair and family one would make the wrong account.
     const page = a.kind === 'agency' ? 'agency-signup' : `ambassador-signup${a.kind === 'distributor' ? '?for=flyers&' : '?'}`;
     const signup = `${publicBase()}/#/${page}${a.kind === 'agency' ? '?' : ''}email=${encodeURIComponent(a.invite_email)}`;
-    Promise.resolve(mailer({ to: a.invite_email, ...ambassadorInviteEmail({ ...a, link: referralLink(a), signup, email: a.invite_email }) }))
+    Promise.resolve(mailer({ to: a.invite_email, ...ambassadorInviteEmail({ ...a, link: referralLink(a), signup, email: a.invite_email }),
+      attachments: [{ path: join(PUBLIC_DIR, 'media', ...(a.kind === 'agency' ? ['PairMundo-profile-guide-for-agencies.pdf'] : ['email', 'swipe-match-chat.jpg'])) }] }))
       .catch((e) => console.error('Email failed:', e.message));
   };
   /** Links an account to the code it was invited to, once its email is confirmed. */
@@ -3385,12 +3394,12 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
         (SELECT COUNT(*) FROM waitlist w WHERE w.ref_code = a.code) waitlist
       FROM ambassadors a LEFT JOIN users u ON u.id = a.user_id WHERE a.kind = 'agency' AND a.active = 1 ORDER BY a.created_at, a.name`).all();
     const short = rows.filter((a) => a.aupairs < NUDGE_BELOW).sort((x, y) => x.aupairs - y.aupairs);
-    return { agencies: rows.length, below: NUDGE_BELOW, target: NUDGE_TARGET, short: short.map((a) => {
+    return { agencies: rows.length, below: NUDGE_BELOW, target: NUDGE_TARGET, one_pager: '/media/PairMundo-we-upload-your-au-pairs.pdf', short: short.map((a) => {
       const to = a.account_email || a.invite_email || null;
       const signup = a.user_id ? null : `${publicBase()}/#/agency-signup${to ? `?email=${encodeURIComponent(to)}` : ''}`;
       return { id: a.id, code: a.code, name: a.name, country: a.country, created_at: a.created_at, account: !!a.user_id, email: to,
         aupairs: a.aupairs, families: a.families, invited: a.invited, waitlist: a.waitlist,
-        ...agencyUploadOfferEmail({ name: a.name, code: a.code, signup, aupairs: a.aupairs, target: NUDGE_TARGET }) };
+        ...agencyUploadOfferEmail({ name: a.name, code: a.code, signup, aupairs: a.aupairs, target: NUDGE_TARGET, onePager: `${publicBase()}/media/PairMundo-we-upload-your-au-pairs.pdf` }) };
     }) };
   }));
   // The admin uploads an agency's list: one person per line, with an email, an optional name, and "au pair" or
