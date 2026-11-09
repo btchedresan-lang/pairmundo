@@ -794,6 +794,7 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
   if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'family_criteria')) db.exec('ALTER TABLE ambassadors ADD COLUMN family_criteria TEXT');
   // When the admin emailed an agency about the November 2026 agency page update, so it goes out once.
   if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'update_emailed_at')) db.exec('ALTER TABLE ambassadors ADD COLUMN update_emailed_at TEXT');
+  if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'nudge_emailed_at')) db.exec('ALTER TABLE ambassadors ADD COLUMN nudge_emailed_at TEXT');
   // When the admin announced the Founding Partner Race to an agency in the app, so each agency is told once.
   if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'race_notified_at')) db.exec('ALTER TABLE ambassadors ADD COLUMN race_notified_at TEXT');
   // An agency's email invites go to families and to au pairs.

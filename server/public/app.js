@@ -2498,7 +2498,6 @@ async function adminAmbassadors(head, id, qs) {
   const upd = await api('/admin/agency-update').catch(() => null);
   const race = await api('/admin/agency-race').catch(() => null);
   const nudge = await api('/admin/agency-nudge').catch(() => null);
-  const mailto = (r) => `mailto:${encodeURIComponent(r.email || '')}?subject=${encodeURIComponent(r.subject)}&body=${encodeURIComponent(r.text)}`;
   render(`${head}<div class="spread"><form id="monthPick" class="row"><label>Month</label><input type="month" name="month" value="${esc(month)}" style="width:auto"></form>
       <a class="btn sm" href="/api/admin/ambassadors.csv?month=${esc(month)}">⬇ Payout sheet for ${esc(month)} (CSV)</a></div>
     <p class="muted small">Rewards: ${usd(rewards.profile)} per completed, ID-verified au pair profile (up to ${usd(rewards.profile_monthly_cap)} a month), ${usd(rewards.pass)} for a family's first Family Pass, ${usd(rewards.placement)} per referred side when a stay starts.</p>
@@ -2519,7 +2518,7 @@ async function adminAmbassadors(head, id, qs) {
       <p class="muted small">Tells each agency what's new on its agency page. Each agency gets it once. Agencies without an email are skipped.</p>
       <div class="table-wrap"><table><tr><th>Agency</th><th>Goes to</th></tr>${upd.recipients.map((r) => `<tr><td>${esc(r.name)} <code>${esc(r.code)}</code></td><td>${r.to ? esc(r.to) : '<span class="muted">No email, skipped</span>'}</td></tr>`).join('')}</table></div>
       ${upd.sample ? `<details><summary>Read the email</summary><p><strong>${esc(upd.sample.subject)}</strong></p><pre style="white-space:pre-wrap">${esc(upd.sample.text)}</pre>
-        <p>Attached: <a href="${esc(upd.sample.attachment)}" target="_blank">profile set-up guide (PDF)</a></p></details>` : ''}
+        <p>Shown in the email, linking to the full version: <a href="${esc(upd.sample.attachment)}" target="_blank">profile set-up guide (PDF)</a></p></details>` : ''}
       <button class="btn sm" id="sendUpdate">Send to ${upd.recipients.filter((r) => r.to).length} agencies</button></div>` : ''}
     ${race?.live && race.recipients.length ? `<div class="card"><h3>🏁 Founding Partner Race in the app</h3>
       <p class="muted small">Sending shows the race at the top of each agency's page, with its own code, links, count and place, and puts this in its notifications (🔔): <em>${esc(race.sample)}</em> Each agency is told once. Agencies without an account can't get it in the app; link their account first, then send again.</p>
@@ -2528,15 +2527,45 @@ async function adminAmbassadors(head, id, qs) {
         <td>${r.notified_at ? `✓ Told ${fmtTime(r.notified_at)}` : r.account ? '<span class="chip">Will be told</span>' : '<span class="muted">Skipped</span>'}</td></tr>`).join('')}</table></div>
       ${race.recipients.some((r) => r.account && !r.notified_at) ? `<button class="btn sm" id="sendRace">Announce to ${race.recipients.filter((r) => r.account && !r.notified_at).length} agencies</button>` : ''}</div>` : ''}
     ${nudge?.short.length ? `<div class="card"><h3>📉 Agencies with fewer than ${nudge.below} au pairs (${nudge.short.length} of ${nudge.agencies})</h3>
-      <p class="muted small">Each partner agency should have at least ${nudge.target} au pairs on PairMundo before launch. Write to each one from your own mailbox: the button opens your email app with the offer ready (we upload their list for them, once, for free), with their own count in it. Attach the <a href="${esc(nudge.one_pager)}" target="_blank">one-pager on how it works (PDF)</a> before you send; the email also links to it. When they send the list, open the agency and paste it under "Upload their list for them".</p>
+      <p class="muted small">Each partner agency should have at least ${nudge.target} au pairs on PairMundo before launch. Press <strong>Preview and send</strong>: you see the email as the agency will (the offer to upload their list for them, once, for free, with their own count and the <a href="${esc(nudge.one_pager)}" target="_blank">one-pager</a> embedded), can change the words, and send it from PairMundo. It comes from "Badji from PairMundo", and replies go to ${esc(nudge.reply_to)}. When they send the list, open the agency and paste it under "Upload their list for them".</p>
       <div class="table-wrap"><table><tr><th>Agency</th><th>Email</th><th>Au pairs</th><th>Families</th><th>Invited by them</th><th>On the waitlist</th><th></th></tr>${nudge.short.map((r) => `<tr>
         <td><a href="#/admin/ambassadors/${r.id}"><strong>${esc(r.name)}</strong></a> <code>${esc(r.code)}</code>${r.account ? '' : ' <span class="chip warn">No account</span>'}<div class="muted small">Added ${fmtDate(r.created_at)}</div></td>
         <td>${r.email ? esc(r.email) : '<span class="muted">None: add one under the agency</span>'}</td><td><strong>${r.aupairs}</strong> / ${nudge.target}</td><td>${r.families}</td><td>${r.invited}</td><td>${r.waitlist}</td>
-        <td><a class="btn sm" href="${esc(mailto(r))}">✉️ Write email</a> <details><summary class="small">Read it</summary><p><strong>${esc(r.subject)}</strong></p><pre style="white-space:pre-wrap">${esc(r.text)}</pre></details></td></tr>`).join('')}</table></div></div>` : ''}
+        <td>${r.email ? `<button class="btn sm" data-nudge="${r.id}">✉️ Preview and send</button>` : ''}${r.emailed_at ? `<div class="muted small">✓ Sent ${fmtTime(r.emailed_at)}</div>` : ''}</td></tr>`).join('')}</table></div>
+      <div id="nudgeBox" hidden></div></div>` : ''}
     <form class="card" id="ambNew"><h3>Add an ambassador, partner agency or flyer distributor</h3>
       <div class="field"><label>Referral code (letters, numbers and dashes; it can't change later)</label><input name="code" required placeholder="ANA-CO" autocapitalize="characters"></div>
       ${fields(qs?.get('new') ? { kind: qs.get('new'), name: qs.get('name'), country: qs.get('country'), account_email: qs.get('email') } : {})}<button class="btn sm">Add</button></form>`);
   wireKind(document.getElementById('ambNew'));
+  // Preview and send the upload offer to one agency, from PairMundo, with the words editable and the preview live.
+  document.querySelectorAll('[data-nudge]').forEach((b) => { b.onclick = () => {
+    const r = nudge.short.find((x) => String(x.id) === b.dataset.nudge);
+    const box = document.getElementById('nudgeBox');
+    box.hidden = false;
+    box.innerHTML = `<h3 style="margin-top:18px">Email to ${esc(r.name)}</h3>
+      <p class="small muted">To <strong>${esc(r.email)}</strong> · from "Badji from PairMundo" · replies go to <strong>${esc(nudge.reply_to)}</strong></p>
+      <div class="field"><label>Subject</label><input id="nbSubject" value="${esc(r.subject)}"></div>
+      <div class="field"><label>Message (change anything, like their first name)</label><textarea id="nbText" rows="12">${esc(r.text)}</textarea></div>
+      <p class="small muted">What they'll see:</p>
+      <iframe id="nbPreview" title="Email preview" style="width:100%;height:720px;border:1px solid #e3e6f0;border-radius:12px;background:#edf1fd"></iframe>
+      <div class="row" style="margin-top:10px"><button class="btn sm" id="nbSend">Send to ${esc(r.name)}</button><button class="btn ghost sm" id="nbCancel">Cancel</button></div>`;
+    const frame = document.getElementById('nbPreview');
+    frame.srcdoc = r.html;
+    let t;
+    const refresh = () => { clearTimeout(t); t = setTimeout(async () => {
+      try { frame.srcdoc = (await api('/admin/agency-nudge/preview', { method: 'POST', body: { subject: nbSubject.value, text: nbText.value } })).html; } catch { /* keep the last preview */ }
+    }, 400); };
+    const nbSubject = document.getElementById('nbSubject'); const nbText = document.getElementById('nbText');
+    nbSubject.oninput = refresh; nbText.oninput = refresh;
+    document.getElementById('nbCancel').onclick = () => { box.hidden = true; box.innerHTML = ''; };
+    document.getElementById('nbSend').onclick = async (e) => {
+      if (!confirm(`Send this email to ${r.name} (${r.email}) now?`)) return;
+      e.target.disabled = true;
+      try { const x = await api(`/admin/agency-nudge/${r.id}/send`, { method: 'POST', body: { subject: nbSubject.value, text: nbText.value } }); toast(`Sent to ${x.to}. Replies go to ${x.reply_to}.`); go(`#/admin/ambassadors?month=${month}`); }
+      catch (err) { e.target.disabled = false; toast(err.message); }
+    };
+    box.scrollIntoView({ block: 'start' });
+  }; });
   pending.forEach((s) => wireReviews(s.ambassador_id, () => go(`#/admin/ambassadors?month=${month}`), s.id));
   const su = document.getElementById('sendUpdate');
   if (su) su.onclick = async () => {
