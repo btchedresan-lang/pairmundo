@@ -705,6 +705,22 @@ CREATE TABLE IF NOT EXISTS job_applications (
   UNIQUE (job, email)
 );
 
+-- Sign in with Apple or Google: the provider's ID for a person, linked to their account.
+CREATE TABLE IF NOT EXISTS social_logins (
+  provider TEXT NOT NULL,
+  sub TEXT NOT NULL,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (provider, sub)
+);
+
+-- "Tell me when someone new joins": people waiting for new profiles, and when they were last told.
+CREATE TABLE IF NOT EXISTS new_member_alerts (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  since TEXT NOT NULL DEFAULT (datetime('now')),
+  last_sent_at TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_reviews_reviewee ON reviews(reviewee_id);
 CREATE INDEX IF NOT EXISTS idx_requests_to ON match_requests(to_user, status);

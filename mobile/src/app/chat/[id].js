@@ -5,6 +5,7 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { api } from '../../api';
 import { useAuth } from '../../auth';
 import { fmtTime } from '../../data';
+import { icebreakers } from '../../icebreakers';
 import { Alert, Button, Loading, Photo, useInsets } from '../../components/ui';
 import { chooseAsync, confirmAsync } from '../../components/dialogs';
 import { C, useTheme } from '../../theme';
@@ -19,6 +20,7 @@ export default function Chat() {
   const [msgs, setMsgs] = useState([]);
   const [text, setText] = useState('');
   const [error, setError] = useState(null);
+  const [openers, setOpeners] = useState([]); // conversation starters while the chat is empty
   const list = useRef(null);
   const lastId = useRef(0);
 
@@ -36,6 +38,15 @@ export default function Chat() {
     }, 4000);
     return () => { alive = false; clearInterval(timer); };
   }, [id]);
+
+  // A new match: suggest openers from their profile.
+  const otherId = other?.id; const empty = !msgs.length;
+  useEffect(() => {
+    if (!otherId || !empty) return undefined;
+    let alive = true;
+    api(`/users/${otherId}`).then((d) => alive && setOpeners(icebreakers(me.user.role, d.user, d.profile))).catch(() => {});
+    return () => { alive = false; };
+  }, [otherId, empty, me.user.role]);
 
   const send = async () => {
     const body = text.trim(); if (!body) return;
@@ -100,7 +111,18 @@ export default function Chat() {
       {error ? <View style={{ padding: 12 }}><Alert level="error" text={error} /></View> : null}
       <FlatList ref={list} data={msgs} keyExtractor={(m) => String(m.id)} contentContainerStyle={{ padding: 14, gap: 8 }}
         onContentSizeChange={() => list.current?.scrollToEnd({ animated: true })}
-        ListEmptyComponent={<Text style={{ color: t.muted, textAlign: 'center', marginTop: 40 }}>{tr('You matched! Say hello')} 👋</Text>}
+        ListEmptyComponent={
+          <View style={{ marginTop: 32, gap: 10, alignItems: 'center' }}>
+            {other ? <Photo user={other} rounded style={{ width: 84, height: 84 }} /> : null}
+            <Text style={{ color: t.ink, textAlign: 'center', fontSize: 17, fontWeight: '700' }}>{tr('You matched! Say hello')} 👋</Text>
+            {openers.length ? <Text style={{ color: t.muted, textAlign: 'center' }}>{tr('Not sure what to write? Tap one to start:')}</Text> : null}
+            {openers.map((o) => (
+              <Pressable key={o} onPress={() => setText(o)} accessibilityRole="button"
+                style={({ pressed }) => ({ alignSelf: 'stretch', borderWidth: 1, borderColor: C.primary, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: pressed ? t.soft : t.card })}>
+                <Text style={{ color: t.ink, fontSize: 15 }}>💬 {o}</Text>
+              </Pressable>
+            ))}
+          </View>}
         renderItem={({ item: m }) => {
           const mine = m.sender_id === me.user.id;
           if (m.is_call) return (

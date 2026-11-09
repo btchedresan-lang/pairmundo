@@ -131,6 +131,18 @@ Matched families and au pairs can start a video call from their chat. It works w
 
 For private rooms with no sign-in, create a free account at [daily.co](https://dashboard.daily.co), copy the API key from **Developers**, and add it on Render as `DAILY_API_KEY`. Each call then gets its own private Daily room that closes after two hours, and only the two people in the chat can get in. With Daily, calls in the phone app open on the app's own call screen instead of the browser. To use your own Jitsi server instead, set `JITSI_DOMAIN`.
 
+## Sign in with Apple and Google
+
+**Apple** works with no server setup: the server accepts Apple sign-ins for the app's bundle ID (`com.pairmundo.app`). The app build turns on the "Sign In with Apple" capability itself (`usesAppleSignIn` in `mobile/app.config.js`), so it only needs a new build. If the bundle ID ever changes, set `APPLE_AUDIENCES` on Render to the new one.
+
+**Google** stays hidden until it is set up:
+
+1. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials), create OAuth client IDs: one **Web application**, one **iOS** (bundle ID `com.pairmundo.app`) and one **Android** (package `com.pairmundo.app` plus the SHA-1 of the Play app signing key, from Play Console → App integrity).
+2. Put the web and iOS client IDs in `mobile/brand.json` as `googleWebClientId` and `googleIosClientId`, then make a new app build.
+3. Add all three client IDs on Render as `GOOGLE_CLIENT_IDS`, separated by commas.
+
+People who sign in this way get their email confirmed by Apple or Google, so there is no code to type. Someone who already has an account with the same email is signed in to it.
+
 ## Pointing the phone app at the live server
 
 Build the app with `EXPO_PUBLIC_API_URL=https://your-render-address` (or `https://api.pairmundo.com` once the domain is set up). See `mobile/README.md`.

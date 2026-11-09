@@ -24,7 +24,7 @@ You need a computer with Node 20 or newer, and the phone on the **same Wi-Fi** a
 3. Install **Expo Go** from the App Store or Google Play.
 4. Scan the QR code shown in the terminal: with the iPhone Camera app, or from inside Expo Go on Android.
 
-The app uses the live server (`apiUrl` in `brand.json`, currently https://pairmundo.onrender.com), so you only need step 2. To test against a server on your computer instead, start the app with `EXPO_PUBLIC_API_URL=http://<your computer's IP>:3000 npx expo start`, or tap **⚙ Server** on the sign-in screen and type the address, for example `http://192.168.1.20:3000`. The demo-account buttons only appear for a local server.
+The app uses the live server (`apiUrl` in `brand.json`, currently https://pairmundo.onrender.com), so you only need step 2. To test against a server on your computer instead, start the app with `EXPO_PUBLIC_API_URL=http://<your computer's IP>:3000 npx expo start`, or press and hold the logo on the sign-in screen for two seconds, tap **⚙ Server** and type the address (development builds always show it), for example `http://192.168.1.20:3000`. The demo-account buttons only appear for a local server.
 
 If the phone can't reach the computer (office or guest Wi-Fi often blocks this), run `npx expo start --tunnel` instead; then set the server address to a public URL for the API.
 

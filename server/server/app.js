@@ -20,6 +20,7 @@ import { createModerator } from './moderation.js';
 import { createBackups } from './backup.js';
 import { createVideo, CALL_HOURS } from './video.js';
 import { createPayouts } from './payouts.js';
+import { createSocial, SocialError, socialProviders } from './social.js';
 
 const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
 const MAX_PHOTOS = 6;
@@ -110,7 +111,7 @@ export function seedPrograms(db) {
   }
 }
 
-export function createApp(db, { mailer = createMailer(), pusher = createPusher(), storage, identity = createIdentity(), checkout = createCheckout(), revenuecat = createRevenueCat(), backups = createBackups(db), moderator = createModerator(), video = createVideo(), payouts = createPayouts() } = {}) {
+export function createApp(db, { mailer = createMailer(), pusher = createPusher(), storage, identity = createIdentity(), checkout = createCheckout(), revenuecat = createRevenueCat(), backups = createBackups(db), moderator = createModerator(), video = createVideo(), payouts = createPayouts(), social = createSocial() } = {}) {
   const UPLOAD_DIR = process.env.UPLOAD_DIR || 'data/uploads';
   // Demo accounts' addresses don't exist, so nothing is sent to them.
   const sendMail = mailer;
@@ -803,6 +804,50 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     return { user: { ...publicUser(user, user), email: user.email, email_verified: !!user.email_verified }, token: s.token };
   }));
 
+  // ---------- Sign in with Apple or Google ----------
+  // The phone sends the ID token Apple or Google gave it. A known person (by that provider's ID, or by the same
+  // verified email) is signed in. Someone new is asked once whether they are a family or an au pair, and their name,
+  // then gets an account with the email already confirmed, so there is no code to type.
+  api.get('/auth/providers', wrap(() => ({ providers: socialProviders() })));
+  api.post('/auth/social', authLimit, wrap(async (req, res) => {
+    const { provider, id_token: idToken, role } = req.body || {};
+    let claims;
+    try { claims = await social(provider, idToken); } catch (e) { throw e instanceof SocialError ? bad(e.message) : e; }
+    let user = getUser(db.prepare('SELECT user_id FROM social_logins WHERE provider = ? AND sub = ?').get(provider, claims.sub)?.user_id);
+    const email = claims.email && claims.email_verified ? normEmail(claims.email) : null;
+    if (!user && !email) throw bad("We couldn't get a confirmed email from that sign-in. Use your email and a password instead.");
+    if (!user) user = db.prepare('SELECT * FROM users WHERE lower(trim(email)) = ?').get(email);
+    const done = (u, status = 200) => {
+      db.prepare('INSERT OR IGNORE INTO social_logins (provider, sub, user_id) VALUES (?,?,?)').run(provider, claims.sub, u.id);
+      const s = createSession(db, u.id);
+      setCookie(res, s.token);
+      res.status(status);
+      return { user: { ...publicUser(u, u), email: u.email, email_verified: !!u.email_verified }, token: s.token };
+    };
+    if (user) {
+      if (user.suspended) throw forbidden('This account is suspended. Contact support.');
+      // Apple or Google confirmed the address, so there's no code to type.
+      if (!user.email_verified && email && normEmail(user.email) === email) {
+        db.prepare('UPDATE users SET email_verified = 1 WHERE id = ?').run(user.id);
+        checkProfileReward(user.id); claimInvite(user);
+        user = getUser(user.id);
+      }
+      return done(user);
+    }
+    // Someone new: the app asks whether they are a family or an au pair, and their name, then sends the token again.
+    const name = str(req.body?.name, 120);
+    if (!['aupair', 'family'].includes(role) || !name) return { needs_profile: true, email };
+    let ambassador = str(req.body?.ref_code) ? ambassadorByCode(referralCode(req.body.ref_code)) : null;
+    if (str(req.body?.ref_code) && !ambassador) throw bad('That referral code is not valid. Check it, or leave it empty.');
+    ambassador ??= carriedReferral(email, role);
+    const waited = db.prepare('SELECT source FROM waitlist WHERE email = ?').get(email);
+    const created = createMember({ email, password: randomBytes(24).toString('base64url'), role, name, country: req.body?.country, city: req.body?.city,
+      lang: pickLang(req.get('accept-language')), source: waited?.source ?? provider, ambassador, verified: true });
+    db.prepare('UPDATE agency_family_invites SET user_id = ? WHERE email = ? AND user_id IS NULL').run(created.id, email);
+    claimInvite(created);
+    return done(created, 201);
+  }));
+
   api.post('/auth/verify-email', requireAuth, authLimit, wrap((req) => {
     if (req.user.email_verified) return { ok: true };
     useCode(req.user.id, 'verify', req.body?.code);
@@ -863,6 +908,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       ...(['agency', 'admin'].includes(u.role) ? { agency_network: agencyNetworkOn() } : {}),
       // Whether they joined with a referral or agency code (an au pair without one can still add their agency's).
       has_code: !!u.ref_code,
+      // They asked to hear when someone new joins (Discover's empty deck).
+      new_member_alert: !!db.prepare('SELECT 1 FROM new_member_alerts WHERE user_id = ?').get(u.id),
       counts: {
         notifications: db.prepare('SELECT COUNT(*) n FROM notifications WHERE user_id = ? AND read = 0').get(u.id).n,
         requests: db.prepare("SELECT COUNT(*) n FROM match_requests WHERE to_user = ? AND status = 'pending'").get(u.id).n,
@@ -1536,6 +1583,41 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     return sent;
   };
   app.sendSearchNudges = sendSearchNudges;
+
+  // "Tell me when someone new joins": while membership is small, people run out of profiles in Discover. They can ask
+  // to hear when someone new they could like shows up, at most once a day, until they turn it off.
+  api.put('/me/new-member-alerts', requireAuth, wrap((req) => {
+    if (!['aupair', 'family'].includes(req.user.role)) throw forbidden();
+    if (req.body?.on) db.prepare("INSERT INTO new_member_alerts (user_id) VALUES (?) ON CONFLICT(user_id) DO UPDATE SET since = datetime('now')").run(req.user.id);
+    else db.prepare('DELETE FROM new_member_alerts WHERE user_id = ?').run(req.user.id);
+    return { on: !!req.body?.on };
+  }));
+  const sendNewMemberAlerts = () => {
+    let sent = 0;
+    const due = db.prepare(`SELECT a.user_id, max(a.since, coalesce(a.last_sent_at, a.since)) after FROM new_member_alerts a
+      WHERE a.last_sent_at IS NULL OR a.last_sent_at <= datetime('now', '-1 day')`).all();
+    for (const r of due) {
+      const me = getUser(r.user_id);
+      if (!me || me.suspended || !['aupair', 'family'].includes(me.role)) continue;
+      // Only people who joined since the last alert and who would show in their Discover right now.
+      const fresh = new Set(db.prepare('SELECT id FROM users WHERE role = ? AND created_at > ?').all(me.role === 'family' ? 'aupair' : 'family', r.after).map((u) => u.id));
+      if (!fresh.size) continue;
+      let found = findCandidates(me, {}, true).results.filter((c) => fresh.has(c.user.id));
+      // An au pair hears about families in the countries they'd like to go to, or anywhere if they left that empty.
+      const want = me.role === 'aupair' ? getProfile(me).preferred_countries || [] : [];
+      if (want.length) found = found.filter((c) => want.includes(c.user.country));
+      if (!found.length) continue;
+      const n = found.length;
+      const text = me.role === 'family'
+        ? (n === 1 ? 'A new au pair just joined PairMundo. Take a look!' : '{n} new au pairs joined PairMundo. Take a look!')
+        : (n === 1 ? 'A new host family just joined PairMundo. Take a look!' : '{n} new host families joined PairMundo. Take a look!');
+      notify(me.id, 'search', text, { n }, '#/discover');
+      db.prepare("UPDATE new_member_alerts SET last_sent_at = datetime('now') WHERE user_id = ?").run(me.id);
+      sent++;
+    }
+    return sent;
+  };
+  app.sendNewMemberAlerts = sendNewMemberAlerts;
 
   // New accounts still missing a photo or bio can't be liked, so nudge them 2 days and 7 days after they sign up, in
   // the app, by push and by email. Only accounts from the last 30 days, so old accounts aren't suddenly emailed.

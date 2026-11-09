@@ -14,6 +14,8 @@ module.exports = {
     userInterfaceStyle: 'light',
     ios: {
       supportsTablet: false, bundleIdentifier: brand.bundleId,
+      // Sign in with Apple (src/social.js). EAS turns the capability on for the App ID at the next build.
+      usesAppleSignIn: true,
       // In-app video calls (src/app/call.js).
       infoPlist: {
         // The app only uses standard HTTPS, so App Store uploads skip the export-compliance question.
@@ -46,6 +48,9 @@ module.exports = {
       ['expo-notifications', { color: brand.primary }],
       // The app's languages (src/i18n.js). Lets iOS and Android offer a per-app language setting.
       ['expo-localization', { supportedLocales: ['en', 'es', 'fr', 'de', 'pt', 'sv'] }],
+      'expo-apple-authentication',
+      // Sign in with Google, once the Google client IDs are in brand.json (see README). Without them the button stays hidden.
+      ...(brand.googleIosClientId ? [['@react-native-google-signin/google-signin', { iosUrlScheme: `com.googleusercontent.apps.${brand.googleIosClientId.replace(/\.apps\.googleusercontent\.com$/, '')}` }]] : []),
       ['expo-image-picker', { photosPermission: `${brand.name} needs your photos so you can add them to your profile.` }],
     ],
     // Translated iOS permission prompts.
@@ -54,6 +59,9 @@ module.exports = {
       // Leave empty to use the computer running `expo start` (port 3000). Set it to your hosted API for real users.
       // The live server by default; set EXPO_PUBLIC_API_URL (or use ⚙ Server on the sign-in screen) to point at another one.
       apiUrl: process.env.EXPO_PUBLIC_API_URL ?? brand.apiUrl ?? '',
+      // Google OAuth client IDs for Sign in with Google: the web one (its ID tokens are what the server checks) and the iOS one.
+      googleWebClientId: brand.googleWebClientId || '',
+      googleIosClientId: brand.googleIosClientId || '',
       // The Expo project ID (from `npx eas-cli init`), needed for push notifications and store builds.
       ...((process.env.EAS_PROJECT_ID || brand.easProjectId) ? { eas: { projectId: process.env.EAS_PROJECT_ID || brand.easProjectId } } : {}),
     },

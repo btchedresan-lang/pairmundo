@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Modal, Pressable, View } from 'react-native';
+import { Modal, Pressable, Share, View } from 'react-native';
 import { HEADING_BOLD, Text } from '../../components/Text';
 import { router } from 'expo-router';
 import { useAuth } from '../../auth';
@@ -58,6 +58,14 @@ export default function Discover() {
     catch (e) { setError(e.message); }
   };
 
+  // While PairMundo is new, decks run out: offer a push when someone new joins, and a way to bring friends.
+  const alerts = async (on) => {
+    try { await api('/me/new-member-alerts', { method: 'PUT', body: { on } }); await refresh(); } catch (e) { setError(e.message); }
+  };
+  const invite = () => Share.share({ message: isFamily
+    ? tr('We are finding our au pair on {app}: swipe, match and chat with au pairs from all over the world. Join here: {link}', { app: brand.name, link: 'https://pairmundo.com' })
+    : tr('I am looking for a host family on {app}: swipe, match and chat with families all over the world. Join here: {link}', { app: brand.name, link: 'https://pairmundo.com' }) }).catch(() => {});
+
   if (!deck) return <Loading />;
   const nFilters = Object.values(filters).filter(Boolean).length;
   return (
@@ -82,7 +90,11 @@ export default function Discover() {
           <SwipeDeck ref={deckRef} cards={deck} onSwipe={onSwipe} onOpen={(r) => router.push(`/user/${r.user.id}`)} />
         ) : (
           <Empty title={tr("You've seen everyone for now")} text={isFamily ? tr('New au pairs join every day. Widen your filters or take another look at people you passed.') : tr('New families join every day. Widen your filters or take another look at people you passed.')}>
-            <Button title={tr('Show passed profiles again')} kind="secondary" onPress={async () => { await api('/swipes/passes', { method: 'DELETE' }); load(); }} />
+            {me.new_member_alert ? (
+              <Pressable onPress={() => alerts(false)} hitSlop={6}><T small muted style={{ textAlign: 'center' }}>🔔 {tr("We'll let you know when someone new joins.")} <T small style={{ color: C.primary }}>{tr('Turn off')}</T></T></Pressable>
+            ) : <Button title={`🔔 ${tr('Tell me when someone new joins')}`} onPress={() => alerts(true)} />}
+            <Button title={`💌 ${isFamily ? tr('Invite a family you know') : tr('Invite an au pair friend')}`} kind="secondary" onPress={invite} />
+            <Button title={tr('Show passed profiles again')} kind="ghost" onPress={async () => { await api('/swipes/passes', { method: 'DELETE' }); load(); }} />
             {nFilters ? <Button title={tr('Clear filters')} kind="ghost" onPress={() => setFilters({})} /> : null}
           </Empty>
         )}

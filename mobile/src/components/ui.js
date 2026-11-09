@@ -55,14 +55,27 @@ export function Chip({ label, on, onPress, tone, style }) {
 
 export const Chips = ({ children }) => <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{children}</View>;
 
-export function Field({ label, hint, value, onChangeText, multiline, keyboardType, placeholder, secureTextEntry, autoCapitalize }) {
+export function Field({ label, hint, value, onChangeText, multiline, keyboardType, placeholder, secureTextEntry, autoCapitalize, textContentType, autoComplete,
+  maxLength, autoFocus, returnKeyType, onSubmitEditing, style }) {
   const t = useTheme();
+  // Passwords get a Show/Hide switch, so people can check what they typed.
+  const [hidden, setHidden] = useState(true);
   return (
-    <View style={{ gap: 4 }}>
+    <View style={[{ gap: 4 }, style]}>
       {label ? <T small bold>{label}</T> : null}
-      <TextInput value={value == null ? '' : String(value)} onChangeText={onChangeText} multiline={multiline} keyboardType={keyboardType}
-        placeholder={placeholder} placeholderTextColor={t.muted} secureTextEntry={secureTextEntry} autoCapitalize={autoCapitalize}
-        style={{ borderWidth: 1, borderColor: t.line, borderRadius: 12, padding: 12, color: t.ink, backgroundColor: t.bg, minHeight: multiline ? 96 : undefined, textAlignVertical: multiline ? 'top' : 'center' }} />
+      <View>
+        <TextInput value={value == null ? '' : String(value)} onChangeText={onChangeText} multiline={multiline} keyboardType={keyboardType}
+          placeholder={placeholder} placeholderTextColor={t.muted} secureTextEntry={secureTextEntry && hidden} autoCapitalize={autoCapitalize ?? (secureTextEntry ? 'none' : undefined)}
+          autoCorrect={secureTextEntry || keyboardType === 'email-address' ? false : undefined}
+          textContentType={textContentType} autoComplete={autoComplete} maxLength={maxLength} autoFocus={autoFocus} returnKeyType={returnKeyType} onSubmitEditing={onSubmitEditing}
+          style={{ borderWidth: 1, borderColor: t.line, borderRadius: 12, padding: 12, paddingRight: secureTextEntry ? 64 : 12, color: t.ink, backgroundColor: t.bg, minHeight: multiline ? 96 : undefined, textAlignVertical: multiline ? 'top' : 'center' }} />
+        {secureTextEntry ? (
+          <Pressable onPress={() => setHidden(!hidden)} hitSlop={8} accessibilityRole="button" accessibilityLabel={hidden ? tr('Show password') : tr('Hide password')}
+            style={{ position: 'absolute', right: 12, top: 0, bottom: 0, justifyContent: 'center' }}>
+            <Text style={{ color: C.primary, fontWeight: '700', fontSize: 13 }}>{hidden ? tr('Show') : tr('Hide')}</Text>
+          </Pressable>
+        ) : null}
+      </View>
       {hint ? <T small muted>{hint}</T> : null}
     </View>
   );
