@@ -15,6 +15,8 @@ npm test
 
 Demo accounts after seeding: `millers@aupair.test` (US host family), `schmidts@aupair.test` (German family), `maria@aupair.test` and `thandi@aupair.test` (au pairs), `admin@aupair.test` (program admin).
 
+App review: with `DEMO_PASSWORD` set, the server keeps demo logins for Apple and Google reviewers (`server/demo.js`, see `../DEPLOY.md`).
+
 Settings: `PORT` (default 3000), `DB_FILE` (default `data/aupair.db`), `UPLOAD_DIR` (default `data/uploads`), `NODE_ENV=production` (secure cookies).
 
 Live hosting: `ADMIN_EMAIL` and `ADMIN_PASSWORD` (12+ characters) create the first admin account on an empty database; `TRUST_PROXY=1` (automatic with `NODE_ENV=production`) makes rate limits use the visitor's IP behind a proxy. See `../DEPLOY.md`.

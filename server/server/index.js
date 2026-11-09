@@ -2,6 +2,7 @@ import { openDb } from './db.js';
 import { createApp, normEmail } from './app.js';
 import { createBackups } from './backup.js';
 import { hashPassword } from './auth.js';
+import { ensureDemoAccounts } from './demo.js';
 
 const db = openDb();
 
@@ -16,12 +17,17 @@ if (ADMIN_EMAIL && ADMIN_PASSWORD && !db.prepare('SELECT 1 FROM users WHERE lowe
   }
 }
 
+// Demo accounts for app store review, when DEMO_PASSWORD is set (server/demo.js). Checked again every hour below.
+const demo = () => { try { const r = ensureDemoAccounts(db); if (r === 'built') console.log('Built the demo accounts for app review'); } catch (e) { console.error('Demo accounts failed:', e.message); } };
+demo();
+
 const port = Number(process.env.PORT || 3000);
 const backups = createBackups(db);
 backups.start();
 const app = createApp(db, { backups });
 // Flyer distributors' automatic payouts, Family Pass expiry reminders, "time to look for your next au pair" nudges and "finish your profile" and "verify your ID" nudges: check every hour.
 setInterval(() => {
+  demo();
   try { app.sendPassReminders(); } catch (e) { console.error('Pass reminders failed:', e.message); }
   try { app.sendSearchNudges(); } catch (e) { console.error('Search nudges failed:', e.message); }
   try { app.sendProfileNudges(); } catch (e) { console.error('Profile nudges failed:', e.message); }
