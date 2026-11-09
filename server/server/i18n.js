@@ -359,6 +359,10 @@ export const DICT = {
   "We've started your profile with the details you gave us. Finish it in about 5 minutes and start matching.": {
     es: "Hemos empezado tu perfil con los datos que nos diste. Complétalo en unos 5 minutos y empieza a hacer match.", fr: "Nous avons commencé votre profil avec les informations que vous nous avez données. Terminez-le en 5 minutes environ et commencez à matcher.",
     de: "Wir haben dein Profil mit deinen Angaben schon angelegt. Stell es in etwa 5 Minuten fertig und fang an zu matchen.", pt: "Começamos seu perfil com os dados que você nos deu. Termine em uns 5 minutos e comece a dar match." },
+  'Get the app': {
+    es: 'Descarga la app', fr: "Télécharger l'app", de: 'App holen', pt: 'Baixar o app', sv: 'Hämta appen' },
+  'Make our family profile': {
+    es: 'Crear nuestro perfil familiar', fr: 'Créer notre profil famille', de: 'Unser Familienprofil erstellen', pt: 'Criar nosso perfil de família', sv: 'Skapa vår familjeprofil' },
   "Finish my profile": {
     es: "Completar mi perfil", fr: "Terminer mon profil",
     de: "Profil fertigstellen", pt: "Terminar meu perfil" },

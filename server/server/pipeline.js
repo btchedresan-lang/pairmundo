@@ -2,6 +2,7 @@
 // with the next step for each, the commission partner managers earn, and their monthly pay. The admin and partner
 // managers (staff with a partner_manager login) work it; managers see only this and their own pay.
 import { randomBytes } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 
 export const LEAD_STAGES = ['target', 'contacted', 'replied', 'meeting', 'agreement', 'signed', 'active', 'declined'];
 export const LEAD_KINDS = ['host', 'sending', 'sponsor', 'other'];
@@ -482,7 +483,9 @@ export function mountPipeline(api, { db, wrap, requireRole, HttpError, str, isDa
       ON CONFLICT(user_id) DO UPDATE SET base_cents = excluded.base_cents, signed_cents = excluded.signed_cents, activated_cents = excluded.activated_cents,
       revshare_pct = excluded.revshare_pct, active = 1`).run(user.id, r.base_cents, r.signed_cents, r.activated_cents, r.revshare_pct);
     db.prepare('UPDATE users SET suspended = 0 WHERE id = ?').run(user.id);
-    Promise.resolve(mailer({ to: email, ...teamInviteEmail({ name, email, link: `${publicBase()}/#/forgot` }) })).catch((e) => console.error('Email failed:', e.message));
+    Promise.resolve(mailer({ to: email, ...teamInviteEmail({ name, email, link: `${publicBase()}/#/forgot` }),
+      // What they'll be walking agencies through.
+      attachments: [{ path: fileURLToPath(new URL('../public/media/PairMundo-profile-guide-for-agencies.pdf', import.meta.url)) }] })).catch((e) => console.error('Email failed:', e.message));
     return { ...teamRow(user.id), name, email };
   };
   api.post('/pipeline/team', admin, wrap((req, res) => {

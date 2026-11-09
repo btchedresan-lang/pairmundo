@@ -2945,7 +2945,7 @@ test('the Founding Partner Race: the admin announces it in the app, and each age
   assert.equal((await call(admin, 'POST', '/admin/agency-race')).body.sent, 0);
 });
 
-test('agencies with nobody yet: the admin sees them with a ready offer email, and can upload their list for them', async () => {
+test('agencies short of au pairs: the admin sees those under 10 with a ready offer email, and can upload their list for them', async () => {
   const { hashPassword } = await import('../server/auth.js');
   testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
   const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
@@ -2953,17 +2953,24 @@ test('agencies with nobody yet: the admin sees them with a ready offer email, an
   assert.equal((await call(admin, 'POST', '/admin/ambassadors', { code: 'QUIET', name: 'Quiet Agency', kind: 'agency', account_email: 'boss@quiet.test' })).status, 201);
   assert.equal((await call(admin, 'POST', '/admin/ambassadors', { code: 'BUSY', name: 'Busy Agency', kind: 'agency' })).status, 201);
   assert.equal((await call(admin, 'POST', '/admin/ambassadors', { code: 'NOMAIL', name: 'No Mail Agency', kind: 'agency', account_email: 'nomail@quiet.test' })).status, 201);
-  const ap = await register('busy-ap@test.io', 'aupair', 'ID', 'Busy Au Pair');
-  await call(ap.token, 'POST', '/me/agency', { code: 'BUSY' });
+  for (let i = 0; i < 10; i++) {
+    const ap = await register(`busy-ap${i}@test.io`, 'aupair', 'ID', `Busy Au Pair ${i}`);
+    await call(ap.token, 'POST', '/me/agency', { code: 'BUSY' });
+  }
+  const fam = await register('quiet-fam@test.io', 'family', 'SE', 'Quiet Family');
+  await call(fam.token, 'POST', '/me/agency', { code: 'QUIET' });
 
   assert.equal((await call(ag.token, 'GET', '/admin/agency-nudge')).status, 403, 'admins only');
   const nudge = (await call(admin, 'GET', '/admin/agency-nudge')).body;
-  const row = (code) => nudge.empty.find((r) => r.code === code);
+  assert.equal(nudge.below, 10);
+  assert.equal(nudge.target, 50);
+  const row = (code) => nudge.short.find((r) => r.code === code);
   assert.ok(row('QUIET') && row('NOMAIL'));
-  assert.equal(row('BUSY'), undefined, 'an agency with an au pair is not listed');
+  assert.equal(row('BUSY'), undefined, 'an agency with 10 au pairs is not listed');
   assert.equal(row('QUIET').email, 'boss@quiet.test');
   assert.equal(row('QUIET').account, true);
-  assert.ok(row('QUIET').text.includes('one-time free help') && row('QUIET').text.includes('QUIET'));
+  assert.equal(row('QUIET').aupairs, 0, 'a family does not count as an au pair');
+  assert.ok(row('QUIET').text.includes('one-time free help') && row('QUIET').text.includes('QUIET') && row('QUIET').text.includes('at least 50 au pairs'));
   assert.ok(row('QUIET').text.trim().endsWith('Badji Tchedre-San, Co-founder & Partnerships, PairMundo'));
   assert.ok(!row('QUIET').text.includes('agency-signup'), 'an agency with an account is not sent to sign up');
   assert.equal(row('NOMAIL').account, false);
@@ -2981,8 +2988,34 @@ test('agencies with nobody yet: the admin sees them with a ready offer email, an
   assert.equal((await call(admin, 'POST', `/admin/ambassadors/${id}/invites`, { list: 'siti@quiet-ap.test' })).body.already, 1, 'nobody is invited twice');
   assert.equal((await call(admin, 'POST', `/admin/ambassadors/${id}/invites`, { list: '' })).status, 400);
 
-  // Someone on the list who signs up joins the agency, and the agency leaves the list.
+  // Someone on the list who signs up joins the agency, and the email then says how many au pairs it has.
   const siti = await register('siti@quiet-ap.test', 'aupair', 'ID', 'Siti Rahma');
   assert.equal(testDb.prepare('SELECT ref_code FROM users WHERE id = ?').get(siti.id).ref_code, 'QUIET');
-  assert.equal((await call(admin, 'GET', '/admin/agency-nudge')).body.empty.find((r) => r.code === 'QUIET'), undefined);
+  const after = (await call(admin, 'GET', '/admin/agency-nudge')).body.short.find((r) => r.code === 'QUIET');
+  assert.equal(after.aupairs, 1);
+  assert.equal(after.families, 1);
+  assert.ok(after.text.includes('1 au pair has joined with your code QUIET'), after.text);
+});
+
+test('admin emails carry media: a designed version with a picture and a button, or an attachment for partners', async () => {
+  const { withMedia, agencyUploadOfferEmail } = await import('../server/mailer.js');
+  const m = withMedia({ subject: 'Hi <there>', text: 'Hello,\n\nOpen https://pairmundo.com/x?a=1&b=2 now.' }, { image: 'hero-family.jpg', alt: 'The app', cta: { label: 'Go', link: 'https://pairmundo.com/go' }, base: 'https://example.test/' });
+  assert.ok(m.html.includes('src="https://example.test/media/email/hero-family.jpg"'));
+  assert.ok(m.html.includes('href="https://pairmundo.com/go"') && m.html.includes('Go &rarr;'));
+  assert.ok(m.html.includes('Hi &lt;there&gt;'), 'text is escaped');
+  assert.equal(m.text, 'Hello,\n\nOpen https://pairmundo.com/x?a=1&b=2 now.', 'the plain version is kept');
+  for (const f of ['hero-family.jpg', 'hero-aupair.jpg', 'swipe-match-chat.jpg', 'icon.png']) {
+    assert.ok((await import('node:fs')).existsSync(new URL(`../public/media/email/${f}`, import.meta.url)), f);
+  }
+  assert.ok(agencyUploadOfferEmail({ name: 'A', code: 'A', onePager: 'https://x.test/p.pdf' }).text.includes('https://x.test/p.pdf'));
+  assert.ok((await import('node:fs')).existsSync(new URL('../public/media/PairMundo-we-upload-your-au-pairs.pdf', import.meta.url)));
+
+  const { hashPassword } = await import('../server/auth.js');
+  testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
+  const launch = (await call(admin, 'GET', '/admin/launch-email')).body;
+  assert.ok(launch.samples.length && launch.samples.every((x) => x.html && x.html.includes('/media/email/hero-')), 'launch emails have a picture');
+  const invites = (await call(admin, 'GET', '/admin/profile-invites')).body;
+  assert.ok(invites.samples.every((x) => x.html && x.html.includes('hero-family.jpg') && x.html.includes('#/register?role=family')), 'profile invites have a picture and a button');
+  assert.ok((await call(admin, 'GET', '/admin/agency-nudge')).body.one_pager.endsWith('.pdf'));
 });
