@@ -2944,3 +2944,45 @@ test('the Founding Partner Race: the admin announces it in the app, and each age
   // Each agency is told once.
   assert.equal((await call(admin, 'POST', '/admin/agency-race')).body.sent, 0);
 });
+
+test('agencies with nobody yet: the admin sees them with a ready offer email, and can upload their list for them', async () => {
+  const { hashPassword } = await import('../server/auth.js');
+  testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
+  const ag = await register('boss@quiet.test', 'agency', 'ID', 'Quiet Agency', { complete: false });
+  assert.equal((await call(admin, 'POST', '/admin/ambassadors', { code: 'QUIET', name: 'Quiet Agency', kind: 'agency', account_email: 'boss@quiet.test' })).status, 201);
+  assert.equal((await call(admin, 'POST', '/admin/ambassadors', { code: 'BUSY', name: 'Busy Agency', kind: 'agency' })).status, 201);
+  assert.equal((await call(admin, 'POST', '/admin/ambassadors', { code: 'NOMAIL', name: 'No Mail Agency', kind: 'agency', account_email: 'nomail@quiet.test' })).status, 201);
+  const ap = await register('busy-ap@test.io', 'aupair', 'ID', 'Busy Au Pair');
+  await call(ap.token, 'POST', '/me/agency', { code: 'BUSY' });
+
+  assert.equal((await call(ag.token, 'GET', '/admin/agency-nudge')).status, 403, 'admins only');
+  const nudge = (await call(admin, 'GET', '/admin/agency-nudge')).body;
+  const row = (code) => nudge.empty.find((r) => r.code === code);
+  assert.ok(row('QUIET') && row('NOMAIL'));
+  assert.equal(row('BUSY'), undefined, 'an agency with an au pair is not listed');
+  assert.equal(row('QUIET').email, 'boss@quiet.test');
+  assert.equal(row('QUIET').account, true);
+  assert.ok(row('QUIET').text.includes('one-time free help') && row('QUIET').text.includes('QUIET'));
+  assert.ok(row('QUIET').text.trim().endsWith('Badji Tchedre-San, Co-founder & Partnerships, PairMundo'));
+  assert.ok(!row('QUIET').text.includes('agency-signup'), 'an agency with an account is not sent to sign up');
+  assert.equal(row('NOMAIL').account, false);
+  assert.ok(row('NOMAIL').text.includes('#/agency-signup?email=nomail%40quiet.test'));
+
+  // The admin pastes the list the agency sent.
+  const id = row('QUIET').id;
+  const list = 'Siti Rahma, siti@quiet-ap.test, au pair\nThe Lindqvist family\tlindqvist@quiet-fam.test\tfamily\nno email on this line\nDewi <dewi@quiet-ap.test>';
+  const up = (await call(admin, 'POST', `/admin/ambassadors/${id}/invites`, { list, role: 'aupair' })).body;
+  assert.equal(up.invited, 3);
+  assert.deepEqual(up.skipped, ['no email on this line']);
+  const inv = testDb.prepare('SELECT email, name, role FROM agency_family_invites WHERE ambassador_id = ? ORDER BY email').all(id);
+  assert.deepEqual(inv.map((i) => [i.email, i.name, i.role]), [
+    ['dewi@quiet-ap.test', 'Dewi', 'aupair'], ['lindqvist@quiet-fam.test', 'The Lindqvist', 'family'], ['siti@quiet-ap.test', 'Siti Rahma', 'aupair']]);
+  assert.equal((await call(admin, 'POST', `/admin/ambassadors/${id}/invites`, { list: 'siti@quiet-ap.test' })).body.already, 1, 'nobody is invited twice');
+  assert.equal((await call(admin, 'POST', `/admin/ambassadors/${id}/invites`, { list: '' })).status, 400);
+
+  // Someone on the list who signs up joins the agency, and the agency leaves the list.
+  const siti = await register('siti@quiet-ap.test', 'aupair', 'ID', 'Siti Rahma');
+  assert.equal(testDb.prepare('SELECT ref_code FROM users WHERE id = ?').get(siti.id).ref_code, 'QUIET');
+  assert.equal((await call(admin, 'GET', '/admin/agency-nudge')).body.empty.find((r) => r.code === 'QUIET'), undefined);
+});

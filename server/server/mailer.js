@@ -281,6 +281,28 @@ export const agencyFamilyInviteEmail = ({ from, name, message, link, email, role
     `The ${APP_NAME} team`].filter((x) => x != null).join('\n'),
 });
 
+/**
+ * Badji's one-to-one email to a partner agency that has no au pairs or families on PairMundo yet, offering to put
+ * them on for the agency as a one-time free help. The admin sends it from their own mailbox (it opens in their mail
+ * app), so it reads as a plain personal email, not a newsletter. In English, like agencyUpdateEmail.
+ */
+export const agencyUploadOfferEmail = ({ name, code, signup = null }) => ({
+  subject: `We'll put your au pairs on ${APP_NAME} for you, free`,
+  text: [`Dear ${name} team,`, '',
+    `Thank you for joining ${APP_NAME}. Your agency is set up with the code ${code}, but none of your au pairs or families are on it yet, so the families who are signing up can't see them. With launch on 24 November, I'd like to change that for you.`, '',
+    "As a one-time free help, we'll do the uploading for you:",
+    '1. Send me a simple list, as a spreadsheet or just in an email: the name and email of each au pair or family who agreed to join, and whether they are an au pair or a family.',
+    `2. We invite each of them in your name, tagged to your agency, so families see "Prepared by ${name}" on their profile.`,
+    '3. They add a photo and a few lines, and they are live. You follow every one of them on your agency page.', '',
+    "It takes you about 10 minutes and costs nothing. If a full list is too much right now, send me just your 3 strongest candidates and we'll start with those.", '',
+    signup ? `Your agency page is ready for you here: ${signup}
+` : null,
+    `The agencies with the most finished profiles on 23 November are named in our launch ads, so the sooner your candidates are on, the better.`, '',
+    'Could you send me your list this week?', '',
+    'Warm regards,',
+    `Badji Tchedre-San, Co-founder & Partnerships, ${APP_NAME}`].filter((x) => x != null).join('\n'),
+});
+
 /** An agency on PairMundo invites another agency to join and work with it. In English, like ambassadorInviteEmail. */
 export const agencyNetworkInviteEmail = ({ from, name, message, signup, email }) => ({
   subject: `${from} invites ${name} to work together on ${APP_NAME}`,
