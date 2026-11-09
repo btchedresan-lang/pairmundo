@@ -28,6 +28,8 @@ export async function setBase(url) {
   // Only remember a server someone typed in, so a new default reaches everyone else.
   if (base === defaultBase()) await store.del('apiBase'); else await store.set('apiBase', base);
 }
+/** True when someone typed in another server than the app's own (testers and developers only). */
+export const isCustomServer = () => base !== defaultBase();
 /** True for a server on this computer or local network, where the demo accounts live. */
 export const isLocalServer = (url = base) => /^https?:\/\/(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(url);
 export async function setToken(t) {

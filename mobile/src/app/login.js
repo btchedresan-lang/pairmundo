@@ -5,9 +5,10 @@ import { Link } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 import { useAuth } from '../auth';
-import { getBase, isLocalServer, setBase } from '../api';
+import { getBase, isCustomServer, isLocalServer, setBase } from '../api';
 import { Alert, Button, Field, Screen, T } from '../components/ui';
 import { brand, C } from '../theme';
+import { SocialButtons } from '../components/SocialButtons';
 import { tr } from '../i18n';
 
 const DEMO = [['Host family', 'millers@aupair.test'], ['Au pair', 'maria@aupair.test']];
@@ -36,16 +37,23 @@ export default function Login() {
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen padded={false}>
         <LinearGradient colors={[C.primary, C.primary2]} style={{ paddingTop: 90, paddingBottom: 40, paddingHorizontal: 24, alignItems: 'center', gap: 8 }}>
-          <Image source={require('../../assets/logo-white.png')} style={{ width: 76, height: 72 }} contentFit="contain" accessibilityIgnoresInvertColors />
+          {/* Testers: press and hold the logo to point the app at another server. Everyone else never sees it. */}
+          <Pressable onLongPress={() => setShowServer(true)} delayLongPress={1500}>
+            <Image source={require('../../assets/logo-white.png')} style={{ width: 76, height: 72 }} contentFit="contain" accessibilityIgnoresInvertColors />
+          </Pressable>
           <Text style={{ color: '#fff', fontSize: 38, fontFamily: HEADING_BOLD }}>{brand.name}</Text>
           <Text style={{ color: '#fff', fontSize: 16, opacity: 0.95, textAlign: 'center' }}>{tr(brand.tagline)}</Text>
         </LinearGradient>
         <View style={{ padding: 20, gap: 14 }}>
-          <Field label={tr('Email')} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" placeholder="you@example.com" />
-          <Field label={tr('Password')} value={password} onChangeText={setPassword} secureTextEntry placeholder={tr('At least 8 characters')} />
+          <Field label={tr('Email')} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" placeholder="you@example.com"
+            textContentType="username" autoComplete="email" returnKeyType="next" />
+          <Field label={tr('Password')} value={password} onChangeText={setPassword} secureTextEntry placeholder={tr('At least 8 characters')}
+            textContentType="password" autoComplete="current-password" returnKeyType="go" onSubmitEditing={() => go()} />
           {err ? <Alert level="error" text={err} /> : null}
           <Button title={tr('Sign in')} onPress={() => go()} loading={busy} />
           <Link href={{ pathname: '/forgot', params: { email: email.trim() } }} asChild><Pressable><T small style={{ color: C.primary, textAlign: 'center' }}>{tr('Forgot password?')}</T></Pressable></Link>
+          <SocialButtons />
+          <T small muted style={{ textAlign: 'center', marginTop: 8 }}>{tr('New to {app}?', { app: brand.name })}</T>
           <Link href="/register" asChild><Button title={tr('Create an account')} kind="secondary" /></Link>
           {isLocalServer(server) ? <>
             <T small muted style={{ textAlign: 'center', marginTop: 6 }}>{tr('Try a demo account (password {password}):', { password: 'password123' })}</T>
@@ -53,7 +61,7 @@ export default function Login() {
               {DEMO.map(([label, e]) => <Button key={e} small kind="ghost" title={tr(label)} onPress={() => { setEmail(e); setPassword('password123'); go(e, 'password123'); }} />)}
             </View>
           </> : null}
-          <Pressable onPress={() => setShowServer(!showServer)}><T small muted style={{ textAlign: 'center' }}>⚙ {tr('Server')}: {server}</T></Pressable>
+          {__DEV__ || showServer || isCustomServer() ? <Pressable onPress={() => setShowServer(!showServer)}><T small muted style={{ textAlign: 'center' }}>⚙ {tr('Server')}: {server}</T></Pressable> : null}
           {showServer ? <Field label={tr('Server address')} value={server} onChangeText={setServer} autoCapitalize="none" keyboardType="url" placeholder="http://192.168.1.20:3000" /> : null}
         </View>
       </Screen>

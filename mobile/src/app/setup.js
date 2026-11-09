@@ -10,13 +10,15 @@ import { tr, trMap } from '../i18n';
 import { store } from '../storage';
 import { Alert, Button, ChoiceChips, Field, Screen, T } from '../components/ui';
 import { confirmAsync } from '../components/dialogs';
-import { CountryPicker } from '../components/pickers';
+import { ChildrenAges, CountryPicker, DateField, StayChips } from '../components/pickers';
 import { PhotoGrid } from '../components/PhotoGrid';
 import { C, useTheme } from '../theme';
 
 const STEPS = 3;
 const labels = (codes, name) => Object.fromEntries(codes.map((k) => [k, name(k)]));
 const num = (v) => (v === '' || v == null ? null : Number(v));
+const yearsAgo = (n) => { const d = new Date(); d.setFullYear(d.getFullYear() - n); return d; };
+
 
 /** True when a signed-in member has no photo or no description yet. */
 export const needsSetup = (me) => !!me && me.user.role !== 'admin' && (!(me.user.photos || []).length || !me.profile?.bio);
@@ -40,25 +42,28 @@ export default function Setup() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const [dragging, setDragging] = useState(false); // a photo is being moved, so the page must not scroll
-  const [f, setF] = useState(() => (isAp ? {
+  const [f, setF] = useState(() => ({ country: me.user.country || null, city: me.user.city || '', ...(isAp ? {
     birth_date: p.birth_date || '', nationality: p.nationality || null, available_from: p.available_from || '',
     duration_months: String(p.duration_months ?? ''), languages: (p.languages || []).map((l) => l.code),
     age_groups: p.age_groups || [], skills: p.skills || [], bio: p.bio || '',
   } : {
     children: (p.children || []).map((c) => c.age).join(', '), start_date: p.start_date || '', duration_months: String(p.duration_months ?? ''),
     languages: p.languages || [], bio: p.bio || '', wants_sitter: p.wants_sitter ?? null,
-  }));
+  }) }));
   const set = (k) => (v) => setF((x) => ({ ...x, [k]: v }));
   const photos = me.user.photos || [];
 
   const finish = async () => {
     await store.set(setupKey(me.user.id), '1');
-    if (back && router.canGoBack()) router.back(); else router.replace('/discover');
+    if (back && router.canGoBack()) router.back();
+    // Ask for the email code now, while they're here, instead of when their first like bounces.
+    else if (!me.user.email_verified) router.replace('/verify-email?next=/discover');
+    else router.replace('/discover');
   };
-  const saveAndNext = async (profile) => {
+  const saveAndNext = async (profile, user = {}) => {
     setErr(null); setBusy(true);
     try {
-      await api('/me', { method: 'PUT', body: { profile } });
+      await api('/me', { method: 'PUT', body: { ...user, profile } });
       await refresh();
       if (step + 1 < STEPS) setStep(step + 1); else await finish();
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
@@ -72,6 +77,10 @@ export default function Setup() {
   });
   const about = () => (isAp ? { bio: f.bio, age_groups: f.age_groups, skills: f.skills } : { bio: f.bio, wants_sitter: f.wants_sitter });
 
+  const where = <>
+    <CountryPicker label={tr('Country you live in')} value={f.country} onChange={set('country')} />
+    <Field label={tr('City')} value={f.city} onChangeText={set('city')} textContentType="addressCity" />
+  </>;
   const titles = [tr('Add your photos'), tr('The basics'), isAp ? tr('About you') : tr('About your family')];
   return (
     <Screen scrollEnabled={!dragging}>
@@ -88,18 +97,20 @@ export default function Setup() {
       </> : null}
 
       {step === 1 ? (isAp ? <>
-        <Field label={tr('Date of birth (YYYY-MM-DD)')} value={f.birth_date} onChangeText={set('birth_date')} placeholder="2003-04-12" />
+        {where}
+        <DateField label={tr('Date of birth')} value={f.birth_date} onChange={set('birth_date')} initial={yearsAgo(21)} maximumDate={yearsAgo(17)} minimumDate={yearsAgo(40)} />
         <CountryPicker label={tr('Nationality')} value={f.nationality} onChange={set('nationality')} />
         <ChoiceChips label={tr('Languages I speak')} options={labels(TOP_LANGS, langName)} value={f.languages} onChange={set('languages')} multi />
-        <Field label={tr('Available from (YYYY-MM-DD)')} value={f.available_from} onChangeText={set('available_from')} />
-        <Field label={tr('Stay length (months)')} value={f.duration_months} onChangeText={set('duration_months')} keyboardType="number-pad" />
-        <Button title={tr('Next')} onPress={() => saveAndNext(basics())} loading={busy} />
+        <DateField label={tr('Available from')} value={f.available_from} onChange={set('available_from')} minimumDate={new Date()} />
+        <StayChips value={f.duration_months} onChange={set('duration_months')} />
+        <Button title={tr('Next')} onPress={() => saveAndNext(basics(), { country: f.country, city: f.city.trim() })} loading={busy} />
       </> : <>
-        <Field label={tr("Children's ages (comma separated)")} value={f.children} onChangeText={set('children')} placeholder="2, 6" />
-        <Field label={tr('Start date (YYYY-MM-DD)')} value={f.start_date} onChangeText={set('start_date')} />
-        <Field label={tr('Stay length (months)')} value={f.duration_months} onChangeText={set('duration_months')} keyboardType="number-pad" />
+        {where}
+        <ChildrenAges label={tr("Children's ages")} value={f.children} onChange={set('children')} />
+        <DateField label={tr('Start date')} value={f.start_date} onChange={set('start_date')} minimumDate={new Date()} />
+        <StayChips value={f.duration_months} onChange={set('duration_months')} />
         <ChoiceChips label={tr('Languages at home')} options={labels(TOP_LANGS, langName)} value={f.languages} onChange={set('languages')} multi />
-        <Button title={tr('Next')} onPress={() => saveAndNext(basics())} loading={busy} />
+        <Button title={tr('Next')} onPress={() => saveAndNext(basics(), { country: f.country, city: f.city.trim() })} loading={busy} />
       </>) : null}
 
       {step === 2 ? <>

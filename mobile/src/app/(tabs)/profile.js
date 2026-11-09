@@ -1,19 +1,21 @@
-import { useState } from 'react';
-import { Pressable, Switch, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState, Pressable, Switch, View } from 'react-native';
 import { Text } from '../../components/Text';
-import { router } from 'expo-router';
-import { api, getBase } from '../../api';
+import { router, useFocusEffect } from 'expo-router';
+import { api, getBase, isCustomServer } from '../../api';
 import { useAuth } from '../../auth';
 import { AGE_GROUPS, CERTS, cname, fmtDate, HOBBIES, langName, LEVELS, levelName, SKILLS, TOP_LANGS, TRAITS } from '../../data';
 import { PhotoGrid } from '../../components/PhotoGrid';
 import { tr, trMap } from '../../i18n';
-import { Alert, Button, Card, ChoiceChips, Field, Screen, T } from '../../components/ui';
-import { CountryPicker } from '../../components/pickers';
+import { Alert, Button, Card, ChoiceChips, Field, Screen, T, useInsets } from '../../components/ui';
+import { ChildrenAges, CountryPicker, DateField, StayChips } from '../../components/pickers';
+import { profileStrength } from '../../strength';
 import { CertProof, useProofs } from '../../components/CertProof';
 import { MyReferences } from '../../components/References';
-import { brand, C } from '../../theme';
+import { brand, C, useTheme } from '../../theme';
 
 const DESTINATIONS = ['US', 'DE', 'FR', 'NL', 'DK', 'SE', 'ES', 'CH', 'BE', 'IE', 'AU', 'CA'];
+const yearsAgo = (n) => { const d = new Date(); d.setFullYear(d.getFullYear() - n); return d; };
 const labels = (codes, name) => Object.fromEntries(codes.map((k) => [k, name(k)]));
 
 export default function MyProfile() {
@@ -44,6 +46,11 @@ export default function MyProfile() {
     };
   });
   const set = (k) => (v) => setF((x) => ({ ...x, [k]: v }));
+  // Unsaved edits: a Save bar stays in view, and they are saved on their own when leaving the tab or the app.
+  const t = useTheme();
+  const insets = useInsets();
+  const [savedAs, setSavedAs] = useState(() => JSON.stringify(f));
+  const dirty = JSON.stringify(f) !== savedAs;
   const num = (v) => (v === '' || v == null ? null : Number(v));
 
   const save = async ({ quiet } = {}) => {
@@ -63,10 +70,19 @@ export default function MyProfile() {
     });
     try {
       await api('/me', { method: 'PUT', body: { name: f.name, country: f.country, city: f.city, profile } });
+      setSavedAs(JSON.stringify(f));
       await refresh(); if (!quiet) setMsg({ level: 'ok', text: tr('Profile saved') });
       return true;
     } catch (e) { setMsg({ level: 'error', text: e.message }); return false; } finally { setBusy(false); }
   };
+  const autosave = useRef(null);
+  useEffect(() => { autosave.current = () => { if (dirty && !busy) save({ quiet: true }); }; });
+  useFocusEffect(useCallback(() => () => autosave.current?.(), []));
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => { if (state === 'background') autosave.current?.(); });
+    return () => sub.remove();
+  }, []);
+  const strength = profileStrength(me);
   // Preview saves first, so it shows the profile exactly as it is after any edits.
   const preview = async () => { if (await save({ quiet: true })) router.push(`/user/${me.user.id}`); };
 
@@ -77,8 +93,21 @@ export default function MyProfile() {
   );
 
   return (
-    <Screen scrollEnabled={!dragging}>
+    <View style={{ flex: 1 }}>
+    <Screen scrollEnabled={!dragging} style={dirty ? { paddingBottom: 80 } : null}>
       <Button title={`👁 ${tr('Preview my profile')}`} kind="secondary" onPress={preview} disabled={busy} />
+      {strength && strength.pct < 100 ? (
+        <Card>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <T bold>{tr('Profile strength')}</T><T bold style={{ color: strength.pct >= 80 ? C.ok : C.primary }}>{strength.pct}%</T>
+          </View>
+          <View style={{ height: 8, borderRadius: 4, backgroundColor: t.line, overflow: 'hidden' }}>
+            <View style={{ width: `${strength.pct}%`, height: 8, borderRadius: 4, backgroundColor: strength.pct >= 80 ? C.ok : C.primary }} />
+          </View>
+          <T small muted>{isAp ? tr('Complete profiles get more likes from families.') : tr('Complete profiles get more likes from au pairs.')}</T>
+          {strength.tips.slice(0, 3).map((tip) => <T key={tip} small>＋ {tip}</T>)}
+        </Card>
+      ) : null}
       <Card>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <T h2>{tr('Photos')}</T>
@@ -99,11 +128,11 @@ export default function MyProfile() {
       {isAp ? (
         <Card>
           <T h2>{tr('Au pair details')}</T>
-          <Field label={tr('Date of birth (YYYY-MM-DD)')} value={f.birth_date} onChangeText={set('birth_date')} placeholder="2003-04-12" />
+          <DateField label={tr('Date of birth')} value={f.birth_date} onChange={set('birth_date')} initial={yearsAgo(21)} maximumDate={yearsAgo(17)} minimumDate={yearsAgo(40)} />
           <CountryPicker label={tr('Nationality')} value={f.nationality} onChange={set('nationality')} />
           <Field label={tr('Years of childcare experience')} value={f.childcare_years} onChangeText={set('childcare_years')} keyboardType="decimal-pad" />
-          <Field label={tr('Available from (YYYY-MM-DD)')} value={f.available_from} onChangeText={set('available_from')} />
-          <Field label={tr('Stay length (months)')} value={f.duration_months} onChangeText={set('duration_months')} keyboardType="number-pad" />
+          <DateField label={tr('Available from')} value={f.available_from} onChange={set('available_from')} />
+          <StayChips value={f.duration_months} onChange={set('duration_months')} />
           {toggle(tr("I have a driver's license"), 'drivers_license')}
           <ChoiceChips label={tr('Languages I speak')} options={labels(TOP_LANGS, langName)} value={f.languages} onChange={set('languages')} multi />
           {f.languages.map((code) => (
@@ -138,9 +167,9 @@ export default function MyProfile() {
       ) : (
         <Card>
           <T h2>{tr('Family details')}</T>
-          <Field label={tr("Children's ages (comma separated)")} value={f.children} onChangeText={set('children')} placeholder="2, 6" />
-          <Field label={tr('Start date (YYYY-MM-DD)')} value={f.start_date} onChangeText={set('start_date')} />
-          <Field label={tr('Stay length (months)')} value={f.duration_months} onChangeText={set('duration_months')} keyboardType="number-pad" />
+          <ChildrenAges label={tr("Children's ages")} value={f.children} onChange={set('children')} />
+          <DateField label={tr('Start date')} value={f.start_date} onChange={set('start_date')} />
+          <StayChips value={f.duration_months} onChange={set('duration_months')} />
           <Field label={tr('Hours per week')} value={f.weekly_hours} onChangeText={set('weekly_hours')} keyboardType="number-pad" />
           <Field label={tr('Pocket money per month (local currency)')} value={f.pocket_money} onChangeText={set('pocket_money')} keyboardType="number-pad" />
           {toggle(tr('We need a driver'), 'needs_driver')}
@@ -170,8 +199,17 @@ export default function MyProfile() {
       <Button title={`🛂 ${tr('Country au pair rules')}`} kind="ghost" onPress={() => router.push('/programs')} />
       {!me.user.verification?.id ? <Button title={`🪪 ${tr('Verify my ID')}`} kind="secondary" onPress={() => router.push('/account')} /> : null}
       <Button title={`🔒 ${tr('Account and safety')}`} kind="ghost" onPress={() => router.push('/account')} />
-      <Button title={tr('Sign out')} kind="ghost" onPress={signOut} />
-      <T small muted style={{ textAlign: 'center' }}>{brand.name} · {tr('connected to {server}', { server: getBase() })}</T>
+      <Button title={tr('Sign out')} kind="ghost" onPress={async () => { if (dirty) await save({ quiet: true }); signOut(); }} />
+      {/* The server only matters to testers who switched to another one. */}
+      {__DEV__ || isCustomServer() ? <T small muted style={{ textAlign: 'center' }}>{brand.name} · {tr('connected to {server}', { server: getBase() })}</T> : null}
     </Screen>
+    {dirty ? (
+      <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: 12, paddingBottom: 12, backgroundColor: t.card, borderTopWidth: 1, borderColor: t.line,
+        flexDirection: 'row', alignItems: 'center', gap: 12, paddingRight: 16 + insets.right }}>
+        <T small muted style={{ flex: 1 }}>{tr('You have unsaved changes')}</T>
+        <Button small title={tr('Save changes')} onPress={() => save()} loading={busy} />
+      </View>
+    ) : null}
+    </View>
   );
 }
