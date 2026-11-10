@@ -12,18 +12,21 @@ export function createMailer() {
   const key = process.env.RESEND_API_KEY;
   const from = process.env.MAIL_FROM;
   if (!key || !from) {
-    return async ({ to, subject, text, attachments }) => {
-      console.log(`\n--- Email to ${to} (not sent: set RESEND_API_KEY and MAIL_FROM to send real email) ---\n${subject}\n\n${text}\n${(attachments || []).map((a) => `[attached: ${basename(a.path)}]\n`).join('')}---\n`);
+    return async ({ to, subject, text, attachments, replyTo }) => {
+      console.log(`\n--- Email to ${to}${replyTo ? ` (replies to ${replyTo})` : ''} (not sent: set RESEND_API_KEY and MAIL_FROM to send real email) ---\n${subject}\n\n${text}\n${(attachments || []).map((a) => `[attached: ${basename(a.path)}]\n`).join('')}---\n`);
     };
   }
   // attachments: [{ path }], files on this server, sent as base64.
   // html, when given, is the designed version; text stays as the plain version for mail apps that don't show HTML.
-  return async ({ to, subject, text, html, attachments }) => {
+  // replyTo sends answers to a person's own inbox; fromName shows a person's name in front of MAIL_FROM's address.
+  const address = from.match(/<([^>]+)>/)?.[1] || from;
+  return async ({ to, subject, text, html, attachments, replyTo, fromName }) => {
     const files = (attachments || []).map((a) => ({ filename: a.filename || basename(a.path), content: readFileSync(a.path).toString('base64') }));
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from, to, subject, text, ...(html ? { html } : {}), ...(files.length ? { attachments: files } : {}) }),
+      body: JSON.stringify({ from: fromName ? `${fromName.replace(/[<>"]/g, '')} <${address}>` : from, to, subject, text, ...(html ? { html } : {}),
+        ...(replyTo ? { reply_to: replyTo } : {}), ...(files.length ? { attachments: files } : {}) }),
     });
     if (!res.ok) throw new Error(`Email send failed (${res.status}): ${await res.text()}`);
   };
@@ -169,9 +172,10 @@ const accountInviteHtml = (lang, { kind, role, email, link, leaveUrl, linkDays, 
  * Every email the admin sends carries media that supports what the email asks for (Badji, 9 Nov 2026). withMedia
  * adds a designed HTML version to a plain email: the brand, a picture, the same words and, when given, a button.
  * The text stays as the plain-text version for mail apps that don't show HTML. image is a file in /media/email (or a
- * full URL); cta is { label, link }. One-to-one partner emails stay plain and get an attachment instead.
+ * full URL); cta is { label, link }. placement 'bottom' is for one-to-one partner emails: the words read like a plain
+ * personal email and the picture (a one-pager or guide) is embedded under them, linking to the full PDF.
  */
-export const withMedia = (mail, { image, alt = '', cta = null, base = 'https://pairmundo.com', lang = 'en' }) => {
+export const withMedia = (mail, { image, alt = '', cta = null, base = 'https://pairmundo.com', lang = 'en', placement = 'top', link = null, caption = null }) => {
   const BLUE = '#3b5bdb'; const INK = '#2b2a33'; const SERIF = "Georgia, 'Times New Roman', serif";
   const SANS = "-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
   const root = base.replace(/\/$/, '');
@@ -186,8 +190,13 @@ export const withMedia = (mail, { image, alt = '', cta = null, base = 'https://p
   <tr><td style="padding:0 4px 16px"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
     <td><img src="${root}/media/email/icon.png" width="36" height="36" alt="" style="display:block;border:0;border-radius:9px"></td>
     <td style="padding-left:10px;font:600 22px/1 ${SERIF};color:${BLUE}">${esc(APP_NAME)}</td></tr></table></td></tr>
-  <tr><td style="line-height:0"><img src="${esc(src)}" width="600" alt="${esc(alt)}" style="display:block;width:100%;max-width:600px;height:auto;border:0;border-radius:20px 20px 0 0"></td></tr>
-  <tr><td bgcolor="#ffffff" style="background:#fff;border-radius:0 0 20px 20px;padding:26px 28px 14px">${button}${paras}${button}</td></tr>
+${placement === 'bottom'
+    // A personal email: the words first, then the picture (a one-pager, a guide) embedded below, opening the full version.
+    ? `<tr><td bgcolor="#ffffff" style="background:#fff;border-radius:20px;padding:26px 28px 22px">${paras}${button}
+      ${link ? `<a href="${esc(link)}">` : ''}<img src="${esc(src)}" width="544" alt="${esc(alt)}" style="display:block;width:100%;max-width:544px;height:auto;border:1px solid #e3e6f0;border-radius:12px">${link ? '</a>' : ''}
+      ${caption ? `<p style="margin:10px 0 0;font:14px/1.4 ${SANS};text-align:center">${link ? `<a href="${esc(link)}" style="color:${BLUE}">${esc(caption)}</a>` : esc(caption)}</p>` : ''}</td></tr>`
+    : `<tr><td style="line-height:0"><img src="${esc(src)}" width="600" alt="${esc(alt)}" style="display:block;width:100%;max-width:600px;height:auto;border:0;border-radius:20px 20px 0 0"></td></tr>
+  <tr><td bgcolor="#ffffff" style="background:#fff;border-radius:0 0 20px 20px;padding:26px 28px 14px">${button}${paras}${button}</td></tr>`}
 </table></td></tr></table></body></html>`;
   return { ...mail, html };
 };
@@ -272,7 +281,7 @@ export const teamInviteEmail = ({ name, email, link }) => ({
     `You have a ${APP_NAME} account for running agency partnerships: the pipeline of agencies, your next steps each day, and your pay.`, '',
     'To sign in the first time, set your password here. Choose "Forgot password", enter this email address and use the code we send you:', link, '',
     `Your sign-in email: ${email}`, '',
-    'Badji Tchedre-San, Co-founder & Partnerships, PairMundo'].join('\n'),
+    'Badji', 'Co-founder & Partnerships, PairMundo'].join('\n'),
 });
 
 /** Tells an agency what's new on its agency page and asks it to invite its families and au pairs before the
@@ -292,7 +301,7 @@ export const agencyUpdateEmail = ({ name, link, code }) => ({
     'We can also hide contact details in chats until you confirm a placement, let you approve each new family first, and include the Family Pass for your families. Just reply to this email if you want any of these.', '',
     'Open your agency page:', link, '',
     'Questions? Just reply to this email.', '',
-    'Best regards,', 'Badji Tchedre-San', `Co-founder & Partnerships, ${APP_NAME}`].filter((x) => x != null).join('\n'),
+    'Best regards,', 'Badji', `Co-founder & Partnerships, ${APP_NAME}`].filter((x) => x != null).join('\n'),
 });
 
 /** An agency invites one of its host families to join it on PairMundo. In English, like ambassadorInviteEmail. */
@@ -326,11 +335,11 @@ export const agencyUploadOfferEmail = ({ name, code, signup = null, aupairs = 0,
     '3. They add a photo and a few lines, and they are live. You follow every one of them on your agency page.', '',
     "It takes you about 10 minutes and costs nothing. If a full list is too much right now, send me the candidates you have ready and we'll start with those.", '',
     signup ? `Your agency page is ready for you here: ${signup}\n` : null,
-    onePager ? `I've attached a one-page overview of how it works. You can also open it here: ${onePager}\n` : null,
+    onePager ? `There's a one-page overview of how it works below, and as a PDF here: ${onePager}\n` : null,
     `The agencies with the most finished profiles on 23 November are named in our launch ads, so the sooner your candidates are on, the better.`, '',
     'Could you send me your list this week?', '',
     'Warm regards,',
-    `Badji Tchedre-San, Co-founder & Partnerships, ${APP_NAME}`].filter((x) => x != null).join('\n'),
+    'Badji', `Co-founder & Partnerships, ${APP_NAME}`].filter((x) => x != null).join('\n'),
 });
 
 /** An agency on PairMundo invites another agency to join and work with it. In English, like ambassadorInviteEmail. */

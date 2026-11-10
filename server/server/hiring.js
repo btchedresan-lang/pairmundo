@@ -50,7 +50,7 @@ export const JOBS = {
       'That agency replies: "Thanks, but we work with a few platforms already and our team is too busy to add another one." Write your answer.',
     ],
     test_pay: 'US$30',
-    sign_off: 'Badji Tchedre-San, Co-founder & Partnerships, PairMundo',
+    sign_off: 'Badji\nCo-founder & Partnerships, PairMundo',
   },
   // Ambassadors sign themselves up: the job page explains the role and links to the ambassador sign-up.
   ambassador: {
@@ -76,7 +76,7 @@ export const JOBS = {
       'A reward for each au pair who completes a verified profile, each family who buys a Family Pass, and each stay that starts with someone you brought',
       'Your page shows the exact rewards and what you have earned. No targets, no fees, stop anytime',
     ],
-    sign_off: 'Badji Tchedre-San, Co-founder & Partnerships, PairMundo',
+    sign_off: 'Badji\nCo-founder & Partnerships, PairMundo',
   },
   // Flyer distributors apply with a short form. Hiring one opens the admin's flyer distributor form, prefilled.
   'flyer-distributor': {
@@ -106,7 +106,7 @@ export const JOBS = {
       { key: 'campaign_answer', label: 'Which city and neighbourhoods could you cover?' },
       { key: 'objection_answer', label: 'When are you free to deliver, and have you done flyer, newspaper or similar work before?' },
     ],
-    sign_off: 'Badji Tchedre-San, Co-founder & Partnerships, PairMundo',
+    sign_off: 'Badji\nCo-founder & Partnerships, PairMundo',
   },
 };
 export const APPLICANT_STATUSES = ['new', 'shortlisted', 'test', 'interview', 'hired', 'rejected'];
