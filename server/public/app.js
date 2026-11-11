@@ -316,14 +316,20 @@ function renderDeck() {
   const top = $deck.querySelector('.swipe-card[data-i="0"]');
   const gal = top.querySelector('.gallery');
   let sx = 0; let sy = 0; let dx = 0; let dy = 0; let dragging = false;
-  top.addEventListener('pointerdown', (e) => { dragging = true; sx = e.clientX; sy = e.clientY; dx = dy = 0; top.setPointerCapture(e.pointerId); top.style.transition = 'none'; });
+  let vx = 0; let vy = 0; let last = null; // release speed, px per ms, from the last moves
+  const box = top.getBoundingClientRect();
+  const need = swipeNeeds(box.width, box.height);
+  top.addEventListener('pointerdown', (e) => { dragging = true; sx = e.clientX; sy = e.clientY; dx = dy = vx = vy = 0; last = { x: e.clientX, y: e.clientY, t: e.timeStamp }; top.setPointerCapture(e.pointerId); top.style.transition = 'none'; });
   top.addEventListener('pointermove', (e) => {
     if (!dragging) return;
     dx = e.clientX - sx; dy = e.clientY - sy;
-    top.style.transform = `translate(${dx}px, ${dy}px) rotate(${dx / 18}deg)`;
-    top.querySelector('.stamp.like').style.opacity = Math.max(0, Math.min(1, dx / 100));
-    top.querySelector('.stamp.nope').style.opacity = Math.max(0, Math.min(1, -dx / 100));
-    top.querySelector('.stamp.super').style.opacity = Math.abs(dx) < 60 ? Math.max(0, Math.min(1, -dy / 100)) : 0;
+    if (last && e.timeStamp > last.t) { vx = (e.clientX - last.x) / (e.timeStamp - last.t); vy = (e.clientY - last.y) / (e.timeStamp - last.t); }
+    last = { x: e.clientX, y: e.clientY, t: e.timeStamp };
+    top.style.transform = `translate(${dx}px, ${dy}px) rotate(${dx / 30}deg)`;
+    // Each stamp is fully shown exactly when letting go would count.
+    top.querySelector('.stamp.like').style.opacity = Math.max(0, Math.min(1, dx / need.side));
+    top.querySelector('.stamp.nope').style.opacity = Math.max(0, Math.min(1, -dx / need.side));
+    top.querySelector('.stamp.super').style.opacity = Math.abs(dx) < Math.abs(dy) / 2 ? Math.max(0, Math.min(1, -dy / need.up)) : 0;
   });
   const end = (e) => {
     if (!dragging) return; dragging = false;
@@ -336,14 +342,26 @@ function renderDeck() {
       top.style.transform = '';
       return;
     }
-    if (dx > 110) return swipeTop('like');
-    if (dx < -110) return swipeTop('pass');
-    if (dy < -120 && Math.abs(dx) < 80) return swipeTop('super');
+    const decision = swipeDecision({ dx, dy, vx, vy, ...need });
+    if (decision) return swipeTop(decision);
     top.style.transform = '';
     top.querySelectorAll('.stamp').forEach((st) => { st.style.opacity = 0; });
   };
   top.addEventListener('pointerup', end);
   top.addEventListener('pointercancel', end);
+}
+
+// When a drag counts as a like, pass or super like: the same rules as the phone app (mobile/src/swipeRules.js).
+// It must travel 45% of the card's width sideways (at least 150 px), or 28% of its height up, mostly in that direction,
+// and not be heading back to the middle when let go. Shorter drags, slanted drags and flicks spring back.
+function swipeNeeds(width, height) { return { side: Math.max(150, width * 0.45), up: Math.max(200, height * 0.28) }; }
+function swipeDecision({ dx, dy, vx, vy, side, up }) {
+  if (Math.abs(dx) >= side && Math.abs(dx) >= Math.abs(dy) * 1.2) {
+    if (dx > 0 ? vx < -0.2 : vx > 0.2) return null;
+    return dx > 0 ? 'like' : 'pass';
+  }
+  if (-dy >= up && -dy >= Math.abs(dx) * 2 && vy <= 0.2) return 'super';
+  return null;
 }
 
 let swiping = false;

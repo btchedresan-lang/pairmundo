@@ -21,7 +21,7 @@ export default function Placements() {
     <FlatList style={{ backgroundColor: t.bg }} data={list} keyExtractor={(p) => String(p.id)} contentContainerStyle={{ padding: 16, gap: 12 }}
       refreshControl={<RefreshControl refreshing={false} onRefresh={load} />}
       ListHeaderComponent={error ? <Alert level="error" text={error} /> : null}
-      ListEmptyComponent={<Empty icon="🧳" title={tr('No placements yet')} text={tr("Once you match, open their profile and tap Propose placement. The app checks it against the country's au pair rules.")} />}
+      ListEmptyComponent={<Empty icon="briefcase-outline" title={tr('No placements yet')} text={tr("Once you match, open their profile and tap Propose placement. The app checks it against the country's au pair rules.")} />}
       renderItem={({ item: p }) => {
         const other = me.user.id === p.aupair_id ? p.family : p.aupair;
         return (

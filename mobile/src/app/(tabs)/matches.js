@@ -6,7 +6,7 @@ import { api } from '../../api';
 import { useAuth } from '../../auth';
 import { firstName, fmtTime } from '../../data';
 import { Alert, Empty, Loading, Photo, T } from '../../components/ui';
-import { C, useTheme } from '../../theme';
+import { C, lift, useTheme } from '../../theme';
 import { tr } from '../../i18n';
 
 export default function Matches() {
@@ -40,9 +40,10 @@ export default function Matches() {
         ) : <T muted>{tr('No matches yet. Swipe right on people you like!')}</T>}
         <T h2 style={{ marginTop: 10 }}>{tr('Messages')}</T>
       </View>}
-      ListEmptyComponent={convs.length ? <Empty icon="👋" title={tr('Say hi to your new matches')} text={tr('Tap a photo above to start chatting.')} /> : null}
+      ListEmptyComponent={convs.length ? <Empty icon="hand-left-outline" title={tr('Say hi to your new matches')} text={tr('Tap a photo above to start chatting.')} /> : null}
       renderItem={({ item: c }) => (
-        <Pressable onPress={() => router.push(`/chat/${c.id}`)} style={({ pressed }) => ({ flexDirection: 'row', gap: 12, alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: pressed ? t.soft : 'transparent' })}>
+        <Pressable onPress={() => router.push(`/chat/${c.id}`)} style={({ pressed }) => ({ flexDirection: 'row', gap: 14, alignItems: 'center', marginHorizontal: 16, marginBottom: 10, padding: 14, borderRadius: 20,
+          backgroundColor: pressed ? t.soft : t.card, transform: [{ scale: pressed ? 0.98 : 1 }], ...lift.sm })}>
           <Photo user={c.other} rounded style={{ width: 56, height: 56 }} />
           <View style={{ flex: 1, gap: 2 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
