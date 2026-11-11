@@ -95,7 +95,7 @@ export default function MyProfile() {
   return (
     <View style={{ flex: 1 }}>
     <Screen scrollEnabled={!dragging} style={dirty ? { paddingBottom: 80 } : null}>
-      <Button title={`👁 ${tr('Preview my profile')}`} kind="secondary" onPress={preview} disabled={busy} />
+      <Button icon="eye-outline" title={tr('Preview my profile')} kind="secondary" onPress={preview} disabled={busy} />
       {strength && strength.pct < 100 ? (
         <Card>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -196,9 +196,9 @@ export default function MyProfile() {
 
       {msg ? <Alert level={msg.level} text={msg.text} /> : null}
       <Button title={tr('Save profile')} onPress={() => save()} loading={busy} />
-      <Button title={`🛂 ${tr('Country au pair rules')}`} kind="ghost" onPress={() => router.push('/programs')} />
-      {!me.user.verification?.id ? <Button title={`🪪 ${tr('Verify my ID')}`} kind="secondary" onPress={() => router.push('/account')} /> : null}
-      <Button title={`🔒 ${tr('Account and safety')}`} kind="ghost" onPress={() => router.push('/account')} />
+      <Button icon="globe-outline" title={tr('Country au pair rules')} kind="ghost" onPress={() => router.push('/programs')} />
+      {!me.user.verification?.id ? <Button icon="shield-checkmark-outline" title={tr('Verify my ID')} kind="secondary" onPress={() => router.push('/account')} /> : null}
+      <Button icon="lock-closed-outline" title={tr('Account and safety')} kind="ghost" onPress={() => router.push('/account')} />
       <Button title={tr('Sign out')} kind="ghost" onPress={async () => { if (dirty) await save({ quiet: true }); signOut(); }} />
       {/* The server only matters to testers who switched to another one. */}
       {__DEV__ || isCustomServer() ? <T small muted style={{ textAlign: 'center' }}>{brand.name} · {tr('connected to {server}', { server: getBase() })}</T> : null}

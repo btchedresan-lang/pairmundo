@@ -1,7 +1,9 @@
-import { useState } from 'react';
-import { FlatList, Modal, Platform, Pressable, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Animated, FlatList, Modal, Platform, Pressable, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
-import { Text, TextInput } from './Text';
+import { HEADING_BOLD, Text, TextInput } from './Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { C, useTheme } from '../theme';
 import { COUNTRIES, country, flag, fmtDate } from '../data';
@@ -19,7 +21,7 @@ export function CountryPicker({ label, value, onChange, placeholder = tr('Choose
   return (
     <View style={{ gap: 4 }}>
       {label ? <T small bold>{label}</T> : null}
-      <Pressable onPress={() => setOpen(true)} style={{ borderWidth: 1, borderColor: t.line, borderRadius: 12, padding: 12, backgroundColor: t.bg }}>
+      <Pressable onPress={() => setOpen(true)} style={{ borderWidth: 1.5, borderColor: t.line, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 13, backgroundColor: t.card }}>
         <Text style={{ color: value ? t.ink : t.muted, fontSize: 15 }}>{value ? `${flag(value)} ${country(value)}` : allowAny || placeholder}</Text>
       </Pressable>
       <Modal visible={open} animationType="slide" transparent onRequestClose={() => setOpen(false)}>
@@ -47,22 +49,36 @@ export function CountryPicker({ label, value, onChange, placeholder = tr('Choose
 
 /** The "It's a match!" celebration. */
 export function MatchModal({ match, me, onMessage, onClose }) {
+  // Photos settle in with a little bounce when the match shows.
+  const [pop] = useState(() => new Animated.Value(0));
+  useEffect(() => {
+    if (!match) return;
+    pop.setValue(0);
+    Animated.spring(pop, { toValue: 1, friction: 6, tension: 70, useNativeDriver: Platform.OS !== 'web' }).start();
+  }, [match, pop]);
+  const scale = pop.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] });
   return (
     <Modal visible={!!match} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(10,10,20,0.88)', alignItems: 'center', justifyContent: 'center', padding: 24, gap: 14 }}>
-        <Text style={{ fontSize: 44, fontWeight: '900', fontStyle: 'italic', color: C.primary }}>{tr("It's a match!")}</Text>
-        <Text style={{ color: '#fff', fontSize: 16, textAlign: 'center' }}>{tr('You and {name} liked each other.', { name: match?.other?.name })}</Text>
-        <View style={{ flexDirection: 'row', marginVertical: 16 }}>
-          <Photo user={me} rounded style={{ width: 128, height: 128, borderWidth: 4, borderColor: '#fff', transform: [{ rotate: '-8deg' }, { translateX: 12 }] }} />
-          <Photo user={match?.other} rounded style={{ width: 128, height: 128, borderWidth: 4, borderColor: '#fff', transform: [{ rotate: '8deg' }, { translateX: -12 }] }} />
-        </View>
-        <Pressable onPress={onMessage} style={{ backgroundColor: C.primary, borderRadius: 999, paddingVertical: 14, width: '100%', maxWidth: 340, alignItems: 'center' }}>
-          <Text style={{ color: '#fff', fontWeight: '800', fontSize: 16 }}>💬  {tr('Send a message')}</Text>
+      <LinearGradient colors={['#1c1b22', '#29388a']} style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28, gap: 12 }}>
+        <Text style={{ fontSize: 46, fontFamily: HEADING_BOLD, color: '#fff', letterSpacing: -0.5, textAlign: 'center' }}>{tr("It's a match!")}</Text>
+        <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 16, textAlign: 'center' }}>{tr('You and {name} liked each other.', { name: match?.other?.name })}</Text>
+        <Animated.View style={{ flexDirection: 'row', marginVertical: 28, transform: [{ scale }], opacity: pop }}>
+          <Photo user={me} rounded style={{ width: 132, height: 132, borderWidth: 4, borderColor: '#fff', transform: [{ rotate: '-7deg' }, { translateX: 14 }] }} />
+          <Photo user={match?.other} rounded style={{ width: 132, height: 132, borderWidth: 4, borderColor: '#fff', transform: [{ rotate: '7deg' }, { translateX: -14 }] }} />
+          <View style={{ position: 'absolute', alignSelf: 'center', left: '50%', marginLeft: -22, bottom: -10, width: 44, height: 44, borderRadius: 22, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="heart" size={24} color={C.nope} />
+          </View>
+        </Animated.View>
+        <Pressable onPress={onMessage} accessibilityRole="button" style={({ pressed }) => ({ width: '100%', maxWidth: 340, transform: [{ scale: pressed ? 0.97 : 1 }] })}>
+          <View style={{ backgroundColor: '#fff', borderRadius: 999, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            <Ionicons name="chatbubble-ellipses" size={20} color={C.primary} />
+            <Text style={{ color: C.primary, fontWeight: '800', fontSize: 16 }}>{tr('Send a message')}</Text>
+          </View>
         </Pressable>
-        <Pressable onPress={onClose} style={{ borderColor: 'rgba(255,255,255,0.5)', borderWidth: 1, borderRadius: 999, paddingVertical: 14, width: '100%', maxWidth: 340, alignItems: 'center' }}>
-          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 16 }}>{tr('Keep swiping')}</Text>
+        <Pressable onPress={onClose} accessibilityRole="button" style={{ paddingVertical: 14, width: '100%', maxWidth: 340, alignItems: 'center' }}>
+          <Text style={{ color: 'rgba(255,255,255,0.85)', fontWeight: '700', fontSize: 16 }}>{tr('Keep swiping')}</Text>
         </Pressable>
-      </View>
+      </LinearGradient>
     </Modal>
   );
 }
@@ -101,9 +117,9 @@ export function DateField({ label, hint, value, onChange, minimumDate, maximumDa
     <View style={{ gap: 4 }}>
       {label ? <T small bold>{label}</T> : null}
       <Pressable onPress={show} accessibilityRole="button" accessibilityLabel={label}
-        style={{ borderWidth: 1, borderColor: t.line, borderRadius: 12, padding: 12, backgroundColor: t.bg, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        style={{ borderWidth: 1.5, borderColor: t.line, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 13, backgroundColor: t.card, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text style={{ color: current ? t.ink : t.muted, fontSize: 15 }}>{current ? fmtDate(value) : placeholder}</Text>
-        <Text style={{ fontSize: 16 }}>📅</Text>
+        <Ionicons name="calendar-outline" size={19} color={t.muted} />
       </Pressable>
       {hint ? <T small muted>{hint}</T> : null}
       {Platform.OS === 'ios' ? (

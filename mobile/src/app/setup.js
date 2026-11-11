@@ -129,7 +129,7 @@ export default function Setup() {
 
       {err ? <Alert level="error" text={err} /> : null}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-        {step > 0 ? <Button small kind="ghost" title={`← ${tr('Back')}`} onPress={() => setStep(step - 1)} /> : <View />}
+        {step > 0 ? <Button small kind="ghost" icon="chevron-back" title={tr('Back')} onPress={() => setStep(step - 1)} /> : <View />}
         <Button small kind="ghost" title={tr('Skip for now')} onPress={finish} />
       </View>
     </Screen>

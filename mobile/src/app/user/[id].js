@@ -12,6 +12,7 @@ import { MatchModal } from '../../components/pickers';
 import { PosterBody, PosterHeader } from '../../components/Poster';
 import { confirmAsync } from '../../components/dialogs';
 import { C } from '../../theme';
+import { Ionicons } from '@expo/vector-icons';
 import { askToFinishProfile } from '../setup';
 import { VisaCard } from '../../components/Visa';
 
@@ -89,7 +90,10 @@ export default function UserProfile() {
           <Shade />
           {d.match ? <Text style={{ position: 'absolute', top: 22, right: 14, backgroundColor: d.match.score >= 75 ? C.like : 'rgba(0,0,0,0.55)', color: '#fff', fontWeight: '700', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, overflow: 'hidden' }}>{tr('{score}% match', { score: d.match.score })}</Text> : null}
           <View style={{ position: 'absolute', left: 16, right: 16, bottom: 16 }} pointerEvents="none">
-            <Text style={{ color: '#fff', fontSize: 33, fontFamily: HEADING }}>{u.name}{u.role === 'aupair' && p.age ? <Text style={{ opacity: 0.85 }}>  {p.age}</Text> : null}{u.verification.id ? '  ✔' : ''}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={{ color: '#fff', fontSize: 33, fontFamily: HEADING, flexShrink: 1 }}>{u.name}{u.role === 'aupair' && p.age ? <Text style={{ opacity: 0.85 }}>  {p.age}</Text> : null}</Text>
+              {u.verification.id ? <Ionicons name="checkmark-circle" size={26} color="#6cc4ff" accessibilityLabel={tr('ID verified')} /> : null}
+            </View>
             <Text style={{ color: '#fff', fontSize: 15 }}>{u.role === 'aupair' ? tr('Au pair') : tr('Host family')} · {flag(u.country)} {[u.city, country(u.country)].filter(Boolean).join(', ')}</Text>
             <Text style={{ color: '#fff', fontSize: 14, opacity: 0.9 }}>{d.rating.count ? `★ ${d.rating.avg} (${trn(d.rating.count, '{n} review', '{n} reviews')}) · ` : ''}{trn(d.placements_completed, '{n} completed placement', '{n} completed placements')}</Text>
           </View>
@@ -111,8 +115,8 @@ export default function UserProfile() {
           </View>
         ) : canAct && matched ? (
           <View style={{ flexDirection: 'row', gap: 10 }}>
-            <Button title={`💬 ${tr('Message')}`} style={{ flex: 1 }} onPress={message} />
-            <Button title={`🧳 ${tr('Propose placement')}`} kind="secondary" style={{ flex: 1 }} onPress={() => router.push(`/new-placement/${u.id}`)} />
+            <Button icon="chatbubble-ellipses" title={tr('Message')} style={{ flex: 1 }} onPress={message} />
+            <Button icon="briefcase-outline" title={tr('Propose placement')} kind="secondary" style={{ flex: 1 }} onPress={() => router.push(`/new-placement/${u.id}`)} />
           </View>
         ) : canAct && iLiked ? (
           <Alert level="info" text={`♥ ${tr("You liked them. You'll match if they like you back.")}`} />
@@ -120,9 +124,9 @@ export default function UserProfile() {
           <View style={{ gap: 10 }}>
             {likesMe ? <Alert level="ok" text={`💛 ${tr('They like you! Like them back to match.')}`} /> : null}
             <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 20 }}>
-              <RoundButton icon="✕" color={C.nope} onPress={() => swipe('pass')} label={tr('Pass')} />
-              <RoundButton size="sm" icon="★" color={C.super} onPress={() => swipe('super')} label={tr('Super like')} />
-              <RoundButton icon="♥" color={C.like} onPress={() => swipe('like')} label={tr('Like')} />
+              <RoundButton icon="close" color={C.nope} onPress={() => swipe('pass')} label={tr('Pass')} />
+              <RoundButton size="sm" icon="star" color={C.super} onPress={() => swipe('super')} label={tr('Super like')} />
+              <RoundButton icon="heart" color={C.like} filled onPress={() => swipe('like')} label={tr('Like')} />
             </View>
           </View>
         ) : null}
@@ -201,10 +205,10 @@ export default function UserProfile() {
           )) : <T muted>{tr('No reviews yet. Reviews only come from real placements.')}</T>}
         </Card>
 
-        {!isMe ? <Button small kind="ghost" title={`⚑ ${tr('Report this profile')}`} onPress={() => ask(tr('What is wrong with this profile?'), async (reason) => {
+        {!isMe ? <Button small kind="ghost" icon="flag-outline" title={tr('Report this profile')} onPress={() => ask(tr('What is wrong with this profile?'), async (reason) => {
           await api('/reports', { method: 'POST', body: { target_user_id: u.id, reason } }); setNote(tr('Thanks, our team will look into it.'));
         })} /> : null}
-        {!isMe && !d.blocked ? <Button small kind="ghost" title={`🚫 ${tr('Block')}`} onPress={block} /> : null}
+        {!isMe && !d.blocked ? <Button small kind="ghost" icon="ban-outline" title={tr('Block')} onPress={block} /> : null}
       </View>
 
       <MatchModal match={match} me={me.user} onClose={() => setMatch(null)}

@@ -34,7 +34,7 @@ function RootStack() {
     <>
     {signedIn && Platform.OS !== 'web' ? <NotificationOpener /> : null}
     {/* Keyed by language so every screen redraws in the new one. */}
-    <Stack key={lang} screenOptions={{ headerTintColor: C.primary, headerStyle: { backgroundColor: t.card }, headerTitleStyle: { color: t.ink, fontFamily: HEADING, fontSize: 19 }, contentStyle: { backgroundColor: t.bg }, headerBackButtonDisplayMode: 'minimal' }}>
+    <Stack key={lang} screenOptions={{ headerTintColor: C.primary, headerStyle: { backgroundColor: t.bg }, headerShadowVisible: false, headerTitleStyle: { color: t.ink, fontFamily: HEADING, fontSize: 20 }, contentStyle: { backgroundColor: t.bg }, headerBackButtonDisplayMode: 'minimal' }}>
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Protected guard={!signedIn}>
         <Stack.Screen name="login" options={{ headerShown: false }} />
