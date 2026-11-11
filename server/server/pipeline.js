@@ -11,7 +11,8 @@ const ACTIVITY_KINDS = ['note', 'email', 'reply', 'call', 'meeting'];
  *  other partner once a placement or referral of theirs starts. Commission counts if that happens within window_days. */
 export const ACTIVATION = { sending_aupairs: 10, window_days: 183 };
 /** Days without an answer before a step is due again. */
-const WAIT = { contacted: 7, agreement: 5, signed: 30, declined: 30 };
+// Active partners are managed, not left alone: a check-in is due a month after the last contact with them.
+const WAIT = { contacted: 7, agreement: 5, signed: 30, declined: 30, active: 30 };
 
 const day = (d = new Date()) => d.toISOString().slice(0, 10);
 const addDays = (n, from = new Date()) => day(new Date(from.getTime() + n * 86400000));
@@ -54,7 +55,15 @@ const COLUMN = [
   ['phone', /^(phone|telephone|whatsapp)$/],
   ['source', /^(source|wave|list)$/],
   ['notes', /^(notes?|comments?)$/],
+  ['stage', /^(stage|pipeline stage)$/],
+  ['next_action', /^(next step|next action)$/],
 ];
+/** A stage from a sheet: the stage itself or its label in the app ("To contact", "Agreement sent"). */
+const STAGE_NAMES = { 'to contact': 'target', 'agreement sent': 'agreement' };
+const stageOf = (v) => {
+  const s = String(v ?? '').trim().toLowerCase();
+  return LEAD_STAGES.includes(s) ? s : STAGE_NAMES[s] ?? null;
+};
 /** Country codes by English name, so a sheet can say "Germany" as well as "DE". */
 const COUNTRY_BY_NAME = (() => {
   const names = new Intl.DisplayNames(['en'], { type: 'region' });
@@ -131,6 +140,9 @@ export function mountPipeline(api, { db, wrap, requireRole, HttpError, str, isDa
     }
   };
 
+  /** The last time someone on the team was in touch with a lead (emails, calls, meetings, replies and notes). */
+  const lastTouch = (l) => db.prepare("SELECT MAX(created_at) t FROM partner_activity WHERE lead_id = ? AND user_id IS NOT NULL AND kind <> 'stage'").get(l.id)?.t;
+
   /** The suggested next step for a lead, and whether it is due, from its stage and how long it has waited. */
   const suggest = (l) => {
     const type = { host: 'host agency', sending: 'sending agency', sponsor: 'sponsor', other: 'partner' }[l.kind];
@@ -146,7 +158,8 @@ export function mountPipeline(api, { db, wrap, requireRole, HttpError, str, isDa
       signed: [l.kind === 'sending'
         ? `Onboard: share their code link and help their au pairs create profiles (${ACTIVATION.sending_aupairs} activate them).`
         : 'Onboard: set up their referral offer and check in until the first referred au pair starts.', daysSince(l.signed_at) >= WAIT.signed],
-      active: ['Keep in touch monthly and ask for introductions to other agencies.', false],
+      active: ['Monthly check-in: how is it going, what is in the way, any au pairs or families to help with? Ask for introductions to other agencies.',
+        daysSince([l.activated_at, lastTouch(l)].filter(Boolean).sort().at(-1)) >= WAIT.active],
       declined: [l.objection ? `Find a way around "${l.objection}": a new angle, tailored terms or a smaller first step.` : 'Note why they said no, then try a smaller first step.', daysSince(l.declined_at) >= WAIT.declined],
     }[l.stage];
     const due = (l.next_action_on && l.next_action_on <= day()) || (!l.next_action_on && s[1]);
@@ -209,7 +222,7 @@ export function mountPipeline(api, { db, wrap, requireRole, HttpError, str, isDa
       .all(...[stage, mine].filter((x) => x != null), ...(q ? [`%${q}%`, `%${q}%`, q] : [])).map(leadView);
     const counts = Object.fromEntries(LEAD_STAGES.map((s) => [s, 0]));
     for (const r of db.prepare('SELECT stage, COUNT(*) n FROM partner_leads GROUP BY stage').all()) counts[r.stage] = r.n;
-    const due = db.prepare("SELECT * FROM partner_leads WHERE stage <> 'active'").all().map(leadView).filter((l) => l.next.due && (!mine || l.owner_id === mine))
+    const due = db.prepare('SELECT * FROM partner_leads').all().map(leadView).filter((l) => l.next.due && (!mine || l.owner_id === mine))
       .sort((a, b) => LEAD_STAGES.indexOf(b.stage) - LEAD_STAGES.indexOf(a.stage)).slice(0, 200);
     return { stages: LEAD_STAGES, kinds: LEAD_KINDS, counts, leads, due, activation: ACTIVATION,
       team: db.prepare("SELECT id, name, role FROM users WHERE role = 'admin' OR id IN (SELECT user_id FROM partner_team WHERE active = 1) ORDER BY role, name").all(),
@@ -311,8 +324,17 @@ export function mountPipeline(api, { db, wrap, requireRole, HttpError, str, isDa
       const raw = Object.fromEntries(map.map((k, j) => [k, r[j]]).filter(([k, v]) => k && v != null && String(v).trim() !== ''));
       if (!raw.name) { skipped++; return; }
       let f;
-      try { f = leadFields({ ...raw, email: raw.email?.split(/[\s,;]+/)[0], source: raw.source ?? source }, {}, req.user); }
-      catch (e) { errors.push(`Row ${i + 2}: ${e.message}`); skipped++; return; }
+      let stage = null;
+      try {
+        // A Stage column carries where each agency already is, so a hand-over keeps every open conversation in place.
+        if (raw.stage) {
+          stage = stageOf(raw.stage);
+          if (!stage) throw bad(`"${raw.stage}" is not a stage.`);
+          if (['signed', 'active'].includes(stage) && !isAdmin(req.user)) throw new HttpError(403, 'Only the admin can import signed or active partners.');
+        }
+        const { stage: _s, ...fields } = raw;
+        f = leadFields({ ...fields, email: raw.email?.split(/[\s,;]+/)[0], source: raw.source ?? source }, {}, req.user);
+      } catch (e) { errors.push(`Row ${i + 2}: ${e.message}`); skipped++; return; }
       const known = f.email ? db.prepare('SELECT * FROM partner_leads WHERE email = ?').get(f.email)
         : db.prepare('SELECT * FROM partner_leads WHERE lower(name) = lower(?) AND coalesce(country, \'\') = coalesce(?, \'\')').get(f.name, f.country ?? null);
       if (known) {
@@ -325,7 +347,12 @@ export function mountPipeline(api, { db, wrap, requireRole, HttpError, str, isDa
       }
       f.owner_id = isAdmin(req.user) ? (req.body.owner_id ? Number(req.body.owner_id) : null) : req.user.id;
       f.created_by = req.user.id;
-      if (req.body.stage === 'contacted') { f.stage = 'contacted'; f.contacted_at = day(); f.next_action_on = addDays(WAIT.contacted); }
+      if (stage && stage !== 'target') {
+        // Imported partners are already where they are. They get no signed or activated date, so they don't count in
+        // this week's report and earn no commission, and their next step (onboarding, a check-in) is due straight away.
+        f.stage = stage; f.contacted_at = day();
+        if (stage === 'contacted') f.next_action_on = addDays(WAIT.contacted);
+      } else if (!stage && req.body.stage === 'contacted') { f.stage = 'contacted'; f.contacted_at = day(); f.next_action_on = addDays(WAIT.contacted); }
       const keys = Object.keys(f);
       const ins = db.prepare(`INSERT INTO partner_leads (${keys.join(', ')}) VALUES (${keys.map(() => '?').join(', ')})`).run(...keys.map((k) => f[k]));
       log(ins.lastInsertRowid, req.user.id, 'stage', `Imported${f.source ? ` from ${f.source}` : ''}.`);

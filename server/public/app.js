@@ -2737,7 +2737,7 @@ async function pipelineImport(head) {
   const admin = me.user.role === 'admin';
   const p = admin ? await api('/pipeline?stage=active') : null;
   render(`${head}<form class="card" id="imp"><h2>Import partners from a spreadsheet</h2>
-    <p class="muted small">Save the sheet as CSV and choose the file, or paste it. Columns are found by their headers: Agency or Name (needed), Email, Country, Type, Language, Website, Contact, Phone, Source, Notes. Partners whose email is already in the pipeline are skipped.</p>
+    <p class="muted small">Save the sheet as CSV and choose the file, or paste it. Columns are found by their headers: Agency or Name (needed), Email, Country, Type, Language, Website, Contact, Phone, Source, Notes, Stage (such as Contacted, Meeting or Active) and Next step. Partners whose email is already in the pipeline are skipped.</p>
     <div class="field"><label>CSV file</label><input type="file" id="impFile" accept=".csv,text/csv"></div>
     <div class="field"><label>Or paste it here</label><textarea name="csv" rows="8" placeholder="Agency,Email,Country,Type,Language"></textarea></div>
     <div class="form-grid"><div class="field"><label>Source, when the sheet has none (for example wave3)</label><input name="source"></div>
