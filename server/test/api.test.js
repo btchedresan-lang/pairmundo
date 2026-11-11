@@ -2633,6 +2633,21 @@ test('partnerships pipeline: partner manager login, leads, follow-ups, import, s
   assert.equal(kinder.source, 'wave2');
   assert.equal(kinder.country, 'DE');
 
+  // A hand-over import carries each agency's stage and next step; only the admin can import signed or active partners.
+  const handover = 'Agency,Email,Country,Stage,Next step\nOld Friend,old@friend.test,SE,Active,Monthly check-in\nTalking Co,talk@co.test,DK,Meeting,Call Wed 15:30\nFresh,fresh@new.test,NO,To contact,\nOdd,odd@x.test,NO,Maybe,\n';
+  r = await call(admin, 'POST', '/pipeline/import', { csv: handover, source: 'handover' });
+  assert.deepEqual([r.body.added, r.body.skipped], [3, 1], JSON.stringify(r.body));
+  assert.match(r.body.errors.join(' '), /"Maybe" is not a stage/);
+  const imp = Object.fromEntries(testDb.prepare("SELECT name, stage, next_action, signed_at, activated_at FROM partner_leads WHERE source = 'handover'").all().map((l) => [l.name, l]));
+  assert.deepEqual([imp['Old Friend'].stage, imp['Talking Co'].stage, imp.Fresh.stage], ['active', 'meeting', 'target']);
+  assert.equal(imp['Talking Co'].next_action, 'Call Wed 15:30');
+  assert.equal(imp['Old Friend'].activated_at, null, 'imported partners count in no report and earn nothing');
+  assert.equal(testDb.prepare("SELECT COUNT(*) n FROM partner_commissions WHERE lead_id IN (SELECT id FROM partner_leads WHERE source = 'handover')").get().n, 0);
+  r = await call(pm, 'POST', '/pipeline/import', { csv: 'Agency,Email,Stage\nSneaky,sneaky@x.test,Signed\n' });
+  assert.equal(r.body.added, 0);
+  assert.match(r.body.errors[0], /Only the admin/);
+  testDb.prepare("DELETE FROM partner_leads WHERE source = 'handover'").run();
+
   // A contacted lead's follow-up is due after a week.
   let p = (await call(pm, 'GET', '/pipeline?owner=me')).body;
   assert.ok(!p.due.some((l) => l.id === kinder.id));

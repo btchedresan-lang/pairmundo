@@ -55,7 +55,15 @@ const COLUMN = [
   ['phone', /^(phone|telephone|whatsapp)$/],
   ['source', /^(source|wave|list)$/],
   ['notes', /^(notes?|comments?)$/],
+  ['stage', /^(stage|pipeline stage)$/],
+  ['next_action', /^(next step|next action)$/],
 ];
+/** A stage from a sheet: the stage itself or its label in the app ("To contact", "Agreement sent"). */
+const STAGE_NAMES = { 'to contact': 'target', 'agreement sent': 'agreement' };
+const stageOf = (v) => {
+  const s = String(v ?? '').trim().toLowerCase();
+  return LEAD_STAGES.includes(s) ? s : STAGE_NAMES[s] ?? null;
+};
 /** Country codes by English name, so a sheet can say "Germany" as well as "DE". */
 const COUNTRY_BY_NAME = (() => {
   const names = new Intl.DisplayNames(['en'], { type: 'region' });
@@ -316,8 +324,17 @@ export function mountPipeline(api, { db, wrap, requireRole, HttpError, str, isDa
       const raw = Object.fromEntries(map.map((k, j) => [k, r[j]]).filter(([k, v]) => k && v != null && String(v).trim() !== ''));
       if (!raw.name) { skipped++; return; }
       let f;
-      try { f = leadFields({ ...raw, email: raw.email?.split(/[\s,;]+/)[0], source: raw.source ?? source }, {}, req.user); }
-      catch (e) { errors.push(`Row ${i + 2}: ${e.message}`); skipped++; return; }
+      let stage = null;
+      try {
+        // A Stage column carries where each agency already is, so a hand-over keeps every open conversation in place.
+        if (raw.stage) {
+          stage = stageOf(raw.stage);
+          if (!stage) throw bad(`"${raw.stage}" is not a stage.`);
+          if (['signed', 'active'].includes(stage) && !isAdmin(req.user)) throw new HttpError(403, 'Only the admin can import signed or active partners.');
+        }
+        const { stage: _s, ...fields } = raw;
+        f = leadFields({ ...fields, email: raw.email?.split(/[\s,;]+/)[0], source: raw.source ?? source }, {}, req.user);
+      } catch (e) { errors.push(`Row ${i + 2}: ${e.message}`); skipped++; return; }
       const known = f.email ? db.prepare('SELECT * FROM partner_leads WHERE email = ?').get(f.email)
         : db.prepare('SELECT * FROM partner_leads WHERE lower(name) = lower(?) AND coalesce(country, \'\') = coalesce(?, \'\')').get(f.name, f.country ?? null);
       if (known) {
@@ -330,7 +347,12 @@ export function mountPipeline(api, { db, wrap, requireRole, HttpError, str, isDa
       }
       f.owner_id = isAdmin(req.user) ? (req.body.owner_id ? Number(req.body.owner_id) : null) : req.user.id;
       f.created_by = req.user.id;
-      if (req.body.stage === 'contacted') { f.stage = 'contacted'; f.contacted_at = day(); f.next_action_on = addDays(WAIT.contacted); }
+      if (stage && stage !== 'target') {
+        // Imported partners are already where they are. They get no signed or activated date, so they don't count in
+        // this week's report and earn no commission, and their next step (onboarding, a check-in) is due straight away.
+        f.stage = stage; f.contacted_at = day();
+        if (stage === 'contacted') f.next_action_on = addDays(WAIT.contacted);
+      } else if (!stage && req.body.stage === 'contacted') { f.stage = 'contacted'; f.contacted_at = day(); f.next_action_on = addDays(WAIT.contacted); }
       const keys = Object.keys(f);
       const ins = db.prepare(`INSERT INTO partner_leads (${keys.join(', ')}) VALUES (${keys.map(() => '?').join(', ')})`).run(...keys.map((k) => f[k]));
       log(ins.lastInsertRowid, req.user.id, 'stage', `Imported${f.source ? ` from ${f.source}` : ''}.`);
