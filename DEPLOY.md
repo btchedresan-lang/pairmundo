@@ -131,6 +131,28 @@ Matched families and au pairs can start a video call from their chat. It works w
 
 For private rooms with no sign-in, create a free account at [daily.co](https://dashboard.daily.co), copy the API key from **Developers**, and add it on Render as `DAILY_API_KEY`. Each call then gets its own private Daily room that closes after two hours, and only the two people in the chat can get in. With Daily, calls in the phone app open on the app's own call screen instead of the browser. To use your own Jitsi server instead, set `JITSI_DOMAIN`.
 
+## Sign in with Apple and Google
+
+**Apple** works with no server setup: the server accepts Apple sign-ins for the app's bundle ID (`com.pairmundo.app`). The app build turns on the "Sign In with Apple" capability itself (`usesAppleSignIn` in `mobile/app.config.js`), so it only needs a new build. If the bundle ID ever changes, set `APPLE_AUDIENCES` on Render to the new one.
+
+**Google** stays hidden until it is set up:
+
+1. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials), create OAuth client IDs: one **Web application**, one **iOS** (bundle ID `com.pairmundo.app`) and one **Android** (package `com.pairmundo.app` plus the SHA-1 of the Play app signing key, from Play Console → App integrity).
+2. Put the web and iOS client IDs in `mobile/brand.json` as `googleWebClientId` and `googleIosClientId`, then make a new app build.
+3. Add all three client IDs on Render as `GOOGLE_CLIENT_IDS`, separated by commas.
+
+People who sign in this way get their email confirmed by Apple or Google, so there is no code to type. Someone who already has an account with the same email is signed in to it.
+
 ## Pointing the phone app at the live server
 
 Build the app with `EXPO_PUBLIC_API_URL=https://your-render-address` (or `https://api.pairmundo.com` once the domain is set up). See `mobile/README.md`.
+
+## Demo accounts for app review
+
+Apple and Google need logins that show every feature with other members in them. Set `DEMO_PASSWORD` in Render → Environment (8+ characters) and save. On the next start the server builds a small demo world and keeps it working:
+
+- `family@demo.pairmundo.com`: host family in Austin with the Family Pass. Matches and chats, two likes waiting, a confirmed placement with its checklist and an agreement to sign, and a finished placement to review.
+- `family2@demo.pairmundo.com`: host family in Boston without the Pass, to try the in-app purchase. Its likes and messages are behind the paywall.
+- `aupair@demo.pairmundo.com`: au pair from Colombia. Matches and chats (including with the first family), two likes waiting, a placement to confirm and a finished placement to review.
+
+All three use `DEMO_PASSWORD` and need no email code. The other demo members have illustrated photos and random passwords. Demo members and real members never see each other, and nothing is emailed to demo addresses. The server checks every hour: it restores the password, confirmed email and Family Pass, and rebuilds the whole demo world if a reviewer deleted one of the accounts. Admin → Overview counts leave demo accounts out. To remove them, delete `DEMO_PASSWORD`; the accounts stay but nobody knows a password for them until it is set again.

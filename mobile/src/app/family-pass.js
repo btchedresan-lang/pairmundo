@@ -60,7 +60,7 @@ export default function FamilyPass() {
   };
   // Families who signed up before launch have free days saved, and pick when to use them.
   // And families who signed up with a code that comes with gift days, say from their real estate office.
-  const useSaved = (path) => async () => {
+  const redeemSaved = (path) => async () => {
     setMsg(null); setBusy(true);
     try {
       setPass(await api(path, { method: 'POST' })); await refresh().catch(() => {});
@@ -94,7 +94,7 @@ export default function FamilyPass() {
             <T>{tr('You signed up early, so you have {days} free days of the Family Pass saved. Use them whenever it suits you.', { days: early.days })}{early.use_by ? ` ${tr('Use them by {date}.', { date: fmtDate(early.use_by) })}` : ''}</T>
             {early.can_redeem ? (
               <>
-                <Button title={tr('Use my {days} free days now', { days: early.days })} onPress={useSaved('/family-pass/early-bonus')} loading={busy} />
+                <Button title={tr('Use my {days} free days now', { days: early.days })} onPress={redeemSaved('/family-pass/early-bonus')} loading={busy} />
                 {pass.active ? <T small muted>{tr('They start when your current pass ends.')}</T> : null}
               </>
             ) : <T small muted>{tr('Everything is free right now, so your free days stay saved for later.')}</T>}
@@ -106,7 +106,7 @@ export default function FamilyPass() {
             <T>{tr("Saved for you. Start them whenever you're ready.")} {tr('Use them by {date}.', { date: fmtDate(gift.use_by) })}</T>
             {gift.can_redeem ? (
               <>
-                <Button title={tr('Use my {days} free days now', { days: gift.days })} onPress={useSaved('/family-pass/gift')} loading={busy} />
+                <Button title={tr('Use my {days} free days now', { days: gift.days })} onPress={redeemSaved('/family-pass/gift')} loading={busy} />
                 {pass.active ? <T small muted>{tr('They start when your current pass ends.')}</T> : null}
               </>
             ) : <T small muted>{tr('Everything is free right now, so your free days stay saved for later.')}</T>}

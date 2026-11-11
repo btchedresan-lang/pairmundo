@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Modal, Pressable, View } from 'react-native';
+import { Modal, Pressable, Share, View } from 'react-native';
 import { HEADING_BOLD, Text } from '../../components/Text';
 import { router } from 'expo-router';
 import { useAuth } from '../../auth';
@@ -10,7 +10,9 @@ import { Alert, Button, ChoiceChips, Empty, Loading, RoundButton, T, useInsets }
 import { CountryPicker, MatchModal } from '../../components/pickers';
 import { SwipeDeck } from '../../components/SwipeDeck';
 import { askToFinishProfile } from '../setup';
-import { brand, C, useTheme } from '../../theme';
+import { brand, C, lift, useTheme } from '../../theme';
+import { Ionicons } from '@expo/vector-icons';
+import { haptic } from '../../haptics';
 
 const TOP_LANGS = ['en', 'es', 'fr', 'de', 'it', 'pt', 'nl', 'sv', 'da', 'pl'];
 
@@ -37,7 +39,7 @@ export default function Discover() {
     setDeck((d) => d.filter((x) => x.user.id !== card.user.id));
     try {
       const res = await api('/swipe', { method: 'POST', body: { target_id: card.user.id, direction } });
-      if (res.matched) { setMatch({ other: res.other || card.user, conversation_id: res.conversation_id }); refresh().catch(() => {}); }
+      if (res.matched) { haptic.match(); setMatch({ other: res.other || card.user, conversation_id: res.conversation_id }); refresh().catch(() => {}); }
     } catch (e) {
       // Put the card back so the like isn't lost, then ask for the email code or the missing photo and bio.
       if (e.data?.code === 'email_unverified') { setDeck((d) => [card, ...d]); router.push('/verify-email'); }
@@ -58,22 +60,35 @@ export default function Discover() {
     catch (e) { setError(e.message); }
   };
 
+  // While PairMundo is new, decks run out: offer a push when someone new joins, and a way to bring friends.
+  const alerts = async (on) => {
+    try { await api('/me/new-member-alerts', { method: 'PUT', body: { on } }); await refresh(); } catch (e) { setError(e.message); }
+  };
+  const invite = () => Share.share({ message: isFamily
+    ? tr('We are finding our au pair on {app}: swipe, match and chat with au pairs from all over the world. Join here: {link}', { app: brand.name, link: 'https://pairmundo.com' })
+    : tr('I am looking for a host family on {app}: swipe, match and chat with families all over the world. Join here: {link}', { app: brand.name, link: 'https://pairmundo.com' }) }).catch(() => {});
+
   if (!deck) return <Loading />;
   const nFilters = Object.values(filters).filter(Boolean).length;
   return (
     <View style={{ flex: 1, backgroundColor: t.bg, paddingTop: insets.top + 6 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 8 }}>
-        <Text style={{ fontSize: 27, fontFamily: HEADING_BOLD, color: C.primary }}>{brand.name}</Text>
-        <Button small kind="ghost" title={`⚙ ${tr('Filters')}${nFilters ? ` (${nFilters})` : ''}`} onPress={() => setShowFilters(true)} />
+        <Text style={{ fontSize: 28, fontFamily: HEADING_BOLD, color: t.ink, letterSpacing: -0.5 }}>{brand.name.split(/(?=[A-Z])/)[0]}<Text style={{ color: C.primary, fontFamily: HEADING_BOLD }}>{brand.name.split(/(?=[A-Z])/).slice(1).join('')}</Text></Text>
+        <Pressable onPress={() => setShowFilters(true)} accessibilityRole="button" accessibilityLabel={tr('Filters')} hitSlop={8}
+          style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: t.card, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9, transform: [{ scale: pressed ? 0.95 : 1 }] }, lift.sm]}>
+          <Ionicons name="options-outline" size={18} color={t.ink} />
+          <Text style={{ color: t.ink, fontWeight: '600', fontSize: 14 }}>{tr('Filters')}</Text>
+          {nFilters ? <View style={{ backgroundColor: C.primary, borderRadius: 999, minWidth: 20, height: 20, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 }}><Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>{nFilters}</Text></View> : null}
+        </Pressable>
       </View>
       {!me.user.email_verified ? (
         <Pressable onPress={() => router.push('/verify-email')} style={{ marginHorizontal: 16, marginBottom: 8 }}>
-          <Alert level="warning" text={`📧 ${tr('Confirm your email to start liking. Tap to enter your code.')}`} />
+          <Alert level="warning" text={`${tr('Confirm your email to start liking. Tap to enter your code.')}`} />
         </Pressable>
       ) : null}
       {me.profile_missing?.length ? (
         <Pressable onPress={() => router.push('/setup?back=1')} style={{ marginHorizontal: 16, marginBottom: 8 }}>
-          <Alert level="warning" text={`📸 ${isFamily ? tr('Add a photo and a few words so au pairs can see you. Tap here.') : tr('Add a photo and a few words so families can see you. Tap here.')}`} />
+          <Alert level="warning" text={`${isFamily ? tr('Add a photo and a few words so au pairs can see you. Tap here.') : tr('Add a photo and a few words so families can see you. Tap here.')}`} />
         </Pressable>
       ) : null}
       {error ? <View style={{ marginHorizontal: 16, marginBottom: 8 }}><Alert level="error" text={error} /></View> : null}
@@ -81,18 +96,22 @@ export default function Discover() {
         {deck.length ? (
           <SwipeDeck ref={deckRef} cards={deck} onSwipe={onSwipe} onOpen={(r) => router.push(`/user/${r.user.id}`)} />
         ) : (
-          <Empty title={tr("You've seen everyone for now")} text={isFamily ? tr('New au pairs join every day. Widen your filters or take another look at people you passed.') : tr('New families join every day. Widen your filters or take another look at people you passed.')}>
-            <Button title={tr('Show passed profiles again')} kind="secondary" onPress={async () => { await api('/swipes/passes', { method: 'DELETE' }); load(); }} />
+          <Empty icon="sparkles-outline" title={tr("You've seen everyone for now")} text={isFamily ? tr('New au pairs join every day. Widen your filters or take another look at people you passed.') : tr('New families join every day. Widen your filters or take another look at people you passed.')}>
+            {me.new_member_alert ? (
+              <Pressable onPress={() => alerts(false)} hitSlop={6}><T small muted style={{ textAlign: 'center' }}>{tr("We'll let you know when someone new joins.")} <T small style={{ color: C.primary }}>{tr('Turn off')}</T></T></Pressable>
+            ) : <Button icon="notifications-outline" title={tr('Tell me when someone new joins')} onPress={() => alerts(true)} />}
+            <Button icon="paper-plane-outline" title={isFamily ? tr('Invite a family you know') : tr('Invite an au pair friend')} kind="secondary" onPress={invite} />
+            <Button title={tr('Show passed profiles again')} kind="ghost" onPress={async () => { await api('/swipes/passes', { method: 'DELETE' }); load(); }} />
             {nFilters ? <Button title={tr('Clear filters')} kind="ghost" onPress={() => setFilters({})} /> : null}
           </Empty>
         )}
       </View>
       <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 16, paddingVertical: 14 }}>
-        <RoundButton size="sm" icon="↺" color={C.gold} onPress={undo} label={tr('Undo')} />
-        <RoundButton icon="✕" color={C.nope} onPress={() => deckRef.current?.swipe('pass')} disabled={!deck.length} label={tr('Pass')} />
-        <RoundButton size="sm" icon="★" color={C.super} onPress={() => deckRef.current?.swipe('super')} disabled={!deck.length} label={tr('Super like')} />
-        <RoundButton icon="♥" color={C.like} onPress={() => deckRef.current?.swipe('like')} disabled={!deck.length} label={tr('Like')} />
-        <RoundButton size="sm" icon="ⓘ" color={C.purple} onPress={() => deck[0] && router.push(`/user/${deck[0].user.id}`)} disabled={!deck.length} label={tr('Profile')} />
+        <RoundButton size="sm" icon="arrow-undo" color={C.gold} onPress={undo} label={tr('Undo')} />
+        <RoundButton icon="close" color={C.nope} onPress={() => deckRef.current?.swipe('pass')} disabled={!deck.length} label={tr('Pass')} />
+        <RoundButton size="sm" icon="star" color={C.super} onPress={() => deckRef.current?.swipe('super')} disabled={!deck.length} label={tr('Super like')} />
+        <RoundButton icon="heart" color={C.like} filled onPress={() => deckRef.current?.swipe('like')} disabled={!deck.length} label={tr('Like')} />
+        <RoundButton size="sm" icon="information" color={C.purple} onPress={() => deck[0] && router.push(`/user/${deck[0].user.id}`)} disabled={!deck.length} label={tr('Profile')} />
       </View>
 
       <MatchModal match={match} me={me.user} onClose={() => setMatch(null)}

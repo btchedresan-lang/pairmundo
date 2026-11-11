@@ -2,6 +2,7 @@
 // screening scores, a paid test task the candidate answers on PairMundo, an interview on PairMundo's video calls, and
 // a Hire button that turns the candidate into a partner manager.
 import { randomBytes } from 'node:crypto';
+import { withMedia } from './mailer.js';
 
 /** Open roles, shown at pairmundo.com/#/careers and #/jobs/<slug>. Set open to false to stop new applications.
  *  apply: 'full' (default: CV, screening questions, test task, interview), 'short' (contact details and the job's own
@@ -51,7 +52,7 @@ export const JOBS = {
       'That agency replies: "Thanks, but we work with a few platforms already and our team is too busy to add another one." Write your answer.',
     ],
     test_pay: 'US$30',
-    sign_off: 'Badji Tchedre-San, Co-founder & Partnerships, PairMundo',
+    sign_off: 'Badji\nCo-founder & Partnerships, PairMundo',
   },
   // Ambassadors sign themselves up: the job page explains the role and links to the ambassador sign-up.
   ambassador: {
@@ -77,7 +78,7 @@ export const JOBS = {
       'A reward for each au pair who completes a verified profile, each family who buys a Family Pass, and each stay that starts with someone you brought',
       'Your page shows the exact rewards and what you have earned. No targets, no fees, stop anytime',
     ],
-    sign_off: 'Badji Tchedre-San, Co-founder & Partnerships, PairMundo',
+    sign_off: 'Badji\nCo-founder & Partnerships, PairMundo',
   },
   // Flyer distributors apply with a short form. Hiring one opens the admin's flyer distributor form, prefilled.
   'flyer-distributor': {
@@ -107,7 +108,7 @@ export const JOBS = {
       { key: 'campaign_answer', label: 'Which city and neighbourhoods could you cover?' },
       { key: 'objection_answer', label: 'When are you free to deliver, and have you done flyer, newspaper or similar work before?' },
     ],
-    sign_off: 'Badji Tchedre-San, Co-founder & Partnerships, PairMundo',
+    sign_off: 'Badji\nCo-founder & Partnerships, PairMundo',
   },
 };
 export const APPLICANT_STATUSES = ['new', 'shortlisted', 'test', 'interview', 'hired', 'rejected'];
@@ -120,7 +121,9 @@ export function mountHiring(api, { db, wrap, requireRole, rateLimit, HttpError, 
   const notFound = () => new HttpError(404, 'Not found.');
   const admin = requireRole('admin');
   const applyLimit = rateLimit({ windowMs: 60 * 60000, max: Number(process.env.APPLY_RATE_LIMIT || 10) });
-  const send = (to, subject, text) => Promise.resolve(mailer({ to, subject, text })).catch((e) => console.error('Email failed:', e.message));
+  // Every email to an applicant shows the app they would be working on.
+  const send = (to, subject, text) => Promise.resolve(mailer(withMedia({ to, subject, text }, { image: 'swipe-match-chat.jpg', alt: 'Swipe, match and chat in the PairMundo app', base: publicBase() })))
+    .catch((e) => console.error('Email failed:', e.message));
   const jobOf = (slug) => { const j = JOBS[slug]; if (!j) throw notFound(); return j; };
   const getApp = (id) => db.prepare('SELECT * FROM job_applications WHERE id = ?').get(Number(id));
   const byToken = (t) => (/^[a-f0-9]{32}$/.test(String(t)) ? db.prepare('SELECT * FROM job_applications WHERE token = ?').get(String(t)) : undefined);

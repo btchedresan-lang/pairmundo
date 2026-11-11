@@ -705,6 +705,22 @@ CREATE TABLE IF NOT EXISTS job_applications (
   UNIQUE (job, email)
 );
 
+-- Sign in with Apple or Google: the provider's ID for a person, linked to their account.
+CREATE TABLE IF NOT EXISTS social_logins (
+  provider TEXT NOT NULL,
+  sub TEXT NOT NULL,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (provider, sub)
+);
+
+-- "Tell me when someone new joins": people waiting for new profiles, and when they were last told.
+CREATE TABLE IF NOT EXISTS new_member_alerts (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  since TEXT NOT NULL DEFAULT (datetime('now')),
+  last_sent_at TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_reviews_reviewee ON reviews(reviewee_id);
 CREATE INDEX IF NOT EXISTS idx_requests_to ON match_requests(to_user, status);
@@ -721,6 +737,8 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
   if (!cols.includes('photos')) db.exec("ALTER TABLE users ADD COLUMN photos TEXT NOT NULL DEFAULT '[]'");
   // Accounts created before email verification existed count as verified.
   if (!cols.includes('lang')) db.exec('ALTER TABLE users ADD COLUMN lang TEXT');
+  // Demo accounts for app store review (server/demo.js): they and real members never see each other.
+  if (!cols.includes('demo')) db.exec('ALTER TABLE users ADD COLUMN demo INTEGER NOT NULL DEFAULT 0');
   if (!cols.includes('email_verified')) db.exec('ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0; UPDATE users SET email_verified = 1');
   const apcols = db.prepare('PRAGMA table_info(aupair_profiles)').all().map((c) => c.name);
   if (!apcols.includes('traits')) db.exec(`ALTER TABLE aupair_profiles ADD COLUMN traits TEXT NOT NULL DEFAULT '[]';
@@ -776,6 +794,7 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
   if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'family_criteria')) db.exec('ALTER TABLE ambassadors ADD COLUMN family_criteria TEXT');
   // When the admin emailed an agency about the November 2026 agency page update, so it goes out once.
   if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'update_emailed_at')) db.exec('ALTER TABLE ambassadors ADD COLUMN update_emailed_at TEXT');
+  if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'nudge_emailed_at')) db.exec('ALTER TABLE ambassadors ADD COLUMN nudge_emailed_at TEXT');
   // When the admin announced the Founding Partner Race to an agency in the app, so each agency is told once.
   if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'race_notified_at')) db.exec('ALTER TABLE ambassadors ADD COLUMN race_notified_at TEXT');
   // An agency's email invites go to families and to au pairs.

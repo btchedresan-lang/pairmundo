@@ -141,5 +141,9 @@
   "Your count of {flyers} flyers in {area} was approved. {amount} is added to your pay.": "Din rapport om {flyers} flygblad i {area} är godkänd. {amount} läggs till din ersättning.",
   "Your count of {flyers} flyers in {area} wasn't approved. Open your page to see why.": "Din rapport om {flyers} flygblad i {area} godkändes inte. Öppna din sida för att se varför.",
   "PairMundo paid you {amount} for your flyer deliveries. Thank you!": "PairMundo har betalat dig {amount} för dina flygbladsutdelningar. Tack!",
-  "{agency} left PairMundo. Your account, matches, messages and placements stay yours.": "{agency} har lämnat PairMundo. Ditt konto, dina matchningar, meddelanden och placeringar är fortfarande dina."
+  "{agency} left PairMundo. Your account, matches, messages and placements stay yours.": "{agency} har lämnat PairMundo. Ditt konto, dina matchningar, meddelanden och placeringar är fortfarande dina.",
+  "A new au pair just joined PairMundo. Take a look!": "En ny au pair har precis gått med i PairMundo. Ta en titt!",
+  "{n} new au pairs joined PairMundo. Take a look!": "{n} nya au pairer har gått med i PairMundo. Ta en titt!",
+  "A new host family just joined PairMundo. Take a look!": "En ny värdfamilj har precis gått med i PairMundo. Ta en titt!",
+  "{n} new host families joined PairMundo. Take a look!": "{n} nya värdfamiljer har gått med i PairMundo. Ta en titt!"
 }

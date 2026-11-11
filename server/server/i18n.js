@@ -25,6 +25,18 @@ export const DICT = {
   'Someone new liked you. See who in Likes.': {
     es: 'Le gustas a alguien nuevo. Descubre quién en Likes.', fr: "Quelqu'un de nouveau vous a liké. Découvrez qui dans Likes.",
     de: 'Jemand Neues mag dich. Sieh unter Likes nach, wer.', pt: 'Alguém novo curtiu você. Veja quem em Curtidas.' },
+  'A new au pair just joined PairMundo. Take a look!': {
+    es: 'Un nuevo au pair acaba de unirse a PairMundo. ¡Échale un vistazo!', fr: 'Un nouvel au pair vient de rejoindre PairMundo. Jetez un œil !',
+    de: 'Ein neues Au-pair ist gerade PairMundo beigetreten. Schau es dir an!', pt: 'Um novo au pair acabou de entrar no PairMundo. Dê uma olhada!' },
+  '{n} new au pairs joined PairMundo. Take a look!': {
+    es: '{n} nuevos au pairs se han unido a PairMundo. ¡Échales un vistazo!', fr: '{n} nouveaux au pairs ont rejoint PairMundo. Jetez un œil !',
+    de: '{n} neue Au-pairs sind PairMundo beigetreten. Schau sie dir an!', pt: '{n} novos au pairs entraram no PairMundo. Dê uma olhada!' },
+  'A new host family just joined PairMundo. Take a look!': {
+    es: 'Una nueva familia anfitriona acaba de unirse a PairMundo. ¡Échale un vistazo!', fr: "Une nouvelle famille d'accueil vient de rejoindre PairMundo. Jetez un œil !",
+    de: 'Eine neue Gastfamilie ist gerade PairMundo beigetreten. Schau sie dir an!', pt: 'Uma nova família anfitriã acabou de entrar no PairMundo. Dê uma olhada!' },
+  '{n} new host families joined PairMundo. Take a look!': {
+    es: '{n} nuevas familias anfitrionas se han unido a PairMundo. ¡Échales un vistazo!', fr: "{n} nouvelles familles d'accueil ont rejoint PairMundo. Jetez un œil !",
+    de: '{n} neue Gastfamilien sind PairMundo beigetreten. Schau sie dir an!', pt: '{n} novas famílias anfitriãs entraram no PairMundo. Dê uma olhada!' },
   '{name} is interested in matching with you.': {
     es: '{name} quiere hacer match contigo.', fr: '{name} aimerait matcher avec vous.',
     de: '{name} möchte mit dir matchen.', pt: '{name} quer dar match com você.' },
@@ -347,6 +359,10 @@ export const DICT = {
   "We've started your profile with the details you gave us. Finish it in about 5 minutes and start matching.": {
     es: "Hemos empezado tu perfil con los datos que nos diste. Complétalo en unos 5 minutos y empieza a hacer match.", fr: "Nous avons commencé votre profil avec les informations que vous nous avez données. Terminez-le en 5 minutes environ et commencez à matcher.",
     de: "Wir haben dein Profil mit deinen Angaben schon angelegt. Stell es in etwa 5 Minuten fertig und fang an zu matchen.", pt: "Começamos seu perfil com os dados que você nos deu. Termine em uns 5 minutos e comece a dar match." },
+  'Get the app': {
+    es: 'Descarga la app', fr: "Télécharger l'app", de: 'App holen', pt: 'Baixar o app', sv: 'Hämta appen' },
+  'Make our family profile': {
+    es: 'Crear nuestro perfil familiar', fr: 'Créer notre profil famille', de: 'Unser Familienprofil erstellen', pt: 'Criar nosso perfil de família', sv: 'Skapa vår familjeprofil' },
   "Finish my profile": {
     es: "Completar mi perfil", fr: "Terminer mon profil",
     de: "Profil fertigstellen", pt: "Terminar meu perfil" },

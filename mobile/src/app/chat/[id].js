@@ -5,9 +5,11 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { api } from '../../api';
 import { useAuth } from '../../auth';
 import { fmtTime } from '../../data';
+import { icebreakers } from '../../icebreakers';
 import { Alert, Button, Loading, Photo, useInsets } from '../../components/ui';
 import { chooseAsync, confirmAsync } from '../../components/dialogs';
-import { C, useTheme } from '../../theme';
+import { C, lift, useTheme } from '../../theme';
+import { Ionicons } from '@expo/vector-icons';
 import { tr } from '../../i18n';
 
 export default function Chat() {
@@ -19,6 +21,7 @@ export default function Chat() {
   const [msgs, setMsgs] = useState([]);
   const [text, setText] = useState('');
   const [error, setError] = useState(null);
+  const [openers, setOpeners] = useState([]); // conversation starters while the chat is empty
   const list = useRef(null);
   const lastId = useRef(0);
 
@@ -36,6 +39,15 @@ export default function Chat() {
     }, 4000);
     return () => { alive = false; clearInterval(timer); };
   }, [id]);
+
+  // A new match: suggest openers from their profile.
+  const otherId = other?.id; const empty = !msgs.length;
+  useEffect(() => {
+    if (!otherId || !empty) return undefined;
+    let alive = true;
+    api(`/users/${otherId}`).then((d) => alive && setOpeners(icebreakers(me.user.role, d.user, d.profile))).catch(() => {});
+    return () => { alive = false; };
+  }, [otherId, empty, me.user.role]);
 
   const send = async () => {
     const body = text.trim(); if (!body) return;
@@ -94,26 +106,37 @@ export default function Chat() {
         </Pressable>) : null,
       headerRight: () => other ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <Pressable onPress={startCall} disabled={calling} accessibilityLabel={tr('Video call')} hitSlop={10}><Text style={{ fontSize: 22, paddingHorizontal: 6, opacity: calling ? 0.4 : 1 }}>📹</Text></Pressable>
-          <Pressable onPress={menu} accessibilityLabel={tr('Report or block')} hitSlop={10}><Text style={{ color: C.primary, fontSize: 22, fontWeight: '800', paddingHorizontal: 6 }}>⋯</Text></Pressable>
+          <Pressable onPress={startCall} disabled={calling} accessibilityLabel={tr('Video call')} hitSlop={10}><Ionicons name="videocam-outline" size={25} color={C.primary} style={{ paddingHorizontal: 6, opacity: calling ? 0.4 : 1 }} /></Pressable>
+          <Pressable onPress={menu} accessibilityLabel={tr('Report or block')} hitSlop={10}><Ionicons name="ellipsis-horizontal" size={23} color={C.primary} style={{ paddingHorizontal: 6 }} /></Pressable>
         </View>) : null }} />
       {error ? <View style={{ padding: 12 }}><Alert level="error" text={error} /></View> : null}
       <FlatList ref={list} data={msgs} keyExtractor={(m) => String(m.id)} contentContainerStyle={{ padding: 14, gap: 8 }}
         onContentSizeChange={() => list.current?.scrollToEnd({ animated: true })}
-        ListEmptyComponent={<Text style={{ color: t.muted, textAlign: 'center', marginTop: 40 }}>{tr('You matched! Say hello')} 👋</Text>}
+        ListEmptyComponent={
+          <View style={{ marginTop: 32, gap: 10, alignItems: 'center' }}>
+            {other ? <Photo user={other} rounded style={{ width: 84, height: 84 }} /> : null}
+            <Text style={{ color: t.ink, textAlign: 'center', fontSize: 17, fontWeight: '700' }}>{tr('You matched! Say hello')} 👋</Text>
+            {openers.length ? <Text style={{ color: t.muted, textAlign: 'center' }}>{tr('Not sure what to write? Tap one to start:')}</Text> : null}
+            {openers.map((o) => (
+              <Pressable key={o} onPress={() => setText(o)} accessibilityRole="button"
+                style={({ pressed }) => ({ alignSelf: 'stretch', borderRadius: 18, paddingHorizontal: 16, paddingVertical: 13, backgroundColor: pressed ? t.soft : t.card, ...lift.sm })}>
+                <Text style={{ color: t.ink, fontSize: 15, lineHeight: 21 }}>{o}</Text>
+              </Pressable>
+            ))}
+          </View>}
         renderItem={({ item: m }) => {
           const mine = m.sender_id === me.user.id;
           if (m.is_call) return (
             <View style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '82%', backgroundColor: t.card, borderWidth: 1, borderColor: t.line, borderRadius: 18, padding: 12, gap: 8 }}>
-              <Text style={{ color: t.ink, fontSize: 15, fontWeight: '700' }}>📹 {mine ? tr('You started a video call') : tr('{name} started a video call', { name: other?.name })}</Text>
+              <Text style={{ color: t.ink, fontSize: 15, fontWeight: '700' }}>{mine ? tr('You started a video call') : tr('{name} started a video call', { name: other?.name })}</Text>
               {m.call_open ? <Button small title={tr('Join call')} onPress={() => join(m.id)} /> : <Text style={{ color: t.muted, fontSize: 13 }}>{tr('Call ended')}</Text>}
               <Text style={{ color: t.muted, fontSize: 11 }}>{fmtTime(m.created_at)}</Text>
             </View>
           );
           return (
             <View style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '78%', backgroundColor: mine ? C.primary : t.card,
-              borderRadius: 18, borderBottomRightRadius: mine ? 4 : 18, borderBottomLeftRadius: mine ? 18 : 4, paddingHorizontal: 14, paddingVertical: 9 }}>
-              <Text style={{ color: mine ? '#fff' : t.ink, fontSize: 15 }}>{m.body}</Text>
+              borderRadius: 20, borderBottomRightRadius: mine ? 6 : 20, borderBottomLeftRadius: mine ? 20 : 6, paddingHorizontal: 15, paddingVertical: 10, ...(mine ? {} : lift.sm) }}>
+              <Text style={{ color: mine ? '#fff' : t.ink, fontSize: 15.5, lineHeight: 21 }}>{m.body}</Text>
               <Text style={{ color: mine ? 'rgba(255,255,255,0.75)' : t.muted, fontSize: 11, marginTop: 2 }}>{fmtTime(m.created_at)}</Text>
             </View>
           );
@@ -121,9 +144,9 @@ export default function Chat() {
       <View style={{ flexDirection: 'row', gap: 8, padding: 10, paddingBottom: insets.bottom + 10, borderTopWidth: 1, borderColor: t.line, backgroundColor: t.card }}>
         <TextInput value={text} onChangeText={setText} placeholder={tr('Type a message')} placeholderTextColor={t.muted} multiline
           onSubmitEditing={send} blurOnSubmit={false} returnKeyType="send"
-          style={{ flex: 1, maxHeight: 120, borderWidth: 1, borderColor: t.line, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 9, color: t.ink, backgroundColor: t.bg }} />
+          style={{ flex: 1, maxHeight: 120, borderRadius: 22, paddingHorizontal: 16, paddingVertical: 11, fontSize: 15.5, color: t.ink, backgroundColor: t.soft }} />
         <Pressable onPress={send} accessibilityLabel={tr('Send')} style={{ backgroundColor: C.primary, borderRadius: 22, width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ color: '#fff', fontSize: 18, fontWeight: '800' }}>➤</Text>
+          <Ionicons name="arrow-up" size={22} color="#fff" />
         </Pressable>
       </View>
     </KeyboardAvoidingView>

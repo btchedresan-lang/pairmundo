@@ -1225,6 +1225,21 @@ test('flyer distributors: sessions the admin logs, family bonuses counted once f
   assert.equal((await call(nils.token, 'POST', `/admin/ambassadors/${id}/sessions`, { area: 'door-nacka', flyers: 5, delivered_on: day(0) })).status, 403);
 });
 
+test('flyer areas with Swedish letters keep them: door-saltsjobaden shows as Saltsjöbaden', async () => {
+  const { hashPassword } = await import('../server/auth.js');
+  testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
+  const adminId = testDb.prepare("SELECT id FROM users WHERE email = 'admin@test.io'").get().id;
+  await register('sara-dist@test.io', 'ambassador', 'SE', 'Sara Berg', { complete: false });
+  const sara = (await call(null, 'POST', '/auth/login', { email: 'sara-dist@test.io', password: 'password123' })).body.token;
+  const r = await call(admin, 'POST', '/admin/ambassadors', { code: 'SARA-D', name: 'Sara Berg', kind: 'distributor', flyer_rate: '1', family_bonus: '50', areas: 'door-danderyd, door-saltsjobaden', account_email: 'sara-dist@test.io' });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.deepEqual(r.body.areas, ['door-danderyd', 'door-saltsjobaden']);
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  assert.equal((await call(sara, 'POST', '/me/ambassador/sessions', { area: 'door-saltsjobaden', flyers: 300, delivered_on: yesterday })).status, 201);
+  assert.ok(testDb.prepare("SELECT 1 FROM notifications WHERE user_id = ? AND text LIKE 'Sara Berg sent a flyer count to approve: 300 flyers in Saltsjöbaden%'").get(adminId));
+});
+
 test('flyer distributors send their own counts: pending until the admin approves, then owed until paid', async () => {
   const { hashPassword } = await import('../server/auth.js');
   testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
@@ -2583,7 +2598,8 @@ test('partnerships pipeline: partner manager login, leads, follow-ups, import, s
   assert.equal(r.status, 201, JSON.stringify(r.body));
   assert.equal(r.body.base_cents, 40000);
   assert.match(outbox.at(-1).text, /Forgot password/);
-  assert.match(outbox.at(-1).text, /Badji Tchedre-San, Co-founder & Partnerships, PairMundo/);
+  assert.match(outbox.at(-1).text, /\nBadji\nCo-founder & Partnerships, PairMundo/);
+  assert.ok(outbox.at(-1).html.includes('/media/email/agency-profile-guide.jpg') && !outbox.at(-1).attachments, 'the guide is embedded, not attached');
   assert.equal((await call(admin, 'POST', '/pipeline/team', { name: 'X', email: 'admin@test.io' })).status, 409);
   await call(null, 'POST', '/auth/forgot', { email: 'joy@pm.test' });
   r = await call(null, 'POST', '/auth/reset', { email: 'joy@pm.test', code: lastCode('joy@pm.test'), password: 'password123' });
@@ -2734,7 +2750,8 @@ test('hiring: job page, application with CV, test task, interview on PairMundo v
   assert.match(r.body.error, /only open to people living in the Philippines/);
   r = await call(null, 'POST', `/jobs/${slug}/apply`, form);
   assert.equal(r.status, 201, JSON.stringify(r.body));
-  assert.match(outbox.at(-1).text, /Badji Tchedre-San, Co-founder & Partnerships, PairMundo/);
+  assert.match(outbox.at(-1).text, /\nBadji\nCo-founder & Partnerships, PairMundo/);
+  assert.ok(outbox.at(-1).html.includes('/media/email/swipe-match-chat.jpg'));
   assert.equal((await call(null, 'POST', `/jobs/${slug}/apply`, form)).status, 409);
   await call(null, 'POST', `/jobs/${slug}/apply`, { ...form, email: 'weak@cand.test', years_b2b: 0, hours_ok: false, video_url: '', cv: null, campaign_answer: 'Some emails.', objection_answer: 'ok' });
 
@@ -2831,12 +2848,12 @@ test('agency update email: the admin previews who gets it and the text, then sen
     const h = { Authorization: `Bearer ${tok}` };
     const preview = await (await fetch(`${b2}/admin/agency-update`, { headers: h })).json();
     assert.deepEqual(preview.recipients.map((r) => [r.code, r.to]), [['NOMAIL', null], ['OLDAG', 'boss@old.test']]);
-    assert.ok(preview.sample.text.includes('Badji Tchedre-San') && preview.sample.text.includes('24 November') && preview.sample.text.includes('ref=OLDAG'));
+    assert.ok(preview.sample.text.includes('\nBadji\n') && preview.sample.html.includes('agency-profile-guide.jpg') && preview.sample.text.includes('24 November') && preview.sample.text.includes('ref=OLDAG'));
     assert.ok(!preview.sample.text.includes('€'), 'no prices in the update');
     const sent = await (await fetch(`${b2}/admin/agency-update`, { method: 'POST', headers: h })).json();
     assert.deepEqual(sent, { sent: 1, missing: ['No Mail Agency'] });
     assert.deepEqual(mails.map((m) => m.to), ['boss@old.test']);
-    assert.ok((await import('node:fs')).existsSync(mails[0].attachments[0].path), 'the profile guide is attached');
+    assert.ok(mails[0].html.includes('/media/email/agency-profile-guide.jpg') && mails[0].html.includes('PairMundo-profile-guide-for-agencies.pdf') && !mails[0].attachments, 'the profile guide is embedded and links to the PDF');
     assert.equal((await (await fetch(`${b2}/admin/agency-update`, { method: 'POST', headers: h })).json()).sent, 0, 'sent once');
   } finally { srv.close(); }
 });
@@ -2938,4 +2955,93 @@ test('the Founding Partner Race: the admin announces it in the app, and each age
 
   // Each agency is told once.
   assert.equal((await call(admin, 'POST', '/admin/agency-race')).body.sent, 0);
+});
+
+test('agencies short of au pairs: the admin sees those under 10 with a ready offer email, and can upload their list for them', async () => {
+  const { hashPassword } = await import('../server/auth.js');
+  testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
+  const ag = await register('boss@quiet.test', 'agency', 'ID', 'Quiet Agency', { complete: false });
+  assert.equal((await call(admin, 'POST', '/admin/ambassadors', { code: 'QUIET', name: 'Quiet Agency', kind: 'agency', account_email: 'boss@quiet.test' })).status, 201);
+  assert.equal((await call(admin, 'POST', '/admin/ambassadors', { code: 'BUSY', name: 'Busy Agency', kind: 'agency' })).status, 201);
+  assert.equal((await call(admin, 'POST', '/admin/ambassadors', { code: 'NOMAIL', name: 'No Mail Agency', kind: 'agency', account_email: 'nomail@quiet.test' })).status, 201);
+  for (let i = 0; i < 10; i++) {
+    const ap = await register(`busy-ap${i}@test.io`, 'aupair', 'ID', `Busy Au Pair ${i}`);
+    await call(ap.token, 'POST', '/me/agency', { code: 'BUSY' });
+  }
+  const fam = await register('quiet-fam@test.io', 'family', 'SE', 'Quiet Family');
+  await call(fam.token, 'POST', '/me/agency', { code: 'QUIET' });
+
+  assert.equal((await call(ag.token, 'GET', '/admin/agency-nudge')).status, 403, 'admins only');
+  const nudge = (await call(admin, 'GET', '/admin/agency-nudge')).body;
+  assert.equal(nudge.below, 10);
+  assert.equal(nudge.target, 50);
+  const row = (code) => nudge.short.find((r) => r.code === code);
+  assert.ok(row('QUIET') && row('NOMAIL'));
+  assert.equal(row('BUSY'), undefined, 'an agency with 10 au pairs is not listed');
+  assert.equal(row('QUIET').email, 'boss@quiet.test');
+  assert.equal(row('QUIET').account, true);
+  assert.equal(row('QUIET').aupairs, 0, 'a family does not count as an au pair');
+  assert.ok(row('QUIET').text.includes('one-time free help') && row('QUIET').text.includes('QUIET') && row('QUIET').text.includes('at least 50 au pairs'));
+  assert.ok(row('QUIET').text.trim().endsWith('Badji\nCo-founder & Partnerships, PairMundo'));
+  assert.ok(row('QUIET').html.includes('/media/email/we-upload-your-au-pairs.jpg'), 'the one-pager is embedded in the preview');
+
+  // The admin previews an edited version and sends it from PairMundo; replies go to Badji.
+  const pv = (await call(admin, 'POST', '/admin/agency-nudge/preview', { subject: 'Hi', text: 'Dear Poppy,\n\nHello there.' })).body;
+  assert.ok(pv.html.includes('Dear Poppy') && pv.html.includes('we-upload-your-au-pairs.jpg'));
+  const before = outbox.length;
+  const ok = (await call(admin, 'POST', `/admin/agency-nudge/${row('QUIET').id}/send`, { subject: 'Your au pairs', text: 'Dear Poppy,\n\nHello there.\n\nBadji' })).body;
+  assert.deepEqual(ok, { sent: true, to: 'boss@quiet.test', reply_to: 'badji@pairmundo.com' });
+  const mail = outbox.slice(before).find((m) => m.to === 'boss@quiet.test');
+  assert.equal(mail.replyTo, 'badji@pairmundo.com');
+  assert.equal(mail.fromName, 'Badji from PairMundo');
+  assert.ok(mail.text.startsWith('Dear Poppy') && mail.html.includes('we-upload-your-au-pairs.jpg') && !mail.attachments);
+  assert.ok((await call(admin, 'GET', '/admin/agency-nudge')).body.short.find((r) => r.code === 'QUIET').emailed_at, 'marked as sent');
+  assert.equal((await call(admin, 'POST', `/admin/agency-nudge/${row('QUIET').id}/send`, { subject: '', text: 'x' })).status, 400);
+  assert.ok(!row('QUIET').text.includes('agency-signup'), 'an agency with an account is not sent to sign up');
+  assert.equal(row('NOMAIL').account, false);
+  assert.ok(row('NOMAIL').text.includes('#/agency-signup?email=nomail%40quiet.test'));
+
+  // The admin pastes the list the agency sent.
+  const id = row('QUIET').id;
+  const list = 'Siti Rahma, siti@quiet-ap.test, au pair\nThe Lindqvist family\tlindqvist@quiet-fam.test\tfamily\nno email on this line\nDewi <dewi@quiet-ap.test>';
+  const up = (await call(admin, 'POST', `/admin/ambassadors/${id}/invites`, { list, role: 'aupair' })).body;
+  assert.equal(up.invited, 3);
+  assert.deepEqual(up.skipped, ['no email on this line']);
+  const inv = testDb.prepare('SELECT email, name, role FROM agency_family_invites WHERE ambassador_id = ? ORDER BY email').all(id);
+  assert.deepEqual(inv.map((i) => [i.email, i.name, i.role]), [
+    ['dewi@quiet-ap.test', 'Dewi', 'aupair'], ['lindqvist@quiet-fam.test', 'The Lindqvist', 'family'], ['siti@quiet-ap.test', 'Siti Rahma', 'aupair']]);
+  assert.equal((await call(admin, 'POST', `/admin/ambassadors/${id}/invites`, { list: 'siti@quiet-ap.test' })).body.already, 1, 'nobody is invited twice');
+  assert.equal((await call(admin, 'POST', `/admin/ambassadors/${id}/invites`, { list: '' })).status, 400);
+
+  // Someone on the list who signs up joins the agency, and the email then says how many au pairs it has.
+  const siti = await register('siti@quiet-ap.test', 'aupair', 'ID', 'Siti Rahma');
+  assert.equal(testDb.prepare('SELECT ref_code FROM users WHERE id = ?').get(siti.id).ref_code, 'QUIET');
+  const after = (await call(admin, 'GET', '/admin/agency-nudge')).body.short.find((r) => r.code === 'QUIET');
+  assert.equal(after.aupairs, 1);
+  assert.equal(after.families, 1);
+  assert.ok(after.text.includes('1 au pair has joined with your code QUIET'), after.text);
+});
+
+test('admin emails carry media: a designed version with a picture and a button, or an attachment for partners', async () => {
+  const { withMedia, agencyUploadOfferEmail } = await import('../server/mailer.js');
+  const m = withMedia({ subject: 'Hi <there>', text: 'Hello,\n\nOpen https://pairmundo.com/x?a=1&b=2 now.' }, { image: 'hero-family.jpg', alt: 'The app', cta: { label: 'Go', link: 'https://pairmundo.com/go' }, base: 'https://example.test/' });
+  assert.ok(m.html.includes('src="https://example.test/media/email/hero-family.jpg"'));
+  assert.ok(m.html.includes('href="https://pairmundo.com/go"') && m.html.includes('Go &rarr;'));
+  assert.ok(m.html.includes('Hi &lt;there&gt;'), 'text is escaped');
+  assert.equal(m.text, 'Hello,\n\nOpen https://pairmundo.com/x?a=1&b=2 now.', 'the plain version is kept');
+  for (const f of ['hero-family.jpg', 'hero-aupair.jpg', 'swipe-match-chat.jpg', 'icon.png']) {
+    assert.ok((await import('node:fs')).existsSync(new URL(`../public/media/email/${f}`, import.meta.url)), f);
+  }
+  assert.ok(agencyUploadOfferEmail({ name: 'A', code: 'A', onePager: 'https://x.test/p.pdf' }).text.includes('https://x.test/p.pdf'));
+  assert.ok((await import('node:fs')).existsSync(new URL('../public/media/PairMundo-we-upload-your-au-pairs.pdf', import.meta.url)));
+
+  const { hashPassword } = await import('../server/auth.js');
+  testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
+  const launch = (await call(admin, 'GET', '/admin/launch-email')).body;
+  assert.ok(launch.samples.length && launch.samples.every((x) => x.html && x.html.includes('/media/email/hero-')), 'launch emails have a picture');
+  const invites = (await call(admin, 'GET', '/admin/profile-invites')).body;
+  assert.ok(invites.samples.every((x) => x.html && x.html.includes('hero-family.jpg') && x.html.includes('#/register?role=family')), 'profile invites have a picture and a button');
+  assert.ok((await call(admin, 'GET', '/admin/agency-nudge')).body.one_pager.endsWith('.pdf'));
 });

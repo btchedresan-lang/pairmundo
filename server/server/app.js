@@ -7,7 +7,8 @@ import { hashPassword, verifyPassword, createSession, sessionMiddleware, require
 import { scoreMatch, checkCompliance, ageOn } from './matching.js';
 import { LEGACY_CRITERIA, PROGRAMS, REVIEW_CRITERIA, familyDocuments, reviewScore, placementTaskList, visaRoute } from './programs.js';
 import { buildAgreement, buildHostLetter, cleanTerms, defaultTerms, REQUIRED_TERMS } from './agreement.js';
-import { createMailer, agencyFamilyInviteEmail, agencyUpdateEmail, agencyLeadEmail, agencyNetworkInviteEmail, ambassadorInviteEmail, codeEmail, launchEmail, accountInviteEmail, profileInviteEmail, referenceEmail, teamInviteEmail, waitlistEmail } from './mailer.js';
+import { isDemoEmail } from './demo.js';
+import { createMailer, withMedia, agencyFamilyInviteEmail, agencyUpdateEmail, agencyUploadOfferEmail, agencyLeadEmail, agencyNetworkInviteEmail, ambassadorInviteEmail, codeEmail, launchEmail, accountInviteEmail, profileInviteEmail, referenceEmail, teamInviteEmail, waitlistEmail } from './mailer.js';
 import { mountPipeline } from './pipeline.js';
 import { mountHiring } from './hiring.js';
 import { countryName, pickLang, t as translate } from './i18n.js';
@@ -19,6 +20,7 @@ import { createModerator } from './moderation.js';
 import { createBackups } from './backup.js';
 import { createVideo, CALL_HOURS } from './video.js';
 import { createPayouts } from './payouts.js';
+import { createSocial, SocialError, socialProviders } from './social.js';
 
 const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
 const MAX_PHOTOS = 6;
@@ -109,8 +111,11 @@ export function seedPrograms(db) {
   }
 }
 
-export function createApp(db, { mailer = createMailer(), pusher = createPusher(), storage, identity = createIdentity(), checkout = createCheckout(), revenuecat = createRevenueCat(), backups = createBackups(db), moderator = createModerator(), video = createVideo(), payouts = createPayouts() } = {}) {
+export function createApp(db, { mailer = createMailer(), pusher = createPusher(), storage, identity = createIdentity(), checkout = createCheckout(), revenuecat = createRevenueCat(), backups = createBackups(db), moderator = createModerator(), video = createVideo(), payouts = createPayouts(), social = createSocial() } = {}) {
   const UPLOAD_DIR = process.env.UPLOAD_DIR || 'data/uploads';
+  // Demo accounts' addresses don't exist, so nothing is sent to them.
+  const sendMail = mailer;
+  mailer = (m) => (isDemoEmail(m?.to) ? Promise.resolve({ skipped: 'demo' }) : sendMail(m));
   storage ??= createStorage({ dir: UPLOAD_DIR });
   seedPrograms(db);
   const app = express();
@@ -210,6 +215,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
    *  (family_criteria); {only_own: true} means none. Its own members and its partner agencies' always meet.
    *  The older closed network keeps a space to itself, except for au pairs it shares and au pairs that fit its criteria. */
   const closedApart = (a, b) => {
+    // Demo accounts for app store review live in their own world (server/demo.js).
+    if (!!a.demo !== !!b.demo) return true;
     const sa = agencySpace(a), sb = agencySpace(b);
     if (sa?.id === sb?.id || partnered(sa, sb)) return false;
     const blocks = (u, s, other) => {
@@ -509,7 +516,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   // own count from their page and it earns once the admin approves it; the admin can also log a session directly.
   const areasOf = (a) => (Array.isArray(a.areas) ? a.areas : json.parse(a.areas, []));
   // door-nacka → Nacka, as the website shows it.
-  const areaLabel = (src) => ({ taby: 'Täby' })[src.replace(/^door-/, '')] || src.replace(/^door-/, '').replace(/^./, (c) => c.toUpperCase());
+  const areaLabel = (src) => ({ taby: 'Täby', saltsjobaden: 'Saltsjöbaden' })[src.replace(/^door-/, '')] || src.replace(/^door-/, '').replace(/^./, (c) => c.toUpperCase());
   const krText = (ore) => `${(ore / 100).toFixed(2).replace(/\.00$/, '')} kr`;
   /** Records the family bonuses a distributor's sessions have brought in so far. Safe to run any time: each family's
    *  email counts once, the first time it shows up on the waitlist or as a family account. */
@@ -797,6 +804,50 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     return { user: { ...publicUser(user, user), email: user.email, email_verified: !!user.email_verified }, token: s.token };
   }));
 
+  // ---------- Sign in with Apple or Google ----------
+  // The phone sends the ID token Apple or Google gave it. A known person (by that provider's ID, or by the same
+  // verified email) is signed in. Someone new is asked once whether they are a family or an au pair, and their name,
+  // then gets an account with the email already confirmed, so there is no code to type.
+  api.get('/auth/providers', wrap(() => ({ providers: socialProviders() })));
+  api.post('/auth/social', authLimit, wrap(async (req, res) => {
+    const { provider, id_token: idToken, role } = req.body || {};
+    let claims;
+    try { claims = await social(provider, idToken); } catch (e) { throw e instanceof SocialError ? bad(e.message) : e; }
+    let user = getUser(db.prepare('SELECT user_id FROM social_logins WHERE provider = ? AND sub = ?').get(provider, claims.sub)?.user_id);
+    const email = claims.email && claims.email_verified ? normEmail(claims.email) : null;
+    if (!user && !email) throw bad("We couldn't get a confirmed email from that sign-in. Use your email and a password instead.");
+    if (!user) user = db.prepare('SELECT * FROM users WHERE lower(trim(email)) = ?').get(email);
+    const done = (u, status = 200) => {
+      db.prepare('INSERT OR IGNORE INTO social_logins (provider, sub, user_id) VALUES (?,?,?)').run(provider, claims.sub, u.id);
+      const s = createSession(db, u.id);
+      setCookie(res, s.token);
+      res.status(status);
+      return { user: { ...publicUser(u, u), email: u.email, email_verified: !!u.email_verified }, token: s.token };
+    };
+    if (user) {
+      if (user.suspended) throw forbidden('This account is suspended. Contact support.');
+      // Apple or Google confirmed the address, so there's no code to type.
+      if (!user.email_verified && email && normEmail(user.email) === email) {
+        db.prepare('UPDATE users SET email_verified = 1 WHERE id = ?').run(user.id);
+        checkProfileReward(user.id); claimInvite(user);
+        user = getUser(user.id);
+      }
+      return done(user);
+    }
+    // Someone new: the app asks whether they are a family or an au pair, and their name, then sends the token again.
+    const name = str(req.body?.name, 120);
+    if (!['aupair', 'family'].includes(role) || !name) return { needs_profile: true, email };
+    let ambassador = str(req.body?.ref_code) ? ambassadorByCode(referralCode(req.body.ref_code)) : null;
+    if (str(req.body?.ref_code) && !ambassador) throw bad('That referral code is not valid. Check it, or leave it empty.');
+    ambassador ??= carriedReferral(email, role);
+    const waited = db.prepare('SELECT source FROM waitlist WHERE email = ?').get(email);
+    const created = createMember({ email, password: randomBytes(24).toString('base64url'), role, name, country: req.body?.country, city: req.body?.city,
+      lang: pickLang(req.get('accept-language')), source: waited?.source ?? provider, ambassador, verified: true });
+    db.prepare('UPDATE agency_family_invites SET user_id = ? WHERE email = ? AND user_id IS NULL').run(created.id, email);
+    claimInvite(created);
+    return done(created, 201);
+  }));
+
   api.post('/auth/verify-email', requireAuth, authLimit, wrap((req) => {
     if (req.user.email_verified) return { ok: true };
     useCode(req.user.id, 'verify', req.body?.code);
@@ -857,6 +908,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       ...(['agency', 'admin'].includes(u.role) ? { agency_network: agencyNetworkOn() } : {}),
       // Whether they joined with a referral or agency code (an au pair without one can still add their agency's).
       has_code: !!u.ref_code,
+      // They asked to hear when someone new joins (Discover's empty deck).
+      new_member_alert: !!db.prepare('SELECT 1 FROM new_member_alerts WHERE user_id = ?').get(u.id),
       counts: {
         notifications: db.prepare('SELECT COUNT(*) n FROM notifications WHERE user_id = ? AND read = 0').get(u.id).n,
         requests: db.prepare("SELECT COUNT(*) n FROM match_requests WHERE to_user = ? AND status = 'pending'").get(u.id).n,
@@ -1530,6 +1583,41 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     return sent;
   };
   app.sendSearchNudges = sendSearchNudges;
+
+  // "Tell me when someone new joins": while membership is small, people run out of profiles in Discover. They can ask
+  // to hear when someone new they could like shows up, at most once a day, until they turn it off.
+  api.put('/me/new-member-alerts', requireAuth, wrap((req) => {
+    if (!['aupair', 'family'].includes(req.user.role)) throw forbidden();
+    if (req.body?.on) db.prepare("INSERT INTO new_member_alerts (user_id) VALUES (?) ON CONFLICT(user_id) DO UPDATE SET since = datetime('now')").run(req.user.id);
+    else db.prepare('DELETE FROM new_member_alerts WHERE user_id = ?').run(req.user.id);
+    return { on: !!req.body?.on };
+  }));
+  const sendNewMemberAlerts = () => {
+    let sent = 0;
+    const due = db.prepare(`SELECT a.user_id, max(a.since, coalesce(a.last_sent_at, a.since)) after FROM new_member_alerts a
+      WHERE a.last_sent_at IS NULL OR a.last_sent_at <= datetime('now', '-1 day')`).all();
+    for (const r of due) {
+      const me = getUser(r.user_id);
+      if (!me || me.suspended || !['aupair', 'family'].includes(me.role)) continue;
+      // Only people who joined since the last alert and who would show in their Discover right now.
+      const fresh = new Set(db.prepare('SELECT id FROM users WHERE role = ? AND created_at > ?').all(me.role === 'family' ? 'aupair' : 'family', r.after).map((u) => u.id));
+      if (!fresh.size) continue;
+      let found = findCandidates(me, {}, true).results.filter((c) => fresh.has(c.user.id));
+      // An au pair hears about families in the countries they'd like to go to, or anywhere if they left that empty.
+      const want = me.role === 'aupair' ? getProfile(me).preferred_countries || [] : [];
+      if (want.length) found = found.filter((c) => want.includes(c.user.country));
+      if (!found.length) continue;
+      const n = found.length;
+      const text = me.role === 'family'
+        ? (n === 1 ? 'A new au pair just joined PairMundo. Take a look!' : '{n} new au pairs joined PairMundo. Take a look!')
+        : (n === 1 ? 'A new host family just joined PairMundo. Take a look!' : '{n} new host families joined PairMundo. Take a look!');
+      notify(me.id, 'search', text, { n }, '#/discover');
+      db.prepare("UPDATE new_member_alerts SET last_sent_at = datetime('now') WHERE user_id = ?").run(me.id);
+      sent++;
+    }
+    return sent;
+  };
+  app.sendNewMemberAlerts = sendNewMemberAlerts;
 
   // New accounts still missing a photo or bio can't be liked, so nudge them 2 days and 7 days after they sign up, in
   // the app, by push and by email. Only accounts from the last 30 days, so old accounts aren't suddenly emailed.
@@ -2402,6 +2490,36 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     db.prepare('UPDATE ambassadors SET family_criteria = ? WHERE id = ?').run(JSON.stringify(c), a.id);
     return { family_criteria: c };
   }));
+  /**
+   * Records an agency's invitation of one family or au pair and emails it (later, by the queue). Used by the agency
+   * itself and by the admin, who can upload an agency's list for it. Returns false if this email was already invited.
+   */
+  const inviteQueue = [];
+  let inviteQueueBusy = false;
+  const drainInvites = async () => {
+    if (inviteQueueBusy) return;
+    inviteQueueBusy = true;
+    // One at a time, a little apart, so a long list stays under the mail service's rate limit.
+    while (inviteQueue.length) {
+      const m = inviteQueue.shift();
+      try { await mailer(m); } catch (e) { console.error('Email failed:', e.message); }
+      if (inviteQueue.length) await new Promise((r) => setTimeout(r, Number(process.env.INVITE_GAP_MS ?? 600)));
+    }
+    inviteQueueBusy = false;
+  };
+  const inviteForAgency = (a, { email, name, message, role }) => {
+    if (db.prepare('SELECT 1 FROM agency_family_invites WHERE ambassador_id = ? AND email = ?').get(a.id, email)) return false;
+    name = str(name, 120) || null;
+    message = str(message, 1000) || null;
+    role = role === 'aupair' ? 'aupair' : 'family';
+    db.prepare('INSERT INTO agency_family_invites (ambassador_id, email, name, message, role) VALUES (?,?,?,?,?)').run(a.id, email, name, message, role);
+    const link = `${referralLink(a)}#/register?role=${role}&email=${encodeURIComponent(email)}`;
+    inviteQueue.push({ to: email, ...withMedia(agencyFamilyInviteEmail({ from: a.name, name, message, link, email, role }),
+      { image: role === 'aupair' ? 'hero-aupair.jpg' : 'hero-family.jpg', alt: 'Profiles in the PairMundo app', base: publicBase(),
+        cta: { label: 'Create my free account', link } }) });
+    drainInvites();
+    return true;
+  };
   // Families and au pairs the agency invited by email, and whether they joined.
   api.get('/agency/family-invites', requireRole('agency'), wrap((req) => {
     const a = myAgency(req);
@@ -2416,14 +2534,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (db.prepare("SELECT COUNT(*) n FROM agency_family_invites WHERE ambassador_id = ? AND created_at > datetime('now', '-1 day')").get(a.id).n >= 50) {
       throw new HttpError(429, 'You can send up to 50 invitations a day. Try again tomorrow.');
     }
-    if (db.prepare('SELECT 1 FROM agency_family_invites WHERE ambassador_id = ? AND email = ?').get(a.id, email)) return { invited: true, already: true };
-    const name = str(req.body?.name, 120) || null;
-    const message = str(req.body?.message, 1000) || null;
-    const role = req.body?.role === 'aupair' ? 'aupair' : 'family';
-    db.prepare('INSERT INTO agency_family_invites (ambassador_id, email, name, message, role) VALUES (?,?,?,?,?)').run(a.id, email, name, message, role);
-    const link = `${referralLink(a)}#/register?role=${role}&email=${encodeURIComponent(email)}`;
-    Promise.resolve(mailer({ to: email, ...agencyFamilyInviteEmail({ from: a.name, name, message, link, email, role }) })).catch((e) => console.error('Email failed:', e.message));
-    return { invited: true };
+    const sent = inviteForAgency(a, { email, name: req.body?.name, message: req.body?.message, role: req.body?.role });
+    return sent ? { invited: true } : { invited: true, already: true };
   }));
   // Every family who joined with the agency's code, with where they are and the agency's own notes.
   api.get('/agency/families', requireRole('agency'), wrap((req) => {
@@ -2779,7 +2891,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const sent = new Set(db.prepare('SELECT email FROM launch_emails').all().map((r) => r.email));
     const seen = new Set();
     const out = [];
-    for (const u of db.prepare("SELECT * FROM users WHERE role != 'admin' AND suspended = 0 AND email_verified = 1 ORDER BY created_at, id").all()) {
+    for (const u of db.prepare("SELECT * FROM users WHERE role != 'admin' AND suspended = 0 AND email_verified = 1 AND demo = 0 ORDER BY created_at, id").all()) {
       const email = normEmail(u.email);
       if (seen.has(email)) continue;
       seen.add(email);
@@ -2805,8 +2917,11 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const lang = r.lang || 'en';
     let useBy = early?.use_by || null;
     if (useBy) try { useBy = new Date(`${useBy}T00:00:00Z`).toLocaleDateString(lang, { dateStyle: 'long', timeZone: 'UTC' }); } catch { /* keep the ISO date */ }
-    return launchEmail(lang, { kind: r.kind, role: r.role, email: r.email, links: storeLinks(), earlyDays: early?.days || 0, useBy,
-      leaveUrl: r.token ? `${publicBase()}/api/waitlist/leave?t=${r.token}` : null });
+    const links = storeLinks();
+    return withMedia(launchEmail(lang, { kind: r.kind, role: r.role, email: r.email, links, earlyDays: early?.days || 0, useBy,
+      leaveUrl: r.token ? `${publicBase()}/api/waitlist/leave?t=${r.token}` : null }),
+    { image: r.role === 'aupair' ? 'hero-aupair.jpg' : 'hero-family.jpg', alt: 'The PairMundo app', base: publicBase(), lang,
+      cta: links[0] ? { label: translate(lang, 'Get the app'), link: links[0][1] } : null });
   };
   const launchJob = { running: false, sent: 0, error: null, finished_at: null };
   const launchStatus = () => {
@@ -2856,7 +2971,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   };
   api.get('/admin/launch-email', requireRole('admin'), wrap(() => ({ ...launchStatus(), samples: launchSamples() })));
   api.post('/admin/launch-email/test', requireRole('admin'), wrap(async (req) => {
-    for (const s of launchSamples()) await mailer({ to: req.user.email, subject: `[Test: ${s.label}] ${s.subject}`, text: s.text });
+    for (const s of launchSamples()) await mailer({ to: req.user.email, subject: `[Test: ${s.label}] ${s.subject}`, text: s.text, html: s.html });
     return { ok: true, to: req.user.email, count: launchSamples().length };
   }));
   api.post('/admin/launch-email/send', requireRole('admin'), wrap((req) => {
@@ -2880,12 +2995,15 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     ORDER BY w.created_at, w.rowid`).all(...(kind === 'reminder' ? [kind, `-${reminderDays()} days`] : [kind]));
   const inviteEmailFor = (w, kind) => {
     const b = earlyDays() && db.prepare('SELECT redeemed_at FROM early_bonus WHERE email = ?').get(w.email);
-    return profileInviteEmail(w.lang || 'en', { kind, email: w.email, earlyDays: b && !b.redeemed_at ? earlyDays() : 0,
-      signupUrl: `${publicBase()}/#/register?role=family&email=${encodeURIComponent(w.email)}`, leaveUrl: `${publicBase()}/api/waitlist/leave?t=${w.token}` });
+    const signupUrl = `${publicBase()}/#/register?role=family&email=${encodeURIComponent(w.email)}`;
+    return withMedia(profileInviteEmail(w.lang || 'en', { kind, email: w.email, earlyDays: b && !b.redeemed_at ? earlyDays() : 0,
+      signupUrl, leaveUrl: `${publicBase()}/api/waitlist/leave?t=${w.token}` }),
+    { image: 'hero-family.jpg', alt: 'Au pair profiles in the PairMundo app', base: publicBase(), lang: w.lang || 'en',
+      cta: { label: translate(w.lang || 'en', 'Make our family profile'), link: signupUrl } });
   };
   const inviteStatus = () => {
     const n = (sql, ...a) => db.prepare(sql).get(...a).n;
-    const families = db.prepare("SELECT * FROM users WHERE role = 'family' AND suspended = 0").all();
+    const families = db.prepare("SELECT * FROM users WHERE role = 'family' AND suspended = 0 AND demo = 0").all();
     const onList = new Set(db.prepare("SELECT email FROM waitlist WHERE role = 'family'").all().map((r) => r.email));
     const fromList = families.filter((u) => onList.has(normEmail(u.email)));
     return {
@@ -2916,7 +3034,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   }));
   api.post('/admin/profile-invites/test', requireRole('admin'), wrap(async (req) => {
     const { samples } = inviteStatus();
-    for (const m of samples) await mailer({ to: req.user.email, subject: `[Test: ${m.kind}] ${m.subject}`, text: m.text });
+    for (const m of samples) await mailer({ to: req.user.email, subject: `[Test: ${m.kind}] ${m.subject}`, text: m.text, html: m.html });
     return { ok: true, to: req.user.email, count: samples.length };
   }));
 
@@ -3027,7 +3145,9 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     // Agencies and ambassadors have their own sign-up pages; the au pair and family one would make the wrong account.
     const page = a.kind === 'agency' ? 'agency-signup' : `ambassador-signup${a.kind === 'distributor' ? '?for=flyers&' : '?'}`;
     const signup = `${publicBase()}/#/${page}${a.kind === 'agency' ? '?' : ''}email=${encodeURIComponent(a.invite_email)}`;
-    Promise.resolve(mailer({ to: a.invite_email, ...ambassadorInviteEmail({ ...a, link: referralLink(a), signup, email: a.invite_email }) }))
+    Promise.resolve(mailer({ to: a.invite_email, ...withMedia(ambassadorInviteEmail({ ...a, link: referralLink(a), signup, email: a.invite_email }),
+      a.kind === 'agency' ? { image: 'agency-profile-guide.jpg', alt: 'PairMundo profile guide for agencies', placement: 'bottom', base: publicBase(), link: `${publicBase()}/media/PairMundo-profile-guide-for-agencies.pdf`, caption: 'Open the full guide (PDF)' }
+        : { image: 'swipe-match-chat.jpg', alt: 'Swipe, match and chat in the PairMundo app', placement: 'bottom', base: publicBase() }) }))
       .catch((e) => console.error('Email failed:', e.message));
   };
   /** Links an account to the code it was invited to, once its email is confirmed. */
@@ -3178,20 +3298,20 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   api.get('/admin/stats', requireRole('admin'), wrap(() => {
     const n = (q, ...a) => db.prepare(q).get(...a).n;
     return {
-      aupairs: n("SELECT COUNT(*) n FROM users WHERE role = 'aupair'"),
-      families: n("SELECT COUNT(*) n FROM users WHERE role = 'family'"),
-      pending_verification: n("SELECT COUNT(*) n FROM users WHERE role != 'admin' AND id_verified = 0"),
+      aupairs: n("SELECT COUNT(*) n FROM users WHERE role = 'aupair' AND demo = 0"),
+      families: n("SELECT COUNT(*) n FROM users WHERE role = 'family' AND demo = 0"),
+      pending_verification: n("SELECT COUNT(*) n FROM users WHERE role != 'admin' AND id_verified = 0 AND demo = 0"),
       pending_certificates: n("SELECT COUNT(*) n FROM certificate_proofs WHERE status = 'pending'"),
-      open_requests: n("SELECT COUNT(*) n FROM match_requests WHERE status = 'pending'"),
-      matches: n("SELECT COUNT(*) n FROM match_requests WHERE status = 'accepted'"),
-      placements_active: n("SELECT COUNT(*) n FROM placements WHERE status IN ('confirmed','active')"),
-      placements_completed: n("SELECT COUNT(*) n FROM placements WHERE status = 'completed'"),
-      reviews: n('SELECT COUNT(*) n FROM reviews'),
+      open_requests: n("SELECT COUNT(*) n FROM match_requests WHERE status = 'pending' AND from_user NOT IN (SELECT id FROM users WHERE demo = 1)"),
+      matches: n("SELECT COUNT(*) n FROM match_requests WHERE status = 'accepted' AND from_user NOT IN (SELECT id FROM users WHERE demo = 1)"),
+      placements_active: n("SELECT COUNT(*) n FROM placements WHERE status IN ('confirmed','active') AND family_id NOT IN (SELECT id FROM users WHERE demo = 1)"),
+      placements_completed: n("SELECT COUNT(*) n FROM placements WHERE status = 'completed' AND family_id NOT IN (SELECT id FROM users WHERE demo = 1)"),
+      reviews: n('SELECT COUNT(*) n FROM reviews WHERE reviewer_id NOT IN (SELECT id FROM users WHERE demo = 1)'),
       open_reports: n("SELECT COUNT(*) n FROM reports WHERE status = 'open'"),
       waitlist: n('SELECT COUNT(*) n FROM waitlist'),
       sitter_interest: Object.fromEntries([...SITTER_ANSWERS, null].map((a) => [a ?? 'unanswered',
-        n(`SELECT COUNT(*) n FROM users u JOIN family_profiles f ON f.user_id = u.id WHERE u.role = 'family' AND f.wants_sitter ${a ? '= ?' : 'IS NULL'}`, ...(a ? [a] : []))])),
-      by_country: db.prepare("SELECT country, role, COUNT(*) n FROM users WHERE role != 'admin' GROUP BY country, role ORDER BY n DESC").all(),
+        n(`SELECT COUNT(*) n FROM users u JOIN family_profiles f ON f.user_id = u.id WHERE u.role = 'family' AND u.demo = 0 AND f.wants_sitter ${a ? '= ?' : 'IS NULL'}`, ...(a ? [a] : []))])),
+      by_country: db.prepare("SELECT country, role, COUNT(*) n FROM users WHERE role != 'admin' AND demo = 0 GROUP BY country, role ORDER BY n DESC").all(),
     };
   }));
   api.get('/admin/users', requireRole('admin'), wrap((req) => {
@@ -3237,15 +3357,14 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   const agencyUpdateMail = (a) => {
     const to = (a.user_id && db.prepare('SELECT email FROM users WHERE id = ?').get(a.user_id)?.email) || a.invite_email || null;
     const link = a.user_id ? `${publicBase()}/#/agency` : `${publicBase()}/#/agency-signup?email=${encodeURIComponent(to || '')}`;
-    return { to, ...agencyUpdateEmail({ name: a.name, link, code: a.user_id ? a.code : null }),
-      attachments: [{ path: join(PUBLIC_DIR, 'media', 'PairMundo-profile-guide-for-agencies.pdf') }] };
+    return { to, ...withMedia(agencyUpdateEmail({ name: a.name, link, code: a.user_id ? a.code : null }), { image: 'agency-profile-guide.jpg', alt: 'PairMundo profile guide for agencies', placement: 'bottom', base: publicBase(), link: `${publicBase()}/media/PairMundo-profile-guide-for-agencies.pdf`, caption: 'Open the full guide (PDF)' }) };
   };
   const agencyUpdatePending = () => db.prepare("SELECT * FROM ambassadors WHERE kind = 'agency' AND active = 1 AND update_emailed_at IS NULL ORDER BY name").all();
   api.get('/admin/agency-update', requireRole('admin'), wrap(() => {
     const rows = agencyUpdatePending().map((a) => ({ id: a.id, code: a.code, name: a.name, ...agencyUpdateMail(a) }));
     const sample = rows.find((r) => r.to);
     return { recipients: rows.map(({ id, code, name, to }) => ({ id, code, name, to })),
-      sample: sample ? { to: sample.to, subject: sample.subject, text: sample.text, attachment: '/media/PairMundo-profile-guide-for-agencies.pdf' } : null };
+      sample: sample ? { to: sample.to, subject: sample.subject, text: sample.text, html: sample.html, attachment: '/media/PairMundo-profile-guide-for-agencies.pdf' } : null };
   }));
   api.post('/admin/agency-update', requireRole('admin'), wrap(() => {
     let sent = 0;
@@ -3258,6 +3377,71 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       sent++;
     }
     return { sent, missing };
+  }));
+
+  // ---------- agencies that are short of au pairs before launch ----------
+  // Every partner agency is meant to have at least NUDGE_TARGET au pairs on PairMundo before launch. The admin sees the
+  // active ones with fewer than NUDGE_BELOW and writes to each from their own mailbox, offering to upload the agency's
+  // list for it once, for free, and then pastes that list on the agency's page (POST /admin/ambassadors/:id/invites):
+  // everyone on it gets the agency's invitation, tagged to its code.
+  const NUDGE_BELOW = 10;
+  const NUDGE_TARGET = 50;
+  api.get('/admin/agency-nudge', requireRole('admin'), wrap(() => {
+    const rows = db.prepare(`SELECT a.*, u.email account_email,
+        (SELECT COUNT(*) FROM users m WHERE m.ref_code = a.code AND m.role = 'aupair' AND m.demo = 0 AND m.id IS NOT a.user_id) aupairs,
+        (SELECT COUNT(*) FROM users m WHERE m.ref_code = a.code AND m.role = 'family' AND m.demo = 0 AND m.id IS NOT a.user_id) families,
+        (SELECT COUNT(*) FROM agency_family_invites i WHERE i.ambassador_id = a.id) invited,
+        (SELECT COUNT(*) FROM waitlist w WHERE w.ref_code = a.code) waitlist
+      FROM ambassadors a LEFT JOIN users u ON u.id = a.user_id WHERE a.kind = 'agency' AND a.active = 1 ORDER BY a.created_at, a.name`).all();
+    const short = rows.filter((a) => a.aupairs < NUDGE_BELOW).sort((x, y) => x.aupairs - y.aupairs);
+    return { agencies: rows.length, below: NUDGE_BELOW, target: NUDGE_TARGET, one_pager: '/media/PairMundo-we-upload-your-au-pairs.pdf', reply_to: PARTNER_REPLY_TO(), short: short.map((a) => {
+      const to = a.account_email || a.invite_email || null;
+      const signup = a.user_id ? null : `${publicBase()}/#/agency-signup${to ? `?email=${encodeURIComponent(to)}` : ''}`;
+      return { id: a.id, code: a.code, name: a.name, country: a.country, created_at: a.created_at, account: !!a.user_id, email: to, emailed_at: a.nudge_emailed_at,
+        aupairs: a.aupairs, families: a.families, invited: a.invited, waitlist: a.waitlist,
+        ...nudgeMedia(agencyUploadOfferEmail({ name: a.name, code: a.code, signup, aupairs: a.aupairs, target: NUDGE_TARGET, onePager: `${publicBase()}/media/PairMundo-we-upload-your-au-pairs.pdf` })) };
+    }) };
+  }));
+  // Sends the offer from PairMundo's server, as the admin previewed (and maybe edited) it: from Badji's name, with the
+  // one-pager attached and replies going to Badji's own inbox (PARTNERS_REPLY_TO).
+  const PARTNER_REPLY_TO = () => process.env.PARTNERS_REPLY_TO || 'badji@pairmundo.com';
+  // The one-pager on how the free upload works, embedded under the words and opening the PDF.
+  const nudgeMedia = (mail) => withMedia(mail, { image: 'we-upload-your-au-pairs.jpg', alt: "We'll put your au pairs on PairMundo for you: how it works",
+    placement: 'bottom', base: publicBase(), link: `${publicBase()}/media/PairMundo-we-upload-your-au-pairs.pdf`, caption: 'Open the one-pager (PDF)' });
+  // What the agency will see, for the admin's preview, with any edits they made.
+  api.post('/admin/agency-nudge/preview', requireRole('admin'), wrap((req) => ({
+    html: nudgeMedia({ subject: str(req.body?.subject, 200) || '', text: typeof req.body?.text === 'string' ? req.body.text.slice(0, 10000) : '' }).html })));
+  api.post('/admin/agency-nudge/:id/send', requireRole('admin'), wrap(async (req) => {
+    const a = db.prepare("SELECT a.*, u.email account_email FROM ambassadors a LEFT JOIN users u ON u.id = a.user_id WHERE a.id = ? AND a.kind = 'agency'").get(Number(req.params.id));
+    if (!a) throw notFound();
+    const to = a.account_email || a.invite_email;
+    if (!to) throw bad('This agency has no email yet. Add one under the agency first.');
+    const subject = str(req.body?.subject, 200);
+    const text = typeof req.body?.text === 'string' ? req.body.text.trim().slice(0, 10000) : '';
+    if (!subject || !text) throw bad('The email needs a subject and a message.');
+    await mailer({ to, replyTo: PARTNER_REPLY_TO(), fromName: 'Badji from PairMundo', ...nudgeMedia({ subject, text }) });
+    db.prepare("UPDATE ambassadors SET nudge_emailed_at = datetime('now') WHERE id = ?").run(a.id);
+    return { sent: true, to, reply_to: PARTNER_REPLY_TO() };
+  }));
+  // The admin uploads an agency's list: one person per line, with an email, an optional name, and "au pair" or
+  // "family" (otherwise the default role). Each one gets the agency's invitation, as if the agency had sent it.
+  api.post('/admin/ambassadors/:id/invites', requireRole('admin'), wrap((req) => {
+    const a = db.prepare("SELECT * FROM ambassadors WHERE id = ? AND kind = 'agency'").get(Number(req.params.id));
+    if (!a) throw notFound();
+    const lines = String(req.body?.list || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    if (!lines.length) throw bad('Paste at least one line with an email.');
+    if (lines.length > 1000) throw bad('Up to 1,000 lines at a time.');
+    const fallback = req.body?.role === 'aupair' ? 'aupair' : 'family';
+    let invited = 0; let already = 0; const skipped = [];
+    for (const line of lines) {
+      const email = normEmail(line.match(/[^\s,;<>"']+@[^\s,;<>"']+\.[^\s,;<>"']+/)?.[0] || '');
+      if (!email) { skipped.push(line); continue; }
+      const rest = line.replace(/[^\s,;<>"']+@[^\s,;<>"']+\.[^\s,;<>"']+/, ' ');
+      const role = /au[\s-]?pair/i.test(rest) ? 'aupair' : /famil|host/i.test(rest) ? 'family' : fallback;
+      const name = rest.replace(/au[\s-]?pairs?|host\s*famil(y|ies)|famil(y|ies)/ig, ' ').replace(/[\t,;<>"']+/g, ' ').replace(/\s+/g, ' ').trim() || null;
+      if (inviteForAgency(a, { email, name, role })) invited++; else already++;
+    }
+    return { invited, already, skipped };
   }));
 
   // ---------- the Founding Partner Race (4 to 23 November 2026) ----------

@@ -109,7 +109,7 @@ export default function Account() {
               {idCheck.status === 'processing' ? <Alert level="info" text={tr("We're checking your ID. This usually takes a few minutes.")} /> : null}
               {idCheck.status === 'requires_input' && idCheck.error ? <Alert level="warning" text={tr("Your last check didn't go through. Try again with a clear, well-lit photo of your document.")} /> : null}
               {idErr ? <Alert level="error" text={idErr} /> : null}
-              {idCheck.status !== 'processing' ? <Button title={`🪪 ${tr('Verify my ID')}`} onPress={startIdCheck} loading={idBusy} /> : null}
+              {idCheck.status !== 'processing' ? <Button icon="shield-checkmark-outline" title={tr('Verify my ID')} onPress={startIdCheck} loading={idBusy} /> : null}
               <T small muted>{tr('Stripe runs the check and keeps your document. PairMundo only learns whether it passed.')}</T>
             </>}
       </Card>
