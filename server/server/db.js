@@ -587,8 +587,9 @@ CREATE TABLE IF NOT EXISTS flyer_bonuses (
 CREATE TABLE IF NOT EXISTS flyer_payouts (
   id INTEGER PRIMARY KEY,
   ambassador_id INTEGER NOT NULL REFERENCES ambassadors(id) ON DELETE CASCADE,
-  amount_ore INTEGER NOT NULL,
-  currency TEXT NOT NULL,
+  amount_ore INTEGER NOT NULL,                    -- what they earned, in Swedish öre
+  currency TEXT NOT NULL,                         -- the currency the transfer went out in (PairMundo's Stripe balance)
+  sent_amount INTEGER,                            -- the transfer, in that currency's smallest unit (cents for dollars)
   status TEXT NOT NULL DEFAULT 'sending',         -- sending | paid | failed
   transfer_id TEXT,
   error TEXT,
@@ -821,6 +822,8 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
       ALTER TABLE flyer_sessions ADD COLUMN payout_id INTEGER REFERENCES flyer_payouts(id) ON DELETE SET NULL;
       ALTER TABLE flyer_bonuses ADD COLUMN payout_id INTEGER REFERENCES flyer_payouts(id) ON DELETE SET NULL`);
   }
+  // Flyer payouts from a Stripe balance in another currency than kronor record what was actually sent.
+  if (!db.prepare('PRAGMA table_info(flyer_payouts)').all().some((c) => c.name === 'sent_amount')) db.exec('ALTER TABLE flyer_payouts ADD COLUMN sent_amount INTEGER');
   // Which partner agency an introduction came through, when the family and the au pair are with different agencies.
   if (!db.prepare('PRAGMA table_info(agency_introductions)').all().some((c) => c.name === 'partner_name')) db.exec('ALTER TABLE agency_introductions ADD COLUMN partner_name TEXT');
   // An agency's email for referrals: offers with one get a "Get help" button that sends the person's details there.

@@ -548,30 +548,39 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       pending: { sessions: p.sessions, flyers: p.flyers, amount_ore: p.n } };
   };
   // ---------- automatic flyer payouts (Stripe Connect, see payouts.js) ----------
+  // Only for distributors based in the United States, paid by PairMundo's US company. Distributors elsewhere (in Sweden,
+  // paid by Ansökan AB) are paid by hand from the kronor payout sheet, and the admin presses Mark as paid.
+  const autoPayable = (a) => !!payouts && a?.kind === 'distributor' && String(a.country || '').toUpperCase() === 'US';
   // Once a distributor has set up their Stripe account, everything approved and not paid yet is sent to it: right
   // after the admin approves a count, when their account becomes ready, when the admin presses Pay now, and every hour
   // (which picks up family bonuses and retries a payout that failed, say because the Stripe balance was short).
   /** Sends a distributor everything they're owed. Returns the payout, or null when there's nothing to send or no account. */
   const payDistributor = async (amb, { notifyFailure = true } = {}) => {
     const a = db.prepare('SELECT * FROM ambassadors WHERE id = ?').get(amb.id);
-    if (!payouts || a?.kind !== 'distributor' || !a.stripe_account || !a.payouts_ready) return null;
+    if (!autoPayable(a) || !a.stripe_account || !a.payouts_ready) return null;
     syncFlyerBonuses(a);
     // A payout left half-sent (the server stopped mid-transfer) is sent again first, under the same key, so Stripe
     // makes it once either way.
-    const stuck = db.prepare("SELECT id, amount_ore amount FROM flyer_payouts WHERE ambassador_id = ? AND status = 'sending' AND created_at < datetime('now', '-15 minutes') ORDER BY id LIMIT 1").get(a.id);
+    const stuck = db.prepare("SELECT id, amount_ore amount, currency, sent_amount FROM flyer_payouts WHERE ambassador_id = ? AND status = 'sending' AND created_at < datetime('now', '-15 minutes') ORDER BY id LIMIT 1").get(a.id);
     // Otherwise claim the rows first, so a second call while this transfer is on its way can't send them again.
     const p = stuck || tx(db, () => {
       const owed = db.prepare("SELECT COALESCE(SUM(amount_ore), 0) n FROM flyer_sessions WHERE ambassador_id = ? AND status = 'approved' AND paid_at IS NULL AND payout_id IS NULL").get(a.id).n
         + db.prepare('SELECT COALESCE(SUM(amount_ore), 0) n FROM flyer_bonuses WHERE ambassador_id = ? AND paid_at IS NULL AND payout_id IS NULL').get(a.id).n;
       if (owed <= 0) return null;
-      const id = Number(db.prepare('INSERT INTO flyer_payouts (ambassador_id, amount_ore, currency) VALUES (?,?,?)').run(a.id, owed, payouts.currency).lastInsertRowid);
+      const id = Number(db.prepare('INSERT INTO flyer_payouts (ambassador_id, amount_ore, currency) VALUES (?,?,?)').run(a.id, owed, 'sek').lastInsertRowid);
       db.prepare("UPDATE flyer_sessions SET payout_id = ? WHERE ambassador_id = ? AND status = 'approved' AND paid_at IS NULL AND payout_id IS NULL").run(id, a.id);
       db.prepare('UPDATE flyer_bonuses SET payout_id = ? WHERE ambassador_id = ? AND paid_at IS NULL AND payout_id IS NULL').run(id, a.id);
       return { id, amount: owed };
     });
     if (!p) return null;
     try {
-      const transferId = await payouts.transfer({ accountId: a.stripe_account, amount: p.amount, key: `flyer-payout-${p.id}`,
+      // Fix the amount in the balance's currency once, so a retry under the same key sends exactly the same transfer.
+      if (p.sent_amount == null) {
+        const q = await payouts.quote(p.amount);
+        db.prepare('UPDATE flyer_payouts SET currency = ?, sent_amount = ? WHERE id = ?').run(q.currency, q.amount, p.id);
+        Object.assign(p, { currency: q.currency, sent_amount: q.amount });
+      }
+      const transferId = await payouts.transfer({ accountId: a.stripe_account, amount: p.sent_amount, currency: p.currency, key: `flyer-payout-${p.id}`,
         description: `PairMundo flyer deliveries (${a.code})`, metadata: { ambassador_id: String(a.id), payout_id: String(p.id) } });
       tx(db, () => {
         db.prepare("UPDATE flyer_payouts SET status = 'paid', transfer_id = ? WHERE id = ?").run(transferId, p.id);
@@ -600,11 +609,11 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (ready) db.prepare('UPDATE ambassadors SET payouts_ready = 1 WHERE id = ?').run(a.id);
     return ready;
   };
-  const payoutInfo = (a) => ({ enabled: !!payouts, started: !!a.stripe_account, ready: !!a.payouts_ready });
+  const payoutInfo = (a) => ({ enabled: autoPayable(a), started: !!a.stripe_account, ready: !!a.payouts_ready });
   // Hourly: pay every ready distributor what's owed, quietly (the admin hears about a failure at most once a day each).
   app.sendFlyerPayouts = async () => {
     if (!payouts) return;
-    for (const a of db.prepare("SELECT * FROM ambassadors WHERE kind = 'distributor' AND active = 1 AND stripe_account IS NOT NULL").all()) {
+    for (const a of db.prepare("SELECT * FROM ambassadors WHERE kind = 'distributor' AND active = 1 AND stripe_account IS NOT NULL").all().filter(autoPayable)) {
       if (!a.payouts_ready && !(await refreshPayoutAccount(a))) continue;
       const failedToday = db.prepare("SELECT 1 FROM flyer_payouts WHERE ambassador_id = ? AND status = 'failed' AND created_at >= datetime('now', '-1 day')").get(a.id);
       await payDistributor(a, { notifyFailure: !failedToday });
@@ -2839,7 +2848,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   // A distributor sets up where their pay goes: Stripe's own page takes their bank details and ID.
   api.post('/me/ambassador/payouts', requireAuth, wrap(async (req) => {
     const a = myDistributor(req);
-    if (!payouts) throw bad('Automatic payouts are not switched on yet.');
+    if (!autoPayable(a)) throw bad('Automatic payouts are only for distributors based in the United States. PairMundo pays you by hand.');
     let account = a.stripe_account;
     if (!account) {
       account = await payouts.createAccount({ email: req.user.email, country: a.country || req.user.country, name: a.name, ambassadorId: a.id });
@@ -3259,6 +3268,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   api.post('/admin/ambassadors/:id/payout', requireRole('admin'), wrap(async (req) => {
     const a = adminAmbassador(req.params.id, null, false);
     if (!payouts) throw bad('Automatic payouts are off. Set FLYER_PAYOUTS=stripe on the server (see DEPLOY.md).');
+    if (!autoPayable(a)) throw bad('Automatic payouts are only for distributors based in the United States. Pay them by hand and press Mark as paid.');
     if (!a.stripe_account) throw bad("They haven't set up their payout account yet. They do it from their pay page.");
     if (!(await refreshPayoutAccount(a))) throw bad("Their payout account isn't ready yet: Stripe is still waiting for their details.");
     const payout = await payDistributor(a);
@@ -3287,6 +3297,26 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     });
     res.set('Content-Disposition', `attachment; filename="pairmundo-ambassadors-${month || 'all-time'}.csv"`).type('text/csv')
       .send([`code,name,country,contact,active,waitlist,au pairs,families,au pair profiles,family passes,placements,earned ${month || 'all time'} (USD),owed now (USD)`,
+        ...rows.map((r) => r.map(csvCell).join(','))].join('\n') + '\n');
+  });
+  // The flyer distributors' payout sheet, in kronor, for whoever pays them by hand (Ansökan AB's accountant). "To pay"
+  // is what's approved and not paid yet up to the end of the month: the same set Mark as paid marks for that month.
+  api.get('/admin/distributors.csv', requireRole('admin'), (req, res) => {
+    const month = monthParam(req.query.month);
+    const sek = (ore) => (ore / 100).toFixed(2);
+    const upTo = (when) => (month ? ` AND ${when} <= ?` : '');
+    const m = month ? [month] : [];
+    const rows = db.prepare(`SELECT a.*, u.email account_email FROM ambassadors a LEFT JOIN users u ON u.id = a.user_id
+      WHERE a.kind = 'distributor' ORDER BY a.code`).all().map((a) => {
+      const s = distributorStats(a, month);
+      const toPay = db.prepare(`SELECT COALESCE(SUM(amount_ore), 0) n FROM flyer_sessions WHERE ambassador_id = ? AND status = 'approved' AND paid_at IS NULL AND payout_id IS NULL${upTo('substr(delivered_on, 1, 7)')}`).get(a.id, ...m).n
+        + db.prepare(`SELECT COALESCE(SUM(amount_ore), 0) n FROM flyer_bonuses WHERE ambassador_id = ? AND paid_at IS NULL AND payout_id IS NULL${upTo("strftime('%Y-%m', joined_at)")}`).get(a.id, ...m).n;
+      return [a.code, a.name, a.country, a.contact, a.account_email, a.active ? 'yes' : 'no', s.sessions, s.flyers, sek(s.flyers_ore), s.families, sek(s.bonus_ore), sek(s.earned_ore),
+        sek(toPay), s.pending.sessions, sek(s.pending.amount_ore)];
+    });
+    const label = month || 'all time';
+    res.set('Content-Disposition', `attachment; filename="pairmundo-flyer-distributors-${month || 'all-time'}.csv"`).type('text/csv')
+      .send([`code,name,country,contact,account email,active,approved sessions ${label},flyers ${label},flyer pay ${label} (SEK),families ${label},family bonuses ${label} (SEK),earned ${label} (SEK),to pay now${month ? ` (up to end of ${month})` : ''} (SEK),counts waiting for approval,waiting for approval (SEK)`,
         ...rows.map((r) => r.map(csvCell).join(','))].join('\n') + '\n');
   });
   api.get('/admin/backup', requireRole('admin'), wrap(() => backups.status()));

@@ -2412,7 +2412,7 @@ async function adminAmbassadors(head, id, qs) {
       ${a.kind === 'distributor' && a.payouts?.enabled ? `<div class="card"><h3>💸 Automatic payouts</h3>
         <p>${a.payouts.ready ? '✓ Their Stripe account is set up. Approved pay is sent to it automatically.' : a.payouts.started ? 'They started setting up their Stripe account but haven\'t finished.' : 'They haven\'t set up their payout account yet. They do it from their pay page.'}</p>
         ${a.payouts.ready && a.stats.owed_ore > 0 ? `<button class="btn sm" id="payNow">Pay what's owed now (${kr(a.stats.owed_ore)})</button>` : ''}
-        ${a.payouts.history.length ? `<div class="table-wrap"><table><tr><th>When</th><th>Amount</th><th>Status</th></tr>${a.payouts.history.map((p) => `<tr><td>${fmtTime(p.created_at)}</td><td>${kr(p.amount_ore)} ${p.currency !== 'sek' ? esc(p.currency.toUpperCase()) : ''}</td>
+        ${a.payouts.history.length ? `<div class="table-wrap"><table><tr><th>When</th><th>Amount</th><th>Status</th></tr>${a.payouts.history.map((p) => `<tr><td>${fmtTime(p.created_at)}</td><td>${kr(p.amount_ore)}${p.currency !== 'sek' && p.sent_amount != null ? ` <span class="muted small">(sent ${(p.sent_amount / 100).toFixed(2)} ${esc(p.currency.toUpperCase())})</span>` : ''}</td>
           <td>${p.status === 'paid' ? `✓ Sent <span class="muted small">${esc(p.transfer_id || '')}</span>` : p.status === 'failed' ? `<span class="chip warn">Failed</span> <span class="muted small">${esc(p.error || '')}</span>` : 'Sending…'}</td></tr>`).join('')}</table></div>` : ''}</div>` : ''}
       ${a.kind === 'distributor' ? `<form class="card" id="sessNew"><h3>Log a delivery session</h3>
         ${a.areas.length ? `<div class="form-grid"><div class="field"><label>Area</label><select name="area">${a.areas.map((x) => `<option value="${esc(x)}">${esc(areaName(x))} (${esc(x)})</option>`).join('')}</select></div>
@@ -2499,7 +2499,8 @@ async function adminAmbassadors(head, id, qs) {
   const race = await api('/admin/agency-race').catch(() => null);
   const nudge = await api('/admin/agency-nudge').catch(() => null);
   render(`${head}<div class="spread"><form id="monthPick" class="row"><label>Month</label><input type="month" name="month" value="${esc(month)}" style="width:auto"></form>
-      <a class="btn sm" href="/api/admin/ambassadors.csv?month=${esc(month)}">⬇ Payout sheet for ${esc(month)} (CSV)</a></div>
+      <span class="row" style="gap:8px"><a class="btn sm" href="/api/admin/ambassadors.csv?month=${esc(month)}">⬇ Payout sheet for ${esc(month)} (CSV)</a>
+      ${ambassadors.some((a) => a.kind === 'distributor') ? `<a class="btn sm ghost" href="/api/admin/distributors.csv?month=${esc(month)}" title="Flyer distributors' pay in kronor, for Ansökan AB">⬇ Flyer distributors, kr (CSV)</a>` : ''}</span></div>
     <p class="muted small">Rewards: ${usd(rewards.profile)} per completed, ID-verified au pair profile (up to ${usd(rewards.profile_monthly_cap)} a month), ${usd(rewards.pass)} for a family's first Family Pass, ${usd(rewards.placement)} per referred side when a stay starts.</p>
     ${pending.length ? `<div class="card table-wrap"><h3>📬 Flyer counts to approve (${pending.length})</h3>
       <p class="muted small">Sent by flyer distributors from their page. Approving adds the pay (at the rate when they sent it) to what you owe them; you can approve fewer flyers if a spot-check came up short. Rejecting needs a reason, which they see.</p>

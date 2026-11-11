@@ -1239,5 +1239,6 @@
   "Set up payouts": "Auszahlungen einrichten",
   "Their payout account isn't ready yet: Stripe is still waiting for their details.": "Ihr Auszahlungskonto ist noch nicht bereit: Stripe wartet noch auf ihre Angaben.",
   "They haven't set up their payout account yet. They do it from their pay page.": "Sie haben ihr Auszahlungskonto noch nicht eingerichtet. Das machen sie auf ihrer Vergütungsseite.",
-  "This permanently deletes your agency account. Your families and au pairs keep their own accounts, matches, messages and placements; only they can delete them.": "Damit wird dein Agenturkonto endgültig gelöscht. Deine Familien und Au-pairs behalten ihre eigenen Konten, Matches, Nachrichten und Vermittlungen; nur sie selbst können sie löschen."
+  "This permanently deletes your agency account. Your families and au pairs keep their own accounts, matches, messages and placements; only they can delete them.": "Damit wird dein Agenturkonto endgültig gelöscht. Deine Familien und Au-pairs behalten ihre eigenen Konten, Matches, Nachrichten und Vermittlungen; nur sie selbst können sie löschen.",
+  "Automatic payouts are only for distributors based in the United States. PairMundo pays you by hand.": "Automatische Auszahlungen gibt es nur für Verteiler mit Sitz in den USA. PairMundo bezahlt dich manuell."
 }
