@@ -1239,5 +1239,19 @@
   "Set up payouts": "Configurer les versements",
   "Their payout account isn't ready yet: Stripe is still waiting for their details.": "Son compte de versement n'est pas encore prêt : Stripe attend encore ses informations.",
   "They haven't set up their payout account yet. They do it from their pay page.": "Il n'a pas encore configuré son compte de versement. Cela se fait depuis sa page de paie.",
-  "This permanently deletes your agency account. Your families and au pairs keep their own accounts, matches, messages and placements; only they can delete them.": "Cela supprime définitivement le compte de votre agence. Vos familles et au pairs gardent leurs propres comptes, matchs, messages et placements ; eux seuls peuvent les supprimer."
+  "This permanently deletes your agency account. Your families and au pairs keep their own accounts, matches, messages and placements; only they can delete them.": "Cela supprime définitivement le compte de votre agence. Vos familles et au pairs gardent leurs propres comptes, matchs, messages et placements ; eux seuls peuvent les supprimer.",
+  "Introduced by PairMundo": "Présentée par PairMundo",
+  "Want an agency to help? {agency} works with PairMundo in {country}. See how →": "Besoin de l’aide d’une agence ? {agency} travaille avec PairMundo en {country}. Voir comment →",
+  "Want an agency to help? {n} agencies work with PairMundo in {country}. See how →": "Besoin de l’aide d’une agence ? {n} agences travaillent avec PairMundo en {country}. Voir comment →",
+  "Get help from an agency": "Se faire aider par une agence",
+  "These au pair agencies work with PairMundo in {country}. An agency can help you choose your au pair, with the paperwork, and during the stay. Agencies set their own fees.": "Ces agences au pair travaillent avec PairMundo en {country}. Une agence peut vous aider à choisir votre au pair, pour les démarches et pendant le séjour. Les agences fixent leurs propres tarifs.",
+  "Introduced": "Présentée",
+  "Introduce me": "Nous présenter",
+  "{name} will get your name, email and city so they can contact you. Share your details?": "{name} recevra votre nom, votre e-mail et votre ville pour vous contacter. Partager vos informations ?",
+  "{name} will get your name, email and city so they can contact you, and you will join their space on PairMundo. They may approve your family before you see au pairs. Share your details?": "{name} recevra votre nom, votre e-mail et votre ville pour vous contacter, et vous rejoindrez son espace sur PairMundo. L’agence peut valider votre famille avant que vous voyiez des au pairs. Partager vos informations ?",
+  "Sent to {name}. They will contact you by email.": "Envoyé à {name}. L’agence vous contactera par e-mail.",
+  "That agency is not taking new families in your country.": "Cette agence n’accepte pas de nouvelles familles dans votre pays.",
+  "Your account already belongs to an agency on PairMundo.": "Votre compte appartient déjà à une agence sur PairMundo.",
+  "Website": "Site web",
+  "Your family is with {agency} on PairMundo.": "Votre famille est avec {agency} sur PairMundo."
 }

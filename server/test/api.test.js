@@ -3060,3 +3060,50 @@ test('admin emails carry media: a designed version with a picture and a button, 
   assert.ok(invites.samples.every((x) => x.html && x.html.includes('hero-family.jpg') && x.html.includes('#/register?role=family')), 'profile invites have a picture and a button');
   assert.ok((await call(admin, 'GET', '/admin/agency-nudge')).body.one_pager.endsWith('.pdf'));
 });
+
+test('agency introductions: families ask PairMundo for a partner agency in their country, join its space, and the agency hears', async () => {
+  const { hashPassword } = await import('../server/auth.js');
+  testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
+  const boss = await register('anders@introdk.test', 'agency', 'DK', 'Intro Service', { complete: false });
+  let r = await call(admin, 'POST', '/admin/ambassadors', { code: 'INTRODK', name: 'Intro Service', country: 'dk', kind: 'agency', account_email: 'anders@introdk.test', approve_families: true, takes_families: true });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.equal(r.body.takes_families, 1);
+  // An agency that doesn't take families, and one in another country, aren't offered.
+  await call(admin, 'POST', '/admin/ambassadors', { code: 'QUIETDK', name: 'Quiet DK', country: 'dk', kind: 'agency' });
+  await call(admin, 'POST', '/admin/ambassadors', { code: 'INTROSE', name: 'Intro SE', country: 'se', kind: 'agency', takes_families: true, account_email: 'boss@introse.test' });
+
+  const fam = await register('introfam@test.io', 'family', 'DK', 'Introduced Family');
+  const me = (await call(fam.token, 'GET', '/me')).body;
+  assert.deepEqual(me.partner_agencies.map((a) => [a.code, a.requested]), [['INTRODK', false]]);
+  const ap = await register('introap@test.io', 'aupair', 'DK');
+  assert.equal((await call(ap.token, 'GET', '/me')).body.partner_agencies, undefined, 'only families are offered agencies');
+  assert.equal((await call(ap.token, 'POST', '/me/partner-agencies/INTRODK', { consent: true })).status, 403);
+
+  assert.equal((await call(fam.token, 'POST', '/me/partner-agencies/INTRODK', {})).status, 400, 'needs consent');
+  assert.equal((await call(fam.token, 'POST', '/me/partner-agencies/QUIETDK', { consent: true })).status, 404);
+  assert.equal((await call(fam.token, 'POST', '/me/partner-agencies/INTROSE', { consent: true })).status, 404, 'other country');
+  r = await call(fam.token, 'POST', '/me/partner-agencies/introdk', { consent: true });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.deepEqual([r.body.agency, r.body.joined], ['Intro Service', true]);
+  assert.match(r.body.code, /^PM-[0-9A-F]{8}$/);
+  const mail = [...outbox].reverse().find((m) => m.to === 'anders@introdk.test');
+  assert.ok(mail && mail.text.includes('Introduced Family') && mail.text.includes('introfam@test.io') && /joined your agency space/.test(mail.text));
+  // Asking again doesn't send a second referral.
+  assert.equal((await call(fam.token, 'POST', '/me/partner-agencies/INTRODK', { consent: true })).body.already, true);
+  // The family is now in the agency's space, waiting for approval, and isn't offered agencies any more.
+  assert.deepEqual((await call(fam.token, 'GET', '/me')).body.partner_agencies, []);
+  assert.equal((await call(fam.token, 'GET', '/discover')).body.awaiting_agency, 'Intro Service');
+  r = await call(boss.token, 'GET', '/agency/families');
+  assert.deepEqual(r.body.families.map((f) => [f.id, f.stage, f.introduced]), [[fam.id, 'enquiry', true]]);
+  assert.ok((await call(boss.token, 'GET', '/notifications')).body.notifications.some((n) => /introduced a new family/.test(JSON.stringify(n))));
+  // The admin sees it with the other agency referrals.
+  assert.ok((await call(admin, 'GET', '/admin/referrals')).body.referrals.some((x) => x.agency === 'Intro Service' && x.user_id === fam.id));
+
+  // A family who joined with an ambassador's code keeps it: the agency gets their details, but they don't move into its space.
+  await call(admin, 'POST', '/admin/ambassadors', { code: 'AMB-DK', name: 'Dorte Ambassador', country: 'dk' });
+  const r2 = await call(null, 'POST', '/auth/register', { email: 'ambfam@test.io', password: 'password123', role: 'family', name: 'Amb Family', country: 'DK', ref_code: 'AMB-DK' });
+  r = await call(r2.body.token, 'POST', '/me/partner-agencies/INTRODK', { consent: true });
+  assert.deepEqual([r.status, r.body.joined], [201, false]);
+  assert.equal(testDb.prepare('SELECT ref_code FROM users WHERE id = ?').get(r2.body.user.id).ref_code, 'AMB-DK');
+});

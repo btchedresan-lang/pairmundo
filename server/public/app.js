@@ -248,6 +248,9 @@ views.discover = async (_, query) => {
     ${!me.user.email_verified ? `<a class="alert warning nudge" href="#/verify">📧 ${tr('Confirm your email to start liking. Click to enter your code.')}</a>` : ''}
     ${me.profile_missing?.length ? `<a class="alert warning nudge" href="#/profile">📸 ${isFamily ? tr('Add a photo and a few words so au pairs can see you. Profiles with photos get far more matches.') : tr('Add a photo and a few words so families can see you. Profiles with photos get far more matches.')}</a>`
     : completeness < 70 ? `<a class="alert info nudge" href="#/profile">${tr('Your profile is {n}% complete. Finish it to improve your matches →', { n: completeness })}</a>` : ''}
+    ${isFamily && me.partner_agencies?.some((a) => !a.requested) ? `<a class="alert info nudge" href="#/account">🎓 ${me.partner_agencies.length === 1
+    ? tr('Want an agency to help? {agency} works with PairMundo in {country}. See how →', { agency: esc(me.partner_agencies[0].name), country: esc(country(me.user.country)) })
+    : tr('Want an agency to help? {n} agencies work with PairMundo in {country}. See how →', { n: me.partner_agencies.length, country: esc(country(me.user.country)) })}</a>` : ''}
     <div class="disc-head"><button class="btn ghost sm" id="toggleFilters">⚙ ${tr('Filters')}${nFilters ? ` (${nFilters})` : ''}</button>
       <a class="btn ghost sm" href="#/search${deckQuery ? `?${deckQuery}` : ''}">☰ ${tr('List view')}</a></div>
     <form class="card filters" id="filters" hidden>
@@ -852,7 +855,7 @@ async function loadAgencyFamilies() {
   const labels = FAMILY_STAGE_LABELS();
   box.innerHTML = `${approve_families ? `<p class="muted small">${tr('New families see no au pairs until you move them past New enquiry. They get a notification when you approve them.')}</p>` : ''}
     ${families.length ? `<div class="table-wrap"><table><tr><th>${tr('Family')}</th><th>${tr('Joined')}</th><th>${tr('Stage')}</th><th>${tr('Fee paid')}</th><th>${tr('Note')}</th></tr>
-    ${families.map((f) => `<tr data-id="${f.id}"><td>${esc(f.name)}${f.id_verified ? ' ✓' : ''}<br><span class="muted small">${esc(f.email)}${f.city ? ` · ${esc(f.city)}` : ''}</span>
+    ${families.map((f) => `<tr data-id="${f.id}"><td>${esc(f.name)}${f.id_verified ? ' ✓' : ''}${f.introduced ? ` <span class="chip ok">${tr('Introduced by PairMundo')}</span>` : ''}<br><span class="muted small">${esc(f.email)}${f.city ? ` · ${esc(f.city)}` : ''}</span>
       ${f.placement ? `<br><span class="small">${tr('Au pair')}: ${esc(f.placement.aupair_name)}${f.placement.start_date ? ` · ${esc(f.placement.start_date)}` : ''}</span>` : ''}</td>
       <td>${esc(f.joined.slice(0, 10))}</td>
       <td><select name="stage">${stages.map((s) => `<option value="${s}" ${s === f.stage ? 'selected' : ''}>${labels[s]}</option>`).join('')}</select></td>
@@ -1162,6 +1165,33 @@ views.verify = async () => {
   document.getElementById('resend').onclick = async () => { await api('/auth/resend-verification', { method: 'POST' }); toast(tr('A new code is on its way')); };
 };
 
+/** Partner agencies in a family's country that take new families: the family asks, agrees to share, and is introduced. */
+function partnerAgenciesCard() {
+  const list = me.partner_agencies || [];
+  if (!list.length) return '';
+  return `<div class="card" id="partnerAgencies"><h2>🎓 ${tr('Get help from an agency')}</h2>
+    <p class="muted small">${tr('These au pair agencies work with PairMundo in {country}. An agency can help you choose your au pair, with the paperwork, and during the stay. Agencies set their own fees.', { country: esc(country(me.user.country)) })}</p>
+    ${list.map((a) => `<div class="row" style="padding:8px 0;border-top:1px solid var(--line, #e3e1da);align-items:flex-start"><div style="flex:1">
+      <strong>${esc(a.name)}</strong>${a.website ? ` <a class="small" href="${esc(a.website)}" target="_blank" rel="noopener">${tr('Website')} ↗</a>` : ''}
+      ${a.about ? `<div class="muted small">${esc(a.about)}</div>` : ''}</div>
+      ${a.requested ? `<span class="chip ok">✓ ${tr('Introduced')}</span>`
+        : `<button type="button" class="btn sm" data-agency-intro="${esc(a.code)}" data-name="${esc(a.name)}">${tr('Introduce me')}</button>`}</div>`).join('')}</div>`;
+}
+function bindPartnerAgencies() {
+  document.querySelectorAll('[data-agency-intro]').forEach((b) => { b.onclick = async () => {
+    const name = b.dataset.name;
+    const msg = me.has_code ? tr('{name} will get your name, email and city so they can contact you. Share your details?', { name })
+      : tr('{name} will get your name, email and city so they can contact you, and you will join their space on PairMundo. They may approve your family before you see au pairs. Share your details?', { name });
+    if (!confirm(msg)) return;
+    b.disabled = true;
+    try {
+      const r = await api(`/me/partner-agencies/${encodeURIComponent(b.dataset.agencyIntro)}`, { method: 'POST', body: { consent: true } });
+      toast(tr('Sent to {name}. They will contact you by email.', { name: r.agency }));
+      await refreshMe(); views.account();
+    } catch (e) { b.disabled = false; toast(e.message); }
+  }; });
+}
+
 views.account = async () => {
   await refreshMe();
   const [{ blocked }, idc, amb] = await Promise.all([api('/blocks'), api('/me/id-check').catch(() => ({ available: false })),
@@ -1177,7 +1207,7 @@ views.account = async () => {
   // An ambassador account has its code on its own page.
   const ambCard = amb?.kind === 'ambassador' && me.user.role !== 'ambassador' ? ambassadorCard(amb) : '';
   // An au pair whose agency gave them a code after they signed up can link their account to it here.
-  const agencyCard = me.user.role === 'family' ? (me.has_code ? '' : `<div class="card"><h2>🎓 ${tr('Your agency')}</h2><p class="muted small">${tr('Working with an au pair agency? Enter the code they gave you to join their space on PairMundo.')}</p>
+  const agencyCard = me.user.role === 'family' ? (me.my_agency ? `<div class="card"><h2>🎓 ${tr('Your agency')}</h2><p>${tr('Your family is with {agency} on PairMundo.', { agency: `<strong>${esc(me.my_agency)}</strong>` })}</p></div>` : '') + partnerAgenciesCard() + (me.has_code ? '' : `<div class="card"><h2>🎓 ${tr('Your agency')}</h2><p class="muted small">${tr('Working with an au pair agency? Enter the code they gave you to join their space on PairMundo.')}</p>
       <form id="agency" class="row"><input name="code" required autocapitalize="characters" autocomplete="off" placeholder="${tr('Agency code')}" style="flex:1"><button class="btn sm">${tr('Add')}</button></form><div id="agencyErr"></div></div>`)
     : me.user.role !== 'aupair' ? ''
     : me.user.agency ? `<div class="card"><h2>🎓 ${tr('Your agency')}</h2><p>${tr('Your profile is linked to {agency}. Families see it on your profile.', { agency: `<strong>${esc(me.user.agency)}</strong>` })}</p></div>`
@@ -1192,6 +1222,7 @@ views.account = async () => {
       <form id="del"><div class="field"><label>${tr('Your password')}</label><input name="password" type="password" required autocomplete="current-password"></div>
       <div id="err"></div><button class="btn danger">${tr('Delete my account')}</button></form></div>`);
   if (ambCard) wireCopy(amb.link);
+  bindPartnerAgencies();
   const $agency = document.getElementById('agency');
   if ($agency) $agency.onsubmit = async (e) => {
     e.preventDefault();
@@ -2380,7 +2411,7 @@ function wireReviews(ambId, reload, only = null) {
 }
 const kindChip = (a) => ({ agency: '<span class="chip">Agency</span>', distributor: '<span class="chip">Flyer distributor</span>' })[a.kind] || '';
 /** Shows the flyer pay fields only when the type is flyer distributor. */
-const spaceFields = (form) => ({ ...Object.fromEntries(['closed_network', 'mask_contacts', 'covers_pass', 'approve_families', 'share_aupairs'].map((k) => [k, form[k].checked])), pilot_until: form.pilot_until.value });
+const spaceFields = (form) => ({ ...Object.fromEntries(['closed_network', 'mask_contacts', 'covers_pass', 'approve_families', 'share_aupairs', 'takes_families'].map((k) => [k, form[k].checked])), pilot_until: form.pilot_until.value });
 function wireKind(form) {
   const sync = () => { form.querySelector('.distOnly').hidden = form.kind.value !== 'distributor'; form.querySelector('.agencyOnly').hidden = form.kind.value !== 'agency'; };
   form.kind.onchange = sync;
@@ -2408,6 +2439,7 @@ async function adminAmbassadors(head, id, qs) {
       <label class="check"><input type="checkbox" name="covers_pass" ${a.covers_pass ? 'checked' : ''}> Families don't need the Family Pass (they pay the agency instead)</label>
       <label class="check"><input type="checkbox" name="approve_families" ${a.approve_families ? 'checked' : ''}> The agency approves each family before they see any au pairs</label>
       <label class="check"><input type="checkbox" name="share_aupairs" ${a.share_aupairs ? 'checked' : ''}> Closed Loop: still show the agency's au pairs to every family on PairMundo (its families stay closed)</label>
+      <label class="check"><input type="checkbox" name="takes_families" ${a.takes_families ? 'checked' : ''}> Takes new families: families in its country can ask PairMundo to introduce them (needs a linked agency account)</label>
       <div class="field"><label>Closed Loop free pilot ends (then €129 a month, €97 in year one)</label><input name="pilot_until" type="date" value="${esc(a.pilot_until || '')}"></div></fieldset>
     <div class="form-grid"><div class="field"><label>Name</label><input name="name" required value="${esc(a.name)}"></div>
       <div class="field"><label>Country</label><select name="country">${options(COUNTRIES, a.country || '', '—')}</select></div></div>
