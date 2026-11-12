@@ -815,6 +815,10 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
       ALTER TABLE flyer_sessions ADD COLUMN reviewed_at TEXT`);
   }
   // Flyer distributors can be paid automatically, to their own Stripe account.
+  // Partner agencies that take new families: families in the agency's country can ask PairMundo to introduce them.
+  if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'takes_families')) db.exec('ALTER TABLE ambassadors ADD COLUMN takes_families INTEGER NOT NULL DEFAULT 0');
+  // A referral to a partner agency's own space (not a partner offer link), so the agency's page can show who PairMundo introduced.
+  if (!db.prepare('PRAGMA table_info(agency_referrals)').all().some((c) => c.name === 'ambassador_id')) db.exec('ALTER TABLE agency_referrals ADD COLUMN ambassador_id INTEGER REFERENCES ambassadors(id) ON DELETE SET NULL');
   if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'stripe_account')) {
     db.exec(`ALTER TABLE ambassadors ADD COLUMN stripe_account TEXT;
       ALTER TABLE ambassadors ADD COLUMN payouts_ready INTEGER NOT NULL DEFAULT 0;
