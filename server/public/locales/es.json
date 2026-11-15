@@ -1409,5 +1409,18 @@
   "{n} family has joined with your code.": "{n} familia se ha unido con su código.",
   "{org} member": "Miembro de {org}",
   "€129 a month (€97 in your first year as a founding partner) and €75 per au pair who starts with one of your families.": "129 € al mes (97 € el primer año como socio fundador) y 75 € por cada au pair que empiece con una de sus familias.",
-  "This permanently deletes your agency account. Your families and au pairs keep their own accounts, matches, messages and placements; only they can delete them.": "Esto elimina para siempre la cuenta de tu agencia. Tus familias y au pairs conservan sus propias cuentas, matches, mensajes y colocaciones; solo ellos pueden eliminarlas."
+  "This permanently deletes your agency account. Your families and au pairs keep their own accounts, matches, messages and placements; only they can delete them.": "Esto elimina para siempre la cuenta de tu agencia. Tus familias y au pairs conservan sus propias cuentas, matches, mensajes y colocaciones; solo ellos pueden eliminarlas.",
+  "Introduced by PairMundo": "Presentada por PairMundo",
+  "Want an agency to help? {agency} works with PairMundo in {country}. See how →": "¿Queréis ayuda de una agencia? {agency} trabaja con PairMundo en {country}. Ver cómo →",
+  "Want an agency to help? {n} agencies work with PairMundo in {country}. See how →": "¿Queréis ayuda de una agencia? {n} agencias trabajan con PairMundo en {country}. Ver cómo →",
+  "Get help from an agency": "Ayuda de una agencia",
+  "These au pair agencies work with PairMundo in {country}. An agency can help you choose your au pair, with the paperwork, and during the stay. Agencies set their own fees.": "Estas agencias de au pairs trabajan con PairMundo en {country}. Una agencia puede ayudaros a elegir a vuestra au pair, con el papeleo y durante la estancia. Cada agencia fija sus propias tarifas.",
+  "Introduced": "Presentada",
+  "Introduce me": "Presentadnos",
+  "{name} will get your name, email and city so they can contact you. Share your details?": "{name} recibirá vuestro nombre, correo y ciudad para contactaros. ¿Compartir vuestros datos?",
+  "{name} will get your name, email and city so they can contact you, and you will join their space on PairMundo. They may approve your family before you see au pairs. Share your details?": "{name} recibirá vuestro nombre, correo y ciudad para contactaros, y os uniréis a su espacio en PairMundo. Puede que la agencia apruebe a vuestra familia antes de que veáis au pairs. ¿Compartir vuestros datos?",
+  "Sent to {name}. They will contact you by email.": "Enviado a {name}. Os contactarán por correo.",
+  "That agency is not taking new families in your country.": "Esa agencia no acepta familias nuevas en vuestro país.",
+  "Your account already belongs to an agency on PairMundo.": "Vuestra cuenta ya pertenece a una agencia en PairMundo.",
+  "Your family is with {agency} on PairMundo.": "Vuestra familia está con {agency} en PairMundo."
 }

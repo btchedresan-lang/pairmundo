@@ -247,6 +247,7 @@ export const agencyLeadEmail = (l) => ({
     `Name: ${l.name}`, `Email: ${l.email}`, `${l.role === 'family' ? 'Host family' : 'Au pair'}${l.lives_in ? `, living in ${l.lives_in}` : ''}`,
     l.nationality ? `Nationality: ${l.nationality}` : null, l.host_country ? `Au pair stay in: ${l.host_country}` : null, l.dates ? `Dates: ${l.dates}` : null,
     `Referral code: ${l.code}`, '',
+    l.joined ? `They have joined your agency space on ${APP_NAME} and appear under "Your families".` : null, l.joined ? '' : null,
     `Please contact them directly, and quote the referral code when you tell us who started their au pair year.`, '', `The ${APP_NAME} team`,
   ].filter((x) => x != null).join('\n'),
 });

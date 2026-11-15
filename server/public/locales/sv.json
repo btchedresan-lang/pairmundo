@@ -1356,5 +1356,18 @@
   "Set up payouts": "Ställ in utbetalningar",
   "Their payout account isn't ready yet: Stripe is still waiting for their details.": "Deras utbetalningskonto är inte klart än: Stripe väntar fortfarande på deras uppgifter.",
   "They haven't set up their payout account yet. They do it from their pay page.": "De har inte ställt in sitt utbetalningskonto än. Det gör de från sin ersättningssida.",
-  "This permanently deletes your agency account. Your families and au pairs keep their own accounts, matches, messages and placements; only they can delete them.": "Detta raderar ditt byråkonto permanent. Dina familjer och au pairer behåller sina egna konton, matchningar, meddelanden och placeringar; bara de själva kan radera dem."
+  "This permanently deletes your agency account. Your families and au pairs keep their own accounts, matches, messages and placements; only they can delete them.": "Detta raderar ditt byråkonto permanent. Dina familjer och au pairer behåller sina egna konton, matchningar, meddelanden och placeringar; bara de själva kan radera dem.",
+  "Introduced by PairMundo": "Introducerad av PairMundo",
+  "Want an agency to help? {agency} works with PairMundo in {country}. See how →": "Vill ni ha hjälp av en byrå? {agency} samarbetar med PairMundo i {country}. Se hur →",
+  "Want an agency to help? {n} agencies work with PairMundo in {country}. See how →": "Vill ni ha hjälp av en byrå? {n} byråer samarbetar med PairMundo i {country}. Se hur →",
+  "Get help from an agency": "Få hjälp av en byrå",
+  "These au pair agencies work with PairMundo in {country}. An agency can help you choose your au pair, with the paperwork, and during the stay. Agencies set their own fees.": "De här au pair-byråerna samarbetar med PairMundo i {country}. En byrå kan hjälpa er att välja au pair, med pappersarbetet och under vistelsen. Byråerna sätter sina egna avgifter.",
+  "Introduced": "Introducerad",
+  "Introduce me": "Introducera oss",
+  "{name} will get your name, email and city so they can contact you. Share your details?": "{name} får ert namn, er e-post och stad så att de kan kontakta er. Dela era uppgifter?",
+  "{name} will get your name, email and city so they can contact you, and you will join their space on PairMundo. They may approve your family before you see au pairs. Share your details?": "{name} får ert namn, er e-post och stad så att de kan kontakta er, och ni går med i deras utrymme på PairMundo. De kan behöva godkänna er familj innan ni ser au pairer. Dela era uppgifter?",
+  "Sent to {name}. They will contact you by email.": "Skickat till {name}. De kontaktar er via e-post.",
+  "That agency is not taking new families in your country.": "Den byrån tar inte emot nya familjer i ert land.",
+  "Your account already belongs to an agency on PairMundo.": "Ert konto tillhör redan en byrå på PairMundo.",
+  "Your family is with {agency} on PairMundo.": "Er familj tillhör {agency} på PairMundo."
 }
