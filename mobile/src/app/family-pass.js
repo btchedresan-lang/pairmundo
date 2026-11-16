@@ -52,7 +52,11 @@ export default function FamilyPass() {
     setMsg(null); setBusy(true);
     try {
       const done = await buyFamilyPass(product, me.user.id);
-      if (done) {
+      if (done === 'pending') setMsg({ level: 'info', text: tr('Your purchase is waiting for approval. Your Family Pass starts as soon as it is approved.') });
+      else if (done === 'processing') {
+        await load(); await refresh().catch(() => {});
+        setMsg({ level: 'info', text: tr('Thank you! Your payment went through. Your Family Pass will show here in a minute; if it does not, tap Restore purchases.') });
+      } else if (done) {
         await load(); await refresh().catch(() => {});
         setMsg({ level: 'ok', text: product === rm ? tr('Thank you! Your Rematch Guarantee is active.') : tr('Your Family Pass is active. You can now message au pairs and see who liked you.') });
       }

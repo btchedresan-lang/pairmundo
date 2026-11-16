@@ -1079,5 +1079,9 @@
   "Write a few words about you": "Skriv några ord om dig själv",
   "Write a few words about your family": "Skriv några ord om er familj",
   "You have unsaved changes": "Du har osparade ändringar",
-  "or": "eller"
+  "or": "eller",
+  "We couldn't reach the App Store. Check your connection and try again.": "Vi kunde inte nå App Store. Kontrollera din anslutning och försök igen.",
+  "The purchase did not go through. You have not been charged.": "Köpet gick inte igenom. Du har inte debiterats.",
+  "Your purchase is waiting for approval. Your Family Pass starts as soon as it is approved.": "Ditt köp väntar på godkännande. Ditt Family Pass startar så snart det godkänns.",
+  "Thank you! Your payment went through. Your Family Pass will show here in a minute; if it does not, tap Restore purchases.": "Tack! Din betalning gick igenom. Ditt Family Pass visas här om en minut; om inte, tryck på Återställ köp."
 }

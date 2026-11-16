@@ -1712,7 +1712,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   // Apple and Google purchases, checked with RevenueCat. The app calls this after buying and for "Restore purchases";
   // RevenueCat's webhook below does the same thing in the background.
   api.post('/family-pass/sync', requireAuth, wrap(async (req) => {
-    if (!revenuecat) throw new HttpError(503, 'Payments are coming soon.');
+    if (!revenuecat) { console.error('Family Pass sync called but REVENUECAT_SECRET_KEY is not set: app purchases cannot start a pass.'); throw new HttpError(503, 'Payments are coming soon.'); }
     if (req.user.role !== 'family') throw forbidden('Only families need the Family Pass.');
     let list;
     try { list = await revenuecat.purchases(String(req.user.id)); }
@@ -1725,6 +1725,14 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       if (p.product === REMATCH.product_id && (!p.purchasedAt || Date.parse(p.purchasedAt) > Date.now() - REMATCH.cover_days * 86400000) && grantRematch(req.user.id, p.store, p.ref)) added++;
     }
     return { added, pass: passView(req.user) };
+  }));
+  // The app reports a failed in-app purchase here, so it shows in the server logs with the store's own error.
+  api.post('/family-pass/purchase-error', requireAuth, wrap((req) => {
+    const b = req.body || {};
+    const f = (k, n = 200) => String(b[k] ?? '').slice(0, n);
+    console.error(`In-app purchase failed: user ${req.user.id}${req.user.demo ? ' (demo)' : ''}, stage ${f('stage', 20)}, product ${f('product_id', 60)}, `
+      + `${f('platform', 10)} ${f('os_version', 20)}, app ${f('app_version', 20)}, code ${f('code', 20)}: ${f('message', 300)}${b.underlying ? ` (${f('underlying', 300)})` : ''}`);
+    return { ok: true };
   }));
   api.post('/revenuecat/webhook', wrap((req) => {
     if (!webhookAuthorized(req.get('authorization'))) throw new HttpError(401, 'Not allowed.');
