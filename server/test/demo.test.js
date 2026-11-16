@@ -107,3 +107,15 @@ test('demo: logins are restored, and the demo world is rebuilt after a reviewer 
   assert.ok(db.prepare("SELECT 1 FROM users WHERE email = 'real@test.io'").get());
   assert.equal(ensureDemoAccounts(db, { password: '' }), 'off');
 });
+
+test('a failed in-app purchase is logged on the server', async () => {
+  const t = await login(DEMO_LOGINS.family2);
+  const logged = [];
+  const orig = console.error; console.error = (m) => logged.push(String(m));
+  try {
+    const r = await call(t, 'POST', '/family-pass/purchase-error', { stage: 'products', product_id: 'family_pass_90', code: '23', message: 'Product not returned by the store', platform: 'ios', os_version: '27.2.1' });
+    assert.equal(r.status, 200);
+  } finally { console.error = orig; }
+  assert.ok(logged.some((l) => l.includes('In-app purchase failed') && l.includes('(demo)') && l.includes('family_pass_90') && l.includes('code 23')));
+  assert.equal((await call(null, 'POST', '/family-pass/purchase-error', {})).status, 401);
+});

@@ -1079,5 +1079,9 @@
   "Write a few words about you": "Schreib ein paar Worte über dich",
   "Write a few words about your family": "Schreibt ein paar Worte über eure Familie",
   "You have unsaved changes": "Du hast ungespeicherte Änderungen",
-  "or": "oder"
+  "or": "oder",
+  "We couldn't reach the App Store. Check your connection and try again.": "Wir konnten den App Store nicht erreichen. Prüfe deine Verbindung und versuche es erneut.",
+  "The purchase did not go through. You have not been charged.": "Der Kauf hat nicht geklappt. Dir wurde nichts berechnet.",
+  "Your purchase is waiting for approval. Your Family Pass starts as soon as it is approved.": "Dein Kauf wartet auf Genehmigung. Dein Family Pass startet, sobald er genehmigt ist.",
+  "Thank you! Your payment went through. Your Family Pass will show here in a minute; if it does not, tap Restore purchases.": "Danke! Deine Zahlung ist eingegangen. Dein Family Pass erscheint hier in einer Minute; falls nicht, tippe auf „Käufe wiederherstellen“."
 }
