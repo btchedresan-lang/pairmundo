@@ -55,6 +55,12 @@ export function CardCaption({ r, onPress }) {
     : [kids, p.start_date ? tr('starts {date}', { date: fmtDate(p.start_date) }) : ''].filter(Boolean).join(' · ');
   return (
     <Pressable onPress={onPress} style={styles.caption}>
+      {u.agency ? (
+        <View style={styles.agency}>
+          <Ionicons name="school" size={14} color="#fff" />
+          <Text style={styles.agencyText} numberOfLines={2}>{tr('Prepared & approved by {agency}', { agency: u.agency })}</Text>
+        </View>
+      ) : null}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <Text style={[styles.name, { flexShrink: 1 }]} numberOfLines={2}>{u.name}{age ? <Text style={{ opacity: 0.85 }}>  {age}</Text> : null}</Text>
         {u.verification?.id ? <Ionicons name="checkmark-circle" size={24} color="#6cc4ff" accessibilityLabel={tr('ID verified')} /> : null}
@@ -64,7 +70,6 @@ export function CardCaption({ r, onPress }) {
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
         {langs.slice(0, 3).map((l) => <Text key={l} style={styles.glass}>{l}</Text>)}
         {r.rating?.avg ? <Text style={styles.glass}>★ {r.rating.avg}</Text> : null}
-        {u.agency ? <Text style={styles.glass} numberOfLines={1}><Ionicons name="school-outline" size={13} color="#fff" /> {u.agency}</Text> : null}
         {u.role === 'aupair' && p.drivers_license ? <Text style={styles.glass}><Ionicons name="car-outline" size={13} color="#fff" /> {tr('Driver')}</Text> : null}
         {u.role === 'aupair' && (p.certificates || []).some((c) => ['cpr', 'first_aid'].includes(c.kind)) ? <Text style={styles.glass}><Ionicons name="medkit-outline" size={13} color="#fff" /> {tr('CPR')}</Text> : null}
       </View>
@@ -177,6 +182,9 @@ const styles = StyleSheet.create({
   sub: { color: '#fff', opacity: 0.95, fontSize: 15, marginTop: 2, textShadowColor: 'rgba(0,0,0,0.6)', textShadowRadius: 4 },
   glass: { color: '#fff', backgroundColor: 'rgba(255,255,255,0.16)', borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.35)',
     paddingHorizontal: 11, paddingVertical: 5, borderRadius: 999, fontSize: 13, fontWeight: '600', overflow: 'hidden' },
+  agency: { alignSelf: 'flex-start', maxWidth: '100%', flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8, backgroundColor: C.ok,
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, ...lift.md },
+  agencyText: { color: '#fff', fontWeight: '800', fontSize: 13.5, flexShrink: 1 },
   reason: { color: '#7ee2a8', marginTop: 10, fontSize: 14, fontWeight: '600' },
   warning: { color: '#ffd8a8', marginTop: 2, fontSize: 13 },
   badge: { position: 'absolute', top: 24, backgroundColor: 'rgba(28,27,34,0.6)', color: '#fff', fontWeight: '700', fontSize: 13,

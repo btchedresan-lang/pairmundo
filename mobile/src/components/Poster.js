@@ -1,6 +1,7 @@
 // The au pair profile laid out like the "Hi, I'm ..." letters au pairs make for host families: a polaroid photo and
 // pastel cards for each part of the profile. Cards with nothing filled in are left out.
 import { View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { HEADING, HEADING_BOLD, Text } from './Text';
 import { Photo, Stars } from './ui';
 import { Gallery } from './SwipeDeck';
@@ -57,6 +58,28 @@ function Polaroid({ user, uri, width, tilt, caption, gallery }) {
   );
 }
 
+/** "Prepared & approved by <agency>": a banner under the name of an au pair whose agency made their profile, so families notice it. */
+export function AgencySeal({ u }) {
+  if (!u?.agency) return null;
+  const badges = u.agency_badges || [];
+  return (
+    <View accessibilityRole="text" style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 14, padding: 12, borderRadius: 14,
+      backgroundColor: '#e6f6ec', borderWidth: 2, borderColor: C.ok }}>
+      <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: C.ok, alignItems: 'center', justifyContent: 'center' }}>
+        <Ionicons name="school" size={22} color="#fff" />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 16, color: '#1d5f2b', fontWeight: '600' }}>
+          {tr('Prepared & approved by {agency}').split('{agency}').flatMap((part, i) => (i ? [<Text key={i} style={{ fontWeight: '800' }}>{u.agency}</Text>, part] : [part]))}
+        </Text>
+        <Text style={{ fontSize: 12.5, color: '#4d5a52', marginTop: 2 }}>
+          {tr('Their agency prepared this profile and checked it before it went live.')}{badges.length ? ` · ${badges.map((b) => `🏅 ${tr('{org} member', { org: b })}`).join(' · ')}` : ''}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 /** Name, "Au pair from ..." and the photo. Tapping the photo flips through all photos. */
 export function PosterHeader({ u, p, width, badge }) {
   const t = useTheme();
@@ -73,6 +96,7 @@ export function PosterHeader({ u, p, width, badge }) {
             <Text style={{ fontFamily: HEADING, fontSize: 18, color: '#5c2233' }}>{tr('Au pair from {country}', { country: country(from) })} {flag(from)}</Text>
           </View>
         ) : null}
+        <AgencySeal u={u} />
       </View>
       <View style={{ alignItems: 'center', paddingVertical: 4 }}>
         <Polaroid user={u} gallery width={width - 80} tilt={1.5} caption={tr('Big dreams · Good vibes · New adventures')} />
