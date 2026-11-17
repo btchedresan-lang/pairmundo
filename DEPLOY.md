@@ -156,3 +156,13 @@ Apple and Google need logins that show every feature with other members in them.
 - `aupair@demo.pairmundo.com`: au pair from Colombia. Matches and chats (including with the first family), two likes waiting, a placement to confirm and a finished placement to review.
 
 All three use `DEMO_PASSWORD` and need no email code. The other demo members have illustrated photos and random passwords. Demo members and real members never see each other, and nothing is emailed to demo addresses. The server checks every hour: it restores the password, confirmed email and Family Pass, and rebuilds the whole demo world if a reviewer deleted one of the accounts. Admin → Overview counts leave demo accounts out. To remove them, delete `DEMO_PASSWORD`; the accounts stay but nobody knows a password for them until it is set again.
+
+### Training logins for the team
+
+To let a new team member learn the agency side without admin access or real members' data, set `DEMO_TEAM_PASSWORD` in Render → Environment (8+ characters, different from `DEMO_PASSWORD`). On the next start the server adds a training agency, **Sunbeam Au Pairs (demo)** (code `DEMOAGENCY`, Stockholm), running a Closed Loop pilot:
+
+- `agency@demo.pairmundo.com`: the agency account. Its Closed Loop, five au pairs (one with an unfinished profile), three families at different stages (one waiting for approval), invitations, the introduction log and a flagged chat.
+- `agency-family@demo.pairmundo.com`: Familjen Lindqvist in Stockholm, in the agency's space. Two likes waiting, a chat with Joy and a placement sent to her.
+- `agency-aupair@demo.pairmundo.com`: Joy Santos from the Philippines, who joined with the agency's code. The Lindqvists' chat and a placement to confirm.
+
+The training agency only shows its own au pairs and families, so it never touches the app review logins. Its invitations are listed but never emailed, its code can't be used to sign up, and it is left out of the race, agency mailings, announcements and partner lists. The server restores these logins every hour and rebuilds the training agency if one is missing. To turn them off, delete `DEMO_TEAM_PASSWORD`.

@@ -5,6 +5,10 @@
 // demo members get a random one nobody knows. Every demo account is marked users.demo = 1, and demo and real members
 // never see each other (see closedApart in app.js). Emails to @demo.pairmundo.com are never sent.
 //
+// ensureTeamDemo adds a training agency for PairMundo staff, with its own logins and password (DEMO_TEAM_PASSWORD), so
+// a new team member can try the agency side (Closed Loop, approving families, invites, the introduction log) and a
+// family and an au pair inside that agency, without the app review logins or any real member's data.
+//
 // ensureDemoAccounts runs at start-up and every hour. It keeps the reviewer logins working (password, confirmed email,
 // not suspended, the Family Pass on the first family) and rebuilds the whole demo world if a reviewer account is missing,
 // for example after a reviewer tried account deletion.
@@ -24,7 +28,16 @@ export const DEMO_LOGINS = {
   aupair: `aupair@${DEMO_DOMAIN}`,
 };
 
-const SKIN = { CO: '#d09a6e', PL: '#f6d3b3', ZA: '#5a3820', VN: '#e8b48f', IT: '#e8b48f', GH: '#5a3820', SE: '#f6d3b3', BR: '#a8714a', MX: '#c58c62' };
+// Training logins for PairMundo staff, with DEMO_TEAM_PASSWORD. They live in their own agency space (TEAM_AGENCY),
+// which only shows its own au pairs and families, so they never touch the app review logins.
+export const TEAM_LOGINS = {
+  agency: `agency@${DEMO_DOMAIN}`, // the agency account: Your agency page with its Closed Loop
+  family: `agency-family@${DEMO_DOMAIN}`, // a host family in the agency's space
+  aupair: `agency-aupair@${DEMO_DOMAIN}`, // an au pair who joined with the agency's code
+};
+export const TEAM_AGENCY = { code: 'DEMOAGENCY', name: 'Sunbeam Au Pairs (demo)', country: 'SE', city: 'Stockholm' };
+
+const SKIN = { PH: '#c58c62', KE: '#5a3820', ES: '#e8b48f', PT: '#e8b48f', CO: '#d09a6e', PL: '#f6d3b3', ZA: '#5a3820', VN: '#e8b48f', IT: '#e8b48f', GH: '#5a3820', SE: '#f6d3b3', BR: '#a8714a', MX: '#c58c62' };
 
 // [slug, name, country, city, birth, languages, preferred countries, childcare years, age groups, skills, license, available, months, bio, checks]
 const AUPAIRS = [
@@ -74,7 +87,11 @@ const ago = (days, hours = 0) => new Date(Date.now() - (days * 24 + hours) * 360
 
 /** Removes every demo account and what hangs off it (same order as account deletion in app.js). Call inside a transaction. */
 export function wipeDemo(db) {
-  const ids = db.prepare('SELECT id FROM users WHERE demo = 1').all().map((r) => r.id);
+  db.prepare('DELETE FROM ambassadors WHERE demo = 1').run();
+  return wipeUsers(db, db.prepare('SELECT id FROM users WHERE demo = 1').all().map((r) => r.id));
+}
+
+function wipeUsers(db, ids) {
   if (!ids.length) return 0;
   const inIds = `(${ids.map(() => '?').join(',')})`;
   {
@@ -88,41 +105,38 @@ export function wipeDemo(db) {
   return ids.length;
 }
 
-function buildDemo(db, { password, uploadDir }) {
+/** What both demo worlds build with: members with illustrated photos, matches with chats, likes, placements and reviews. */
+function demoKit(db, { uploadDir, logins, password, email = (slug) => `${slug}@${DEMO_DOMAIN}`, refCode = null }) {
   mkdirSync(uploadDir, { recursive: true });
-  const reviewerHash = hashPassword(password);
+  const loginHash = hashPassword(password);
   const otherHash = () => hashPassword(randomBytes(24).toString('hex'));
+  const loginEmails = new Set(Object.values(logins));
   const photos = (slug, make) => [0, 1, 2].map((v) => {
     const name = `demo-${slug}-${v}.svg`;
     writeFileSync(join(uploadDir, name), make(v));
     return `/uploads/${name}`;
   });
   const addUser = (slug, role, name, country, city, checks, pics) => {
-    const reviewer = !!DEMO_LOGINS[slug];
+    const address = email(slug);
     return Number(db.prepare(`INSERT INTO users (email, password_hash, role, name, country, city, photo_url, photos, id_verified, references_checked,
-        background_checked, email_verified, lang, demo) VALUES (?,?,?,?,?,?,?,?,?,?,?,1,'en',1)`)
-      .run(`${slug}@${DEMO_DOMAIN}`, reviewer ? reviewerHash : otherHash(), role, name, country, city, pics[0], JSON.stringify(pics),
-        checks.id ? 1 : 0, checks.refs ? 1 : 0, checks.bg ? 1 : 0).lastInsertRowid);
+        background_checked, email_verified, lang, demo, ref_code) VALUES (?,?,?,?,?,?,?,?,?,?,?,1,'en',1,?)`)
+      .run(address, loginEmails.has(address) ? loginHash : otherHash(), role, name, country, city, pics[0] ?? null, JSON.stringify(pics),
+        checks.id ? 1 : 0, checks.refs ? 1 : 0, checks.bg ? 1 : 0, role === 'agency' ? null : refCode).lastInsertRowid);
   };
-
-  const ap = {};
-  for (const [slug, name, country, city, birth, langs, prefs, years, groups, skills, driver, avail, months, bio, checks] of AUPAIRS) {
+  const addAupair = ([slug, name, country, city, birth, langs, prefs, years, groups, skills, driver, avail, months, bio, checks]) => {
     const id = addUser(slug, 'aupair', name, country, city, checks, photos(slug, (v) => aupairPortrait(name, v, { skin: SKIN[country] })));
     db.prepare(`INSERT INTO aupair_profiles (user_id, birth_date, nationality, languages, preferred_countries, childcare_years, age_groups, skills,
         drivers_license, available_from, duration_months, education, bio) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
       .run(id, birth, country, json.str(langs), json.str(prefs), years, json.str(groups), json.str(skills), driver, avail, months, 'University', bio);
-    ap[slug] = id;
-  }
-  db.prepare('UPDATE aupair_profiles SET certificates = ? WHERE user_id = ?')
-    .run(json.str([{ kind: 'cpr', detail: 'Cruz Roja Colombiana, 2026' }, { kind: 'language', detail: 'IELTS 7.0' }]), ap.aupair);
-  const fam = {};
-  for (const [slug, name, country, city, kids, langs, req, start, months, hours, money, driver, pets, bio, checks] of FAMILIES) {
+    return id;
+  };
+  const addFamily = ([slug, name, country, city, kids, langs, req, start, months, hours, money, driver, pets, bio, checks]) => {
     const id = addUser(slug, 'family', name, country, city, checks, photos(slug, (v) => familyPortrait(name, kids.length, v)));
     db.prepare(`INSERT INTO family_profiles (user_id, children, languages, required_languages, start_date, duration_months, weekly_hours,
         pocket_money, needs_driver, has_pets, bio) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
       .run(id, json.str(kids), json.str(langs), json.str(req), start, months, hours, money, driver, pets, bio);
-    fam[slug] = id;
-  }
+    return id;
+  };
 
   // A match with a chat. msgs: [sender, text, days ago, hours ago]
   const match = (from, to, msgs) => {
@@ -154,6 +168,18 @@ function buildDemo(db, { password, uploadDir }) {
     db.prepare('INSERT INTO reviews (placement_id, reviewer_id, reviewee_id, overall, score, criteria, comment, created_at) VALUES (?,?,?,?,?,?,?,?)')
       .run(placementId, from, to, Math.round(score), score, JSON.stringify(criteria), comment, ago(d));
   };
+  return { addUser, addAupair, addFamily, match, like, placement, review };
+}
+
+function buildDemo(db, { password, uploadDir }) {
+  const { addAupair, addFamily, match, like, placement, review } = demoKit(db, { uploadDir, logins: DEMO_LOGINS, password });
+  const ap = {};
+  for (const row of AUPAIRS) ap[row[0]] = addAupair(row);
+  db.prepare('UPDATE aupair_profiles SET certificates = ? WHERE user_id = ?')
+    .run(json.str([{ kind: 'cpr', detail: 'Cruz Roja Colombiana, 2026' }, { kind: 'language', detail: 'IELTS 7.0' }]), ap.aupair);
+  const fam = {};
+  for (const row of FAMILIES) fam[row[0]] = addFamily(row);
+
   const terms = (extra) => JSON.stringify({ days_off: 1.5, paid_leave_weeks: 2, notice_weeks: 2, language_support: 'USD 500 toward classes at a local college',
     duties: 'Getting the kids ready for school, school pick-ups, homework help, playtime and the children\'s laundry.',
     house_rules: 'Guests are welcome until 22:00 on weekdays. Please tell us if you will be away overnight.', ...extra });
@@ -237,5 +263,117 @@ export function ensureDemoAccounts(db, { password = process.env.DEMO_PASSWORD, u
     db.prepare("INSERT INTO passes (user_id, source, ref, starts_at, ends_at) VALUES (?, 'admin', ?, datetime('now'), datetime('now', '+1 year'))")
       .run(passFamily.id, `demo-${Date.now()}`);
   }
+  return action;
+}
+
+// ---- The training agency for PairMundo staff ----
+// [slug, name, country, city, birth, languages, preferred countries, childcare years, age groups, skills, license, available, months, bio, checks]
+const TEAM_AUPAIRS = [
+  ['agency-aupair', 'Joy Santos', 'PH', 'Cebu City', '2001-07-22', [{ code: 'tl', level: 'native' }, { code: 'en', level: 'C1' }], ['SE', 'DK', 'NO'], 4, ['infant', 'toddler'], ['first_aid', 'cooking', 'music'], 0, '2027-02-01', 12,
+    'Nursing assistant from Cebu who grew up caring for three younger cousins. I sing with kids all day and I am excited to learn Swedish.', { id: 1, refs: 1 }],
+  ['team-amani', 'Amani Wanjiru', 'KE', 'Nairobi', '2002-01-30', [{ code: 'sw', level: 'native' }, { code: 'en', level: 'C2' }], ['SE', 'DE'], 3, ['school'], ['tutoring', 'sports', 'art'], 1, '2027-01-15', 12,
+    'Primary school teaching assistant who loves football, drawing and homework clubs.', { id: 1, refs: 1, bg: 1 }],
+  ['team-lucia', 'Lucía Fernández', 'ES', 'Sevilla', '2004-05-09', [{ code: 'es', level: 'native' }, { code: 'en', level: 'B2' }], ['SE', 'NL'], 2, ['toddler', 'school'], ['swimming', 'cooking'], 1, '2027-03-01', 9,
+    'Gap year before university. Swimming coach for little ones and a big fan of baking.', { id: 1 }],
+  ['team-isabel', 'Isabel Costa', 'PT', 'Porto', '2003-10-02', [{ code: 'pt', level: 'native' }, { code: 'en', level: 'C1' }, { code: 'es', level: 'B1' }], ['SE', 'DK'], 2, ['school', 'teen'], ['music', 'tutoring'], 0, '2027-02-15', 10,
+    'Music student who teaches piano to children. Calm, organised and curious about Nordic life.', {}],
+  // Joined with the agency's code but hasn't written an About me yet, so families don't see her: the agency page counts the difference.
+  ['team-grace', 'Grace Mendoza', 'PH', 'Davao', '2003-12-12', [{ code: 'tl', level: 'native' }, { code: 'en', level: 'B2' }], ['SE'], 1, ['toddler'], [], 0, '2027-04-01', 12, '', {}],
+];
+// [slug, name, country, city, children, home languages, required languages, start, months, hours, pocket money, driver, pets, bio, checks]
+const TEAM_FAMILIES = [
+  ['agency-family', 'Familjen Lindqvist', 'SE', 'Stockholm', [{ age: 1 }, { age: 4 }], ['sv', 'en'], ['en'], '2027-02-01', 12, 25, 3500, 0, 1,
+    'Two little ones, a sleepy cat and a summer house in the archipelago. We would love an au pair who enjoys the outdoors.', { id: 1 }],
+  ['team-ek', 'Familjen Ek', 'SE', 'Uppsala', [{ age: 6 }, { age: 9 }], ['sv'], ['en'], '2027-01-15', 12, 25, 3500, 1, 0,
+    'Football-mad family near the river. School runs, homework help and lots of weekend matches.', { id: 1, refs: 1 }],
+  // Joined with the agency's code and waits for the agency to approve them before they see its au pairs.
+  ['team-berg', 'Familjen Berg', 'SE', 'Nacka', [{ age: 3 }], ['sv', 'en'], ['en'], '2027-03-01', 12, 25, 3500, 0, 0,
+    'A three-year-old who loves dinosaurs, and parents who both work in town. Looking for someone warm and patient.', {}],
+];
+
+function buildTeamDemo(db, { password, uploadDir }) {
+  const { addUser, addAupair, addFamily, match, like, placement } = demoKit(db, { uploadDir, logins: TEAM_LOGINS, password, refCode: TEAM_AGENCY.code });
+  const agencyUser = addUser('agency', 'agency', TEAM_AGENCY.name, TEAM_AGENCY.country, TEAM_AGENCY.city, {}, []);
+  // A host agency on a Closed Loop pilot: it covers its families' Pass, hides contact details until a placement is
+  // confirmed and approves each family first. Its families see only its au pairs, and its au pairs only its families.
+  const agencyId = Number(db.prepare(`INSERT INTO ambassadors (code, name, country, user_id, kind, demo, notes, closed_network, mask_contacts, covers_pass,
+      approve_families, share_aupairs, pilot_until, takes_families, aupair_criteria, family_criteria, network_side, network_countries, network_about)
+      VALUES (?,?,?,?,'agency',1,?,0,1,1,1,0,date('now','+90 days'),0,?,?,'both','["SE","PH","KE"]',?)`)
+    .run(TEAM_AGENCY.code, TEAM_AGENCY.name, TEAM_AGENCY.country, agencyUser, 'Training agency for the PairMundo team (server/demo.js). Not a real agency.',
+      JSON.stringify({ only_own: true }), JSON.stringify({ only_own: true }), 'Stockholm host agency placing au pairs from the Philippines, Kenya and Europe with Swedish families.')
+    .lastInsertRowid);
+
+  const ap = {};
+  for (const row of TEAM_AUPAIRS) ap[row[0]] = addAupair(row);
+  const fam = {};
+  for (const row of TEAM_FAMILIES) fam[row[0]] = addFamily(row);
+  const stage = (family, s, feePaid, note) => db.prepare('INSERT INTO agency_family_stages (family_id, ambassador_id, stage, fee_paid, note) VALUES (?,?,?,?,?)')
+    .run(family, agencyId, s, feePaid, note);
+  const intro = (family, aupair, how, d) => db.prepare(`INSERT INTO agency_introductions (ambassador_id, family_id, aupair_id, family_name, aupair_name, how, created_at)
+      SELECT ?, f.id, a.id, f.name, a.name, ?, ? FROM users f, users a WHERE f.id = ? AND a.id = ?`).run(agencyId, how, ago(d), family, aupair);
+  const hidden = '[hidden until your agency confirms the placement]';
+
+  // Familjen Lindqvist (login): approved and matching. Matched with Joy (login), who tried to share her number before a
+  // confirmed placement; they proposed a placement Joy can confirm. Lucía super liked them.
+  stage(fam['agency-family'], 'matching', 1, 'Agency fee paid 2 Nov. Wants an au pair who is fine with a cat.');
+  match(fam['agency-family'], ap['agency-aupair'], [
+    [fam['agency-family'], 'Hej Joy! Our kids would love your songs. Could we have a video call this week?', 6],
+    [ap['agency-aupair'], `Hello! Yes, I would love to. You can reach me on ${hidden}`, 6, -3],
+    [fam['agency-family'], 'Lovely. Let us use the chat here for now. Thursday at 18:00 Stockholm time?', 5],
+    [ap['agency-aupair'], 'Perfect, see you Thursday!', 5, -1],
+    [fam['agency-family'], 'It was so nice to meet you. We just sent you a placement for February, have a look when you can.', 2],
+  ]);
+  intro(fam['agency-family'], ap['agency-aupair'], 'match', 6);
+  db.prepare("INSERT INTO agency_flags (ambassador_id, user_id, user_name, kind, created_at) VALUES (?, ?, 'Joy S.', 'contact', ?)").run(agencyId, ap['agency-aupair'], ago(6));
+  placement(ap['agency-aupair'], fam['agency-family'], 'SE', '2027-02-01', '2028-01-31', 25, 3500, 'proposed', fam['agency-family'], { aupairOk: 0, familyOk: 1 });
+  like(ap['team-lucia'], fam['agency-family'], 'super', 'Hej! I coach swimming for little ones and I love the outdoors. Your archipelago summers sound amazing!', 1);
+  like(ap['team-isabel'], fam['agency-family'], 'like', null, 2);
+
+  // Familjen Ek: placed with Amani, starting in January.
+  stage(fam['team-ek'], 'placed', 1, 'Contract signed. Amani arrives 15 Jan; residence permit applied for.');
+  match(fam['team-ek'], ap['team-amani'], [
+    [fam['team-ek'], 'Hi Amani! Our boys play football every weekend. Would you like to join us in Uppsala?', 30],
+    [ap['team-amani'], 'Hello! That sounds perfect, I coach a girls team at home.', 29],
+    [fam['team-ek'], 'Great call today. Sending the placement now!', 20],
+    [ap['team-amani'], 'Confirmed! I cannot wait to meet you all.', 18],
+  ]);
+  intro(fam['team-ek'], ap['team-amani'], 'request', 30);
+  placement(ap['team-amani'], fam['team-ek'], 'SE', '2027-01-15', '2028-01-14', 25, 3500, 'confirmed', fam['team-ek']);
+
+  // Familjen Berg has no stage yet: a new enquiry for the agency to approve. They joined from an invitation; another is still open.
+  const invite = (email, name, role, userId, d) => db.prepare('INSERT INTO agency_family_invites (ambassador_id, email, name, role, user_id, created_at) VALUES (?,?,?,?,?,?)')
+    .run(agencyId, email, name, role, userId, ago(d));
+  invite(`team-berg@${DEMO_DOMAIN}`, 'Familjen Berg', 'family', fam['team-berg'], 3);
+  invite(`team-paolo@${DEMO_DOMAIN}`, 'Paolo Reyes', 'aupair', null, 1);
+}
+
+/** The team's training agency and its logins, with DEMO_TEAM_PASSWORD. Builds it if it's missing and keeps the logins working. */
+export function ensureTeamDemo(db, { password = process.env.DEMO_TEAM_PASSWORD, uploadDir = process.env.UPLOAD_DIR || 'data/uploads' } = {}) {
+  if (!password) return 'off';
+  if (String(password).length < 8) { console.error('DEMO_TEAM_PASSWORD must be at least 8 characters; team demo logins are off.'); return 'off'; }
+  const emails = Object.values(TEAM_LOGINS);
+  const marks = emails.map(() => '?').join(',');
+  const found = db.prepare(`SELECT COUNT(*) n FROM users WHERE email IN (${marks}) AND demo = 1`).get(...emails).n;
+  const agency = db.prepare("SELECT 1 FROM ambassadors WHERE code = ? AND demo = 1 AND user_id IS NOT NULL").get(TEAM_AGENCY.code);
+  let action = 'ok';
+  if (found < emails.length || !agency) {
+    if (db.prepare(`SELECT 1 FROM users WHERE email IN (${marks}) AND demo = 0`).get(...emails)
+      || db.prepare('SELECT 1 FROM ambassadors WHERE code = ? AND demo = 0').get(TEAM_AGENCY.code)) {
+      console.error('A real account or agency uses a team demo email or code; team demo logins were not rebuilt.');
+      return 'conflict';
+    }
+    tx(db, () => {
+      db.prepare('DELETE FROM ambassadors WHERE code = ? AND demo = 1').run(TEAM_AGENCY.code);
+      wipeUsers(db, db.prepare(`SELECT id FROM users WHERE demo = 1 AND (ref_code = ? OR email IN (${marks}))`).all(TEAM_AGENCY.code, ...emails).map((r) => r.id));
+      buildTeamDemo(db, { password, uploadDir });
+    });
+    action = 'built';
+  }
+  for (const u of db.prepare(`SELECT * FROM users WHERE email IN (${marks}) AND demo = 1`).all(...emails)) {
+    if (!verifyPassword(password, u.password_hash)) db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(password), u.id);
+    db.prepare('UPDATE users SET email_verified = 1, suspended = 0 WHERE id = ?').run(u.id);
+  }
+  // Keep the Closed Loop pilot running, so the agency page always shows it.
+  db.prepare("UPDATE ambassadors SET active = 1, pilot_until = max(coalesce(pilot_until, ''), date('now', '+30 days')) WHERE code = ? AND demo = 1").run(TEAM_AGENCY.code);
   return action;
 }

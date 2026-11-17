@@ -835,6 +835,8 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
       ALTER TABLE flyer_sessions ADD COLUMN payout_id INTEGER REFERENCES flyer_payouts(id) ON DELETE SET NULL;
       ALTER TABLE flyer_bonuses ADD COLUMN payout_id INTEGER REFERENCES flyer_payouts(id) ON DELETE SET NULL`);
   }
+  // The training agency for PairMundo staff (server/demo.js): kept out of real agency lists, the race and admin mailings.
+  if (!db.prepare('PRAGMA table_info(ambassadors)').all().some((c) => c.name === 'demo')) db.exec('ALTER TABLE ambassadors ADD COLUMN demo INTEGER NOT NULL DEFAULT 0');
   // Which partner agency an introduction came through, when the family and the au pair are with different agencies.
   if (!db.prepare('PRAGMA table_info(agency_introductions)').all().some((c) => c.name === 'partner_name')) db.exec('ALTER TABLE agency_introductions ADD COLUMN partner_name TEXT');
   // An agency's email for referrals: offers with one get a "Get help" button that sends the person's details there.

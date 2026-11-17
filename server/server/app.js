@@ -179,7 +179,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (u?.role !== 'family' || !u.country || agencySpace(u)) return [];
     return db.prepare(`SELECT a.id, a.code, a.name, a.website, a.network_about,
         (SELECT r.code FROM agency_referrals r WHERE r.ambassador_id = a.id AND r.user_id = ? AND r.created_at >= datetime('now', '-12 months')) referral
-      FROM ambassadors a WHERE a.kind = 'agency' AND a.active = 1 AND a.takes_families = 1 AND a.country = ? AND a.user_id IS NOT NULL ORDER BY a.name`)
+      FROM ambassadors a WHERE a.kind = 'agency' AND a.active = 1 AND a.demo = 0 AND a.takes_families = 1 AND a.country = ? AND a.user_id IS NOT NULL ORDER BY a.name`)
       .all(u.id, u.country).map((a) => ({ code: a.code, name: a.name, website: a.website || null, about: a.network_about || null, requested: !!a.referral }));
   };
   // The agency network: agencies find each other, work together and show memberships like IAPA. Off until AGENCY_NETWORK=on.
@@ -454,7 +454,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   // Ambassadors share a link (pairmundo.com/?ref=CODE) or a code people type at sign-up. Rewards are recorded as they
   // happen, so the monthly payout is just a sum, and paying out marks them paid.
   const referralCode = (v) => { const c = String(v ?? '').trim().toUpperCase(); return /^[A-Z0-9][A-Z0-9-]{2,23}$/.test(c) ? c : null; };
-  const ambassadorByCode = (code) => (code ? db.prepare('SELECT * FROM ambassadors WHERE code = ? AND active = 1').get(code) : undefined);
+  // The training agency's code (demo = 1) can't be used to sign up or join: its members are demo accounts only.
+  const ambassadorByCode = (code) => (code ? db.prepare('SELECT * FROM ambassadors WHERE code = ? AND active = 1 AND demo = 0').get(code) : undefined);
   const referralLink = (a) => `${publicBase()}/?ref=${encodeURIComponent(a.code)}`;
   const monthParam = (v) => (/^\d{4}-(0[1-9]|1[0-2])$/.test(v || '') ? v : null);
   /** Records a reward for whoever referred userId. Each person earns their ambassador each kind of reward once. */
@@ -2566,6 +2567,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     message = str(message, 1000) || null;
     role = role === 'aupair' ? 'aupair' : 'family';
     db.prepare('INSERT INTO agency_family_invites (ambassador_id, email, name, message, role) VALUES (?,?,?,?,?)').run(a.id, email, name, message, role);
+    // The training agency's invitations are listed but never emailed, so nobody outside joins the demo by mistake.
+    if (a.demo) return true;
     const link = `${referralLink(a)}#/register?role=${role}&email=${encodeURIComponent(email)}`;
     inviteQueue.push({ to: email, ...withMedia(agencyFamilyInviteEmail({ from: a.name, name, message, link, email, role }),
       { image: role === 'aupair' ? 'hero-aupair.jpg' : 'hero-family.jpg', alt: 'Profiles in the PairMundo app', base: publicBase(),
@@ -2723,7 +2726,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const a = networkAgency(req);
     const rows = db.prepare('SELECT * FROM agency_partnerships WHERE ? IN (from_id, to_id) AND status IN (\'pending\', \'accepted\') ORDER BY created_at DESC').all(a.id);
     const related = new Map(rows.map((p) => [p.from_id === a.id ? p.to_id : p.from_id, p]));
-    const agencies = db.prepare(`SELECT * FROM ambassadors WHERE kind = 'agency' AND active = 1 AND network_listed = 1 AND user_id IS NOT NULL AND id != ?`).all(a.id)
+    const agencies = db.prepare(`SELECT * FROM ambassadors WHERE kind = 'agency' AND active = 1 AND demo = 0 AND network_listed = 1 AND user_id IS NOT NULL AND id != ?`).all(a.id)
       .map((x) => ({ ...networkCard(a, x), partnership: related.has(x.id) ? { id: related.get(x.id).id, status: related.get(x.id).status, incoming: related.get(x.id).to_id === a.id } : null }))
       .sort((x, y) => y.fit.score - x.fit.score || x.name.localeCompare(y.name));
     return {
@@ -2760,7 +2763,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   // Asks a listed agency to work together.
   api.post('/agency/partners', requireRole('agency'), wrap((req) => {
     const a = networkAgency(req);
-    const other = db.prepare("SELECT * FROM ambassadors WHERE id = ? AND kind = 'agency' AND active = 1 AND user_id IS NOT NULL").get(Number(req.body?.agency_id));
+    const other = db.prepare("SELECT * FROM ambassadors WHERE id = ? AND kind = 'agency' AND active = 1 AND demo = 0 AND user_id IS NOT NULL").get(Number(req.body?.agency_id));
     // An unlisted agency can only be reached by answering its own request.
     if (!other || other.id === a.id || (!other.network_listed && !partnershipBetween(a.id, other.id))) throw notFound('Agency not found.');
     return partnershipView(a, askPartner(a, other, str(req.body?.message, 1000) || null));
@@ -3412,7 +3415,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const link = a.user_id ? `${publicBase()}/#/agency` : `${publicBase()}/#/agency-signup?email=${encodeURIComponent(to || '')}`;
     return { to, ...withMedia(agencyUpdateEmail({ name: a.name, link, code: a.user_id ? a.code : null }), { image: 'agency-profile-guide.jpg', alt: 'PairMundo profile guide for agencies', placement: 'bottom', base: publicBase(), link: `${publicBase()}/media/PairMundo-profile-guide-for-agencies.pdf`, caption: 'Open the full guide (PDF)' }) };
   };
-  const agencyUpdatePending = () => db.prepare("SELECT * FROM ambassadors WHERE kind = 'agency' AND active = 1 AND update_emailed_at IS NULL ORDER BY name").all();
+  const agencyUpdatePending = () => db.prepare("SELECT * FROM ambassadors WHERE kind = 'agency' AND active = 1 AND demo = 0 AND update_emailed_at IS NULL ORDER BY name").all();
   api.get('/admin/agency-update', requireRole('admin'), wrap(() => {
     const rows = agencyUpdatePending().map((a) => ({ id: a.id, code: a.code, name: a.name, ...agencyUpdateMail(a) }));
     const sample = rows.find((r) => r.to);
@@ -3445,7 +3448,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
         (SELECT COUNT(*) FROM users m WHERE m.ref_code = a.code AND m.role = 'family' AND m.demo = 0 AND m.id IS NOT a.user_id) families,
         (SELECT COUNT(*) FROM agency_family_invites i WHERE i.ambassador_id = a.id) invited,
         (SELECT COUNT(*) FROM waitlist w WHERE w.ref_code = a.code) waitlist
-      FROM ambassadors a LEFT JOIN users u ON u.id = a.user_id WHERE a.kind = 'agency' AND a.active = 1 ORDER BY a.created_at, a.name`).all();
+      FROM ambassadors a LEFT JOIN users u ON u.id = a.user_id WHERE a.kind = 'agency' AND a.active = 1 AND a.demo = 0 ORDER BY a.created_at, a.name`).all();
     const short = rows.filter((a) => a.aupairs < NUDGE_BELOW).sort((x, y) => x.aupairs - y.aupairs);
     return { agencies: rows.length, below: NUDGE_BELOW, target: NUDGE_TARGET, one_pager: '/media/PairMundo-we-upload-your-au-pairs.pdf', reply_to: PARTNER_REPLY_TO(), short: short.map((a) => {
       const to = a.account_email || a.invite_email || null;
@@ -3506,7 +3509,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   const raceAnnounced = () => !!db.prepare("SELECT 1 FROM ambassadors WHERE kind = 'agency' AND race_notified_at IS NOT NULL").get();
   const raceLive = () => new Date().toISOString().slice(0, 10) <= RACE.ends;
   /** Every active agency's finished profiles, most first. */
-  const raceStandings = () => db.prepare("SELECT * FROM ambassadors WHERE kind = 'agency' AND active = 1").all()
+  const raceStandings = () => db.prepare("SELECT * FROM ambassadors WHERE kind = 'agency' AND active = 1 AND demo = 0").all()
     .map((x) => ({ id: x.id, name: x.name, profiles: agencyStats(x).profiles })).sort((x, y) => y.profiles - x.profiles);
   const raceLinks = (a) => ({ aupair: `${publicBase()}/?ref=${encodeURIComponent(a.code)}#/register?role=aupair`,
     family: `${publicBase()}/?ref=${encodeURIComponent(a.code)}#/register?role=family` });
@@ -3525,7 +3528,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   const RACE_NOTE = '🏁 The Founding Partner Race is on! Get 10 au pair profiles live with your code {code} by Friday 13 November for a spotlight on our Instagram and Facebook. The top 3 agencies on 23 November are in our launch ads. See where you stand.';
   api.get('/admin/agency-race', requireRole('admin'), wrap(() => {
     const standings = raceStandings();
-    const rows = db.prepare("SELECT a.*, u.email account_email FROM ambassadors a LEFT JOIN users u ON u.id = a.user_id WHERE a.kind = 'agency' AND a.active = 1 ORDER BY a.name").all();
+    const rows = db.prepare("SELECT a.*, u.email account_email FROM ambassadors a LEFT JOIN users u ON u.id = a.user_id WHERE a.kind = 'agency' AND a.active = 1 AND a.demo = 0 ORDER BY a.name").all();
     return { ...RACE, live: raceLive(), announced: raceAnnounced(),
       sample: translate('en', RACE_NOTE, { code: '[their code]' }),
       recipients: rows.map((a) => ({ id: a.id, code: a.code, name: a.name, account: !!a.user_id, email: a.account_email || a.invite_email || null,
@@ -3534,14 +3537,14 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   // Tells every agency with an account that hasn't been told yet. Agencies that get an account later can be told by sending again.
   api.post('/admin/agency-race', requireRole('admin'), wrap(() => {
     if (!raceLive()) throw bad('The race is over.');
-    const pending = db.prepare("SELECT * FROM ambassadors WHERE kind = 'agency' AND active = 1 AND user_id IS NOT NULL AND race_notified_at IS NULL ORDER BY name").all();
+    const pending = db.prepare("SELECT * FROM ambassadors WHERE kind = 'agency' AND active = 1 AND demo = 0 AND user_id IS NOT NULL AND race_notified_at IS NULL ORDER BY name").all();
     tx(db, () => {
       for (const a of pending) {
         db.prepare("UPDATE ambassadors SET race_notified_at = datetime('now') WHERE id = ?").run(a.id);
         notify(a.user_id, 'agency', RACE_NOTE, { code: a.code }, '#/agency');
       }
     });
-    const skipped = db.prepare("SELECT name FROM ambassadors WHERE kind = 'agency' AND active = 1 AND user_id IS NULL ORDER BY name").all().map((r) => r.name);
+    const skipped = db.prepare("SELECT name FROM ambassadors WHERE kind = 'agency' AND active = 1 AND demo = 0 AND user_id IS NULL ORDER BY name").all().map((r) => r.name);
     return { sent: pending.length, agencies: pending.map((a) => a.name), skipped };
   }));
 
@@ -3551,7 +3554,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   // {code} in the note becomes the agency's own code. Sending agencies and those working both ways are ticked by default.
   const ANNOUNCE_SAMPLE = '🇸🇪 Host families in Stockholm (Danderyd, Täby, Lidingö, Bromma, Nacka) are looking for European au pairs. Invite your European candidates with your code {code}, or reply to Badji with a list and we\'ll invite them for you.';
   const announceable = () => db.prepare(`SELECT a.*, u.email account_email FROM ambassadors a JOIN users u ON u.id = a.user_id
-    WHERE a.kind = 'agency' AND a.active = 1 ORDER BY a.name`).all();
+    WHERE a.kind = 'agency' AND a.active = 1 AND a.demo = 0 ORDER BY a.name`).all();
   api.get('/admin/agency-announce', requireRole('admin'), wrap(() => ({
     sample: ANNOUNCE_SAMPLE,
     agencies: announceable().map((a) => ({ id: a.id, code: a.code, name: a.name, country: a.country, email: a.account_email,
