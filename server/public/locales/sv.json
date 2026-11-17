@@ -1370,5 +1370,9 @@
   "Sent to {name}. They will contact you by email.": "Skickat till {name}. De kontaktar er via e-post.",
   "That agency is not taking new families in your country.": "Den byrån tar inte emot nya familjer i ert land.",
   "Your account already belongs to an agency on PairMundo.": "Ert konto tillhör redan en byrå på PairMundo.",
-  "Your family is with {agency} on PairMundo.": "Er familj tillhör {agency} på PairMundo."
+  "Your family is with {agency} on PairMundo.": "Er familj tillhör {agency} på PairMundo.",
+  "News from PairMundo": "Nyheter från PairMundo",
+  "Email me news and offers from PairMundo": "Mejla mig nyheter och erbjudanden från PairMundo",
+  "You always get emails about your account, matches and messages.": "Du får alltid mejl om ditt konto, dina matchningar och meddelanden.",
+  "Close": "Stäng"
 }

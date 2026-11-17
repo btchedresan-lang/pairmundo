@@ -1220,6 +1220,8 @@ views.account = async () => {
       <form id="agency" class="row"><input name="code" required autocapitalize="characters" autocomplete="off" placeholder="${tr('Agency code')}" style="flex:1"><button class="btn sm">${tr('Add')}</button></form><div id="agencyErr"></div></div>` : '';
   render(`<h1>${tr('Account and safety')}</h1>${ambCard}${agencyCard}
     <div class="card"><h2>${tr('Email')}</h2><p>${esc(me.user.email)} ${me.user.email_verified ? `<span class="chip ok">✓ ${tr('Confirmed')}</span>` : `<a class="chip warn" href="#/verify">${tr('Not confirmed yet. Click to enter your code.')}</a>`}</p></div>
+    <div class="card"><h2>${tr('News from PairMundo')}</h2><label class="row small" style="gap:8px"><input type="checkbox" id="newsEmails" style="width:auto" ${me.user.news_emails ? 'checked' : ''}>
+      ${tr('Email me news and offers from PairMundo')}</label><p class="muted small">${tr('You always get emails about your account, matches and messages.')}</p></div>
     ${['agency', 'ambassador'].includes(me.user.role) ? '' : `<div class="card"><h2>${tr('ID check')}</h2>${idCard}</div>
     <div class="card"><h2>${tr('Blocked people')}</h2>${blocked.length ? blocked.map((u) => `<div class="row" style="padding:6px 0">${avatar(u, 'sm')}<strong style="flex:1">${esc(u.name)}</strong>
       <button class="btn ghost sm" data-unblock="${u.id}">${tr('Unblock')}</button></div>`).join('') : `<p class="muted">${tr("You haven't blocked anyone.")}</p>`}</div>`}
@@ -1228,6 +1230,9 @@ views.account = async () => {
       <div id="err"></div><button class="btn danger">${tr('Delete my account')}</button></form></div>`);
   if (ambCard) wireCopy(amb.link);
   bindPartnerAgencies();
+  document.getElementById('newsEmails').onchange = async (e) => {
+    try { await api('/me', { method: 'PUT', body: { news_emails: e.target.checked } }); toast(tr('Saved')); } catch (err) { toast(err.message); }
+  };
   const $agency = document.getElementById('agency');
   if ($agency) $agency.onsubmit = async (e) => {
     e.preventDefault();
@@ -2210,7 +2215,7 @@ async function adminLaunchEmail() {
 }
 views.admin = async ([tab = 'overview', id], qs) => {
   if (me.user.role !== 'admin') return go('#/');
-  const tabs = { overview: 'Overview', users: 'Users & verification', reports: 'Reports', programs: 'Program rules', placements: 'Placements', waitlist: 'Waitlist', ambassadors: 'Ambassadors', certificates: 'Certificates', partners: 'Partners', referrals: 'Referrals', ...(me.agency_network ? { affiliations: 'Affiliations' } : {}) };
+  const tabs = { overview: 'Overview', users: 'Users & verification', reports: 'Reports', programs: 'Program rules', placements: 'Placements', waitlist: 'Waitlist', ambassadors: 'Ambassadors', messages: 'Message users', certificates: 'Certificates', partners: 'Partners', referrals: 'Referrals', ...(me.agency_network ? { affiliations: 'Affiliations' } : {}) };
   const head = `<h1>Program administration</h1><div class="row" style="margin-bottom:16px">${Object.entries(tabs).map(([k, v]) =>
     `<a class="btn ${k === tab ? '' : 'ghost'} sm" href="#/admin/${k}">${v}</a>`).join('')}</div>`;
   if (tab === 'overview') {
@@ -2227,10 +2232,12 @@ views.admin = async ([tab = 'overview', id], qs) => {
       <div class="card" id="backupCard"><h2>Database backups</h2><div id="backupInfo" class="muted">Loading…</div></div>`);
     return adminBackup();
   }
+  if (tab === 'messages') return adminMessages(head, qs);
   if (tab === 'users') {
     const { users } = await api('/admin/users');
     render(`${head}<div class="card table-wrap"><table><tr><th>Member</th><th>Role</th><th>Rating</th><th>ID</th><th>References</th><th>Background</th><th>Suspended</th><th>Family Pass</th></tr>
-      ${users.map((u) => `<tr><td><a href="#/u/${u.id}">${esc(u.name)}</a><div class="muted small">${esc(u.email)} · ${cname(u.country)}${u.source ? ` · via ${esc(u.source)}` : ''}</div></td>
+      ${users.map((u) => `<tr><td><a href="#/u/${u.id}">${esc(u.name)}</a><div class="muted small">${esc(u.email)} · ${cname(u.country)}${u.source ? ` · via ${esc(u.source)}` : ''}</div>
+        <a class="small" href="#/admin/messages?to=${encodeURIComponent(u.email)}">✉️ Message</a></td>
         <td>${u.role === 'aupair' ? 'Au pair' : 'Family'}</td><td>${u.rating.avg ?? '—'}</td>
         ${['id_verified:id', 'references_checked:references', 'background_checked:background'].map((x) => { const [f, k] = x.split(':');
     return `<td><input type="checkbox" style="width:auto" data-u="${u.id}" data-f="${f}" ${u.verification[k] ? 'checked' : ''}></td>`; }).join('')}
@@ -2421,6 +2428,77 @@ const spaceFields = (form) => ({ ...Object.fromEntries(['closed_network', 'mask_
 function wireKind(form) {
   const sync = () => { form.querySelector('.distOnly').hidden = form.kind.value !== 'distributor'; form.querySelector('.agencyOnly').hidden = form.kind.value !== 'agency'; };
   form.kind.onchange = sync;
+}
+// Message members: pick a group (or named people), write once, see who it reaches, send yourself a test, then send.
+async function adminMessages(head, qs) {
+  const d = await api('/admin/messages');
+  const to = qs?.get('to') || '';
+  const who = (a) => (a.people ? `${a.people}` : [(a.roles || []).map((r) => d.roles[r]).join(', '), a.country ? cname(a.country) : '', a.city || '', a.agency ? `code ${a.agency}` : ''].filter(Boolean).join(' · '));
+  render(`${head}
+    <div class="card"><h2>📣 Message users</h2>
+      <p class="muted small">Each person gets it in their notifications, as a push on their phone and as a card at the top of the app until they close it. Tick "Also email it" to send an email too, with a picture, a button and an unsubscribe link. Demo and suspended accounts never get it. Nothing goes out until you press Send.</p>
+      <div class="row" style="margin-bottom:10px"><label class="row small" style="gap:6px"><input type="radio" name="msgMode" value="group" style="width:auto" ${to ? '' : 'checked'}> A group</label>
+        <label class="row small" style="gap:6px"><input type="radio" name="msgMode" value="people" style="width:auto" ${to ? 'checked' : ''}> Named people</label></div>
+      <div id="msgGroup" ${to ? 'hidden' : ''}>
+        <div class="row" style="flex-wrap:wrap;gap:12px">${Object.entries(d.roles).map(([k, v]) => `<label class="row small" style="gap:6px"><input type="checkbox" class="msgRole" value="${k}" style="width:auto" ${['family', 'aupair'].includes(k) ? 'checked' : ''}> ${v}</label>`).join('')}</div>
+        <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px">
+          <select id="msgCountry" style="flex:1;min-width:160px"><option value="">Every country</option>${d.countries.map((c) => `<option value="${esc(c.country)}">${cname(c.country)} (${c.n})</option>`).join('')}</select>
+          <input id="msgCity" placeholder="City (optional), e.g. Stockholm" style="flex:1;min-width:160px">
+          <select id="msgAgency" style="flex:1;min-width:160px"><option value="">Any agency or none</option>${d.agencies.map((a) => `<option value="${esc(a.code)}">Joined with ${esc(a.name)} (${esc(a.code)})</option>`).join('')}</select></div>
+      </div>
+      <div id="msgPeople" ${to ? '' : 'hidden'}><div class="field"><label>Their emails, one per line</label><textarea id="msgEmails" rows="3" placeholder="anna@example.com">${esc(to)}</textarea></div></div>
+      <div id="msgReach" class="alert info small" style="margin-top:10px">Counting…</div>
+      <div class="field"><label>Message <span class="muted small">({name} becomes each person's first name)</span></label><textarea id="msgText" rows="5" maxlength="1500">${esc(to ? 'Hi {name},\n\n\n\nBadji' : d.sample)}</textarea></div>
+      <div class="field"><label>Link to open (optional)</label><input id="msgLink" placeholder="#/discover or https://…"><p class="muted small">An app page such as #/discover, #/profile, #/likes, #/agency, or a web address.</p></div>
+      <label class="row small" style="gap:6px"><input type="checkbox" id="msgEmail" style="width:auto"> Also email it</label>
+      <div id="msgEmailBox" hidden style="margin-top:8px">
+        <div class="field"><label>Email subject</label><input id="msgSubject" maxlength="120" placeholder="🎄 Spot PairMundo this Christmas and win"></div>
+        <label class="small">Picture at the top of the email</label>
+        <div class="row" style="flex-wrap:wrap;gap:8px;margin:6px 0 10px">${d.images.map((im, i) => `<label style="cursor:pointer;text-align:center"><input type="radio" name="msgImage" value="${esc(im.file)}" ${i ? '' : 'checked'} style="width:auto;display:block;margin:0 auto 4px"><img src="${esc(im.url)}" alt="" style="width:120px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--line)"></label>`).join('')}</div>
+      </div>
+      <div id="msgErr"></div>
+      <div class="row" style="margin-top:10px"><button class="btn ghost sm" id="msgTest">Send me a test</button><button class="btn sm" id="msgSend">Send</button></div>
+    </div>
+    <div class="card"><h2>Sent messages</h2>${d.job.error ? `<div class="alert warning small">Emails stopped: ${esc(d.job.error)}. <button class="btn sm" id="msgResume">Email the rest</button></div>` : ''}
+      ${d.history.length ? `<div class="table-wrap"><table><tr><th>Sent</th><th>To</th><th>Message</th><th>People</th><th>Closed the card</th><th>Emails</th></tr>
+      ${d.history.map((h) => `<tr><td class="small">${fmtTime(h.created_at)}</td><td class="small">${esc(who(h.audience))}</td><td class="small">${h.subject ? `<strong>${esc(h.subject)}</strong><br>` : ''}${esc(h.text.slice(0, 140))}${h.text.length > 140 ? '…' : ''}</td>
+        <td>${h.sent}</td><td>${h.seen}</td><td class="small">${h.email ? `${h.emailed} sent${h.email_pending ? `, ${h.email_pending} waiting` : ''}` : '—'}</td></tr>`).join('')}</table></div>` : '<p class="muted">Nothing sent yet.</p>'}</div>`);
+  const $ = (id) => document.getElementById(id);
+  const mode = () => document.querySelector('input[name=msgMode]:checked').value;
+  const audience = () => (mode() === 'people' ? { people: $('msgEmails').value }
+    : { roles: [...document.querySelectorAll('.msgRole:checked')].map((c) => c.value), country: $('msgCountry').value, city: $('msgCity').value.trim(), agency: $('msgAgency').value });
+  let reach = null; let timer = null;
+  const count = () => { clearTimeout(timer); timer = setTimeout(async () => {
+    try {
+      reach = await api('/admin/messages/preview', { method: 'POST', body: { audience: audience() } });
+      const roles = Object.entries(reach.by_role).map(([r, n]) => `${n} ${d.roles[r].toLowerCase()}`).join(', ');
+      $('msgReach').innerHTML = reach.count ? `Goes to <strong>${reach.count}</strong> ${reach.count === 1 ? 'person' : 'people'}${roles ? ` (${roles})` : ''}. ${reach.with_phone} have the app on their phone for the push.
+        ${$('msgEmail').checked ? `<strong>${reach.emailable}</strong> can get the email${reach.opted_out ? ` (${reach.opted_out} unsubscribed)` : ''}.` : ''}
+        <div class="muted">${reach.sample.map((u) => esc(u.name)).join(', ')}${reach.count > reach.sample.length ? ', …' : ''}</div>`
+        : 'Nobody matches yet.';
+      if (reach.missing.length) $('msgReach').innerHTML += `<div>No account for: ${reach.missing.map(esc).join(', ')}</div>`;
+    } catch (e) { $('msgReach').textContent = e.message; }
+  }, 250); };
+  document.querySelectorAll('input[name=msgMode]').forEach((r) => { r.onchange = () => { $('msgGroup').hidden = mode() !== 'group'; $('msgPeople').hidden = mode() !== 'people'; count(); }; });
+  document.querySelectorAll('.msgRole, #msgCountry, #msgAgency').forEach((el) => { el.onchange = count; });
+  $('msgCity').oninput = count; $('msgEmails').oninput = count;
+  $('msgEmail').onchange = () => { $('msgEmailBox').hidden = !$('msgEmail').checked; count(); };
+  count();
+  const body = () => ({ text: $('msgText').value, link: $('msgLink').value.trim(), email: $('msgEmail').checked, subject: $('msgSubject').value.trim(),
+    image: document.querySelector('input[name=msgImage]:checked')?.value, audience: audience() });
+  const fail = (e) => { $('msgErr').innerHTML = `<div class="alert error">${esc(e.message)}</div>`; };
+  $('msgTest').onclick = async () => { $('msgErr').innerHTML = '';
+    try { const r = await api('/admin/messages/test', { method: 'POST', body: body() }); toast(`Test sent to you (${r.to}) in the app and by email.`); refreshMe().then(renderNav); } catch (e) { fail(e); } };
+  $('msgSend').onclick = async () => {
+    $('msgErr').innerHTML = '';
+    if (!reach?.count) return fail(new Error('Nobody matches who you picked.'));
+    const b = body();
+    if (!confirm(`Send this message to ${reach.count} ${reach.count === 1 ? 'person' : 'people'} now${b.email ? `, and email ${reach.emailable}` : ''}? They are notified straight away, and this cannot be undone.`)) return;
+    $('msgSend').disabled = true;
+    try { const r = await api('/admin/messages', { method: 'POST', body: b }); toast(`Sent to ${r.sent}${r.emailing ? `. Emailing ${r.emailing} now` : ''}.`); if (location.hash === '#/admin/messages') views.admin(['messages']); else go('#/admin/messages'); }
+    catch (e) { $('msgSend').disabled = false; fail(e); }
+  };
+  if ($('msgResume')) $('msgResume').onclick = async () => { try { const r = await api('/admin/messages/resume', { method: 'POST' }); toast(`Emailing ${r.pending} more`); } catch (e) { toast(e.message); } };
 }
 async function adminAmbassadors(head, id, qs) {
   const month = qs?.get('month') || new Date().toISOString().slice(0, 7);
@@ -3249,6 +3327,20 @@ function afterLogin() {
 }
 const PUBLIC = new Set(['home', 'login', 'register', 'agency-signup', 'ambassador-signup', 'programs', 'forgot', 'reference', 'claim', 'partners', 'jobs', 'careers', 'guides']);
 views.messages = ((orig) => (args) => (args[0] ? orig(args) : go('#/matches')))(views.messages);
+// A message from PairMundo shows as a card at the top of the page until it is closed.
+async function showNews() {
+  const at = location.hash;
+  const { news } = await api('/news').catch(() => ({}));
+  if (!news || location.hash !== at || document.getElementById('newsCard')) return;
+  const el = document.createElement('div');
+  el.id = 'newsCard'; el.className = 'card news-card';
+  el.innerHTML = `<div class="spread"><strong>📣 ${esc(news.title || tr('News from PairMundo'))}</strong><button class="btn ghost sm" id="newsClose" aria-label="${tr('Close')}">✕</button></div>
+    <p style="white-space:pre-line;margin:8px 0">${esc(news.text)}</p>${news.link ? `<a class="btn sm" href="${esc(news.link)}" ${news.link.startsWith('http') ? 'target="_blank" rel="noopener"' : ''}>${tr('Open')}</a>` : ''}`;
+  $app.prepend(el);
+  const close = () => { el.remove(); api(`/news/${news.id}/seen`, { method: 'POST' }).catch(() => {}); };
+  document.getElementById('newsClose').onclick = close;
+  el.querySelector('a.btn')?.addEventListener('click', close);
+}
 async function route() {
   clearInterval(pollTimer);
   document.querySelectorAll('.match-overlay').forEach((el) => el.remove());
@@ -3258,7 +3350,7 @@ async function route() {
   renderNav();
   if (!view) return render(`<div class="empty">${tr('Page not found.')} <a href="#/">${tr('Go home')}</a></div>`);
   if (!me && !PUBLIC.has(name || 'home')) return toLogin();
-  try { await view(args, new URLSearchParams(qs || '')); }
+  try { await view(args, new URLSearchParams(qs || '')); if (me && me.user.role !== 'admin' && ['discover', 'agency', 'ambassador', 'matches', 'likes', 'placements', 'profile'].includes(name)) showNews(); }
   catch (e) {
     if (e.status === 401) { me = null; return toLogin(); }
     render(`<div class="alert error">${esc(e.message)}</div>`);

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Platform } from 'react-native';
+import { Linking, Platform } from 'react-native';
 import { Stack, router } from 'expo-router';
 import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
@@ -17,9 +17,12 @@ function NotificationOpener() {
   const response = Notifications.useLastNotificationResponse();
   useEffect(() => {
     if (!response || response.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) return;
-    const screen = screenForLink(response.notification.request.content.data?.link);
+    const link = response.notification.request.content.data?.link;
+    const screen = screenForLink(link);
     Notifications.clearLastNotificationResponse();
     if (screen) router.push(screen);
+    // A message from PairMundo can link to a web page.
+    else if (/^https:\/\//.test(String(link || ''))) Linking.openURL(link).catch(() => {});
   }, [response]);
   return null;
 }

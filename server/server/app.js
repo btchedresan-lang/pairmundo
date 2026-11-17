@@ -907,7 +907,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   api.get('/me', requireAuth, wrap((req) => {
     const u = req.user;
     return {
-      user: { ...publicUser(u, u), email: u.email, email_verified: !!u.email_verified },
+      user: { ...publicUser(u, u), email: u.email, email_verified: !!u.email_verified, news_emails: u.news_emails !== 0 },
       profile: ownProfile(u),
       profile_missing: profileGaps(u),
       pass: passView(u),
@@ -934,6 +934,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const body = req.body || {};
     const u = req.user;
     tx(db, () => {
+      // News emails from PairMundo (the admin's messages), on or off.
+      if ('news_emails' in body) db.prepare('UPDATE users SET news_emails = ? WHERE id = ?').run(body.news_emails ? 1 : 0, u.id);
       const userSets = USER_FIELDS.filter((k) => k in body);
       if (userSets.length) {
         const vals = userSets.map((k) => (k === 'country' ? str(body[k], 2)?.toUpperCase() : str(body[k], 300)));
@@ -3574,6 +3576,163 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
         .run(text, JSON.stringify(to.map((a) => a.name)), to.length, req.user.id);
     });
     return { sent: to.length, agencies: to.map((a) => a.name) };
+  }));
+
+  // ---------- messages from the admin to members ----------
+  // The admin writes a message, picks who it is for (families, au pairs, agencies, ambassadors, narrowed by country,
+  // city or the agency code they joined with, or named people by email) and presses Send. Each person gets it in their
+  // notifications (bell), as a push on their phone and as a card at the top of the app until they close it. Ticking
+  // "Also email it" sends it by email too, with a picture, a button and an unsubscribe link; people who unsubscribed or
+  // turned news emails off in Account don't get the email. Demo and suspended accounts never get anything.
+  // {name} in the message becomes each person's first name. Nothing goes out until the admin presses Send.
+  const MESSAGE_ROLES = { family: 'Host families', aupair: 'Au pairs', agency: 'Agencies', ambassador: 'Ambassadors' };
+  const MESSAGE_IMAGES = ['swipe-match-chat.jpg', 'hero-family.jpg', 'hero-aupair.jpg', 'sweden-families-want-european-aupairs.jpg', 'agency-profile-guide.jpg', 'we-upload-your-au-pairs.jpg'];
+  const MESSAGE_SAMPLE = 'Hi {name}! 🎄 Our Christmas challenge is on: spot a PairMundo ad around town this December, snap a photo and share it with us. The best spots win a prize.\n\nBadji';
+  const newsLink = (link) => {
+    const l = str(link, 500);
+    if (!l) return null;
+    if (/^#\/[\w\-/?=&%.]*$/.test(l)) return l;
+    if (/^https:\/\/[^\s<>"']+$/.test(l)) return l;
+    throw bad('The link must be an app page like #/discover or a web address starting with https://.');
+  };
+  const absoluteLink = (l) => (l?.startsWith('#') ? `${publicBase()}/${l}` : l);
+  const personalize = (text, u) => text.replace(/\{name\}/g, firstName(u.name) || translate(u.lang || 'en', 'there'));
+  /** Who a message would go to. audience: { roles, country, city, agency } or { people: "emails, one per line" }. */
+  const messageAudience = (a = {}) => {
+    const base = "u.role != 'admin' AND u.suspended = 0 AND u.demo = 0";
+    if (typeof a.people === 'string' && a.people.trim()) {
+      const wanted = [...new Set((a.people.match(/[^\s,;<>"']+@[^\s,;<>"']+\.[^\s,;<>"']+/g) || []).map(normEmail))].slice(0, 500);
+      if (!wanted.length) return { users: [], missing: [] };
+      const users = db.prepare(`SELECT u.* FROM users u WHERE ${base} AND u.email IN (${wanted.map(() => '?').join(',')}) ORDER BY u.name`).all(...wanted)
+        .filter((u) => !isDemoEmail(u.email));
+      const found = new Set(users.map((u) => normEmail(u.email)));
+      return { users, missing: wanted.filter((e) => !found.has(e)) };
+    }
+    const roles = (Array.isArray(a.roles) ? a.roles : []).filter((r) => r in MESSAGE_ROLES);
+    if (!roles.length) return { users: [], missing: [] };
+    const where = [base, `u.role IN (${roles.map(() => '?').join(',')})`]; const params = [...roles];
+    const country = str(a.country, 2)?.toUpperCase();
+    if (country) { where.push('u.country = ?'); params.push(country); }
+    const city = str(a.city, 80);
+    if (city) { where.push('u.city LIKE ?'); params.push(`%${city}%`); }
+    const agency = str(a.agency, 40)?.toUpperCase();
+    if (agency) { where.push('upper(u.ref_code) = ?'); params.push(agency); }
+    const users = db.prepare(`SELECT u.* FROM users u WHERE ${where.join(' AND ')} ORDER BY u.created_at, u.id`).all(...params)
+      .filter((u) => !isDemoEmail(u.email));
+    return { users, missing: [] };
+  };
+  const audienceSummary = ({ users, missing }) => ({
+    count: users.length,
+    by_role: Object.fromEntries(Object.keys(MESSAGE_ROLES).map((r) => [r, users.filter((u) => u.role === r).length]).filter(([, n]) => n)),
+    emailable: users.filter((u) => u.email_verified && u.news_emails !== 0).length,
+    opted_out: users.filter((u) => u.news_emails === 0).length,
+    with_phone: users.filter((u) => db.prepare('SELECT 1 FROM push_tokens WHERE user_id = ?').get(u.id)).length,
+    sample: users.slice(0, 12).map((u) => ({ id: u.id, name: u.name, role: u.role, country: u.country })),
+    missing,
+  });
+  const newsToken = (u) => {
+    if (u.news_token) return u.news_token;
+    const t = randomBytes(18).toString('base64url');
+    db.prepare('UPDATE users SET news_token = ? WHERE id = ?').run(t, u.id);
+    return t;
+  };
+  const newsEmail = (m, u) => {
+    const lang = u.lang || 'en';
+    const text = `${personalize(m.text, u)}${m.link ? `\n\n${absoluteLink(m.link)}` : ''}\n\n${translate(lang, "Don't want news emails from PairMundo? Unsubscribe here: {url}", { url: `${publicBase()}/api/news/unsubscribe?t=${newsToken(u)}` })}`;
+    return withMedia({ to: u.email, subject: m.subject || 'News from PairMundo', text },
+      { image: m.image || MESSAGE_IMAGES[0], alt: 'PairMundo', base: publicBase(), lang,
+        cta: { label: translate(lang, 'Open PairMundo'), link: absoluteLink(m.link) || publicBase() } });
+  };
+  // Emails go one at a time, a little apart, so a long list stays under the mail service's rate limit. The first
+  // failure (often the daily limit) stops the batch; "Email the rest" carries on with whoever is still pending.
+  const newsJob = { running: false, error: null };
+  const drainNews = async () => {
+    if (newsJob.running) return;
+    newsJob.running = true; newsJob.error = null;
+    try {
+      for (;;) {
+        const r = db.prepare("SELECT r.message_id, r.user_id FROM admin_message_recipients r WHERE r.email_status = 'pending' ORDER BY r.message_id, r.user_id LIMIT 1").get();
+        if (!r) break;
+        const m = db.prepare('SELECT * FROM admin_messages WHERE id = ?').get(r.message_id);
+        const u = getUser(r.user_id);
+        const set = (s) => db.prepare('UPDATE admin_message_recipients SET email_status = ? WHERE message_id = ? AND user_id = ?').run(s, r.message_id, r.user_id);
+        if (!u || u.news_emails === 0 || !u.email_verified) { set(u?.news_emails === 0 ? 'opted_out' : 'skipped'); continue; }
+        try { await mailer(newsEmail(m, u)); set('sent'); } catch (e) { newsJob.error = String(e.message).slice(0, 300); console.error('News email failed:', e.message); break; }
+        await new Promise((res) => setTimeout(res, Number(process.env.INVITE_GAP_MS ?? 600)));
+      }
+    } finally { newsJob.running = false; }
+  };
+  const messageHistory = () => db.prepare(`SELECT m.id, m.subject, m.text, m.link, m.audience, m.email, m.sent, m.created_at,
+      (SELECT COUNT(*) FROM admin_message_recipients r WHERE r.message_id = m.id AND r.seen_at IS NOT NULL) seen,
+      (SELECT COUNT(*) FROM admin_message_recipients r WHERE r.message_id = m.id AND r.email_status = 'sent') emailed,
+      (SELECT COUNT(*) FROM admin_message_recipients r WHERE r.message_id = m.id AND r.email_status = 'pending') email_pending
+    FROM admin_messages m ORDER BY m.id DESC LIMIT 20`).all().map((h) => ({ ...h, audience: json.parse(h.audience, {}) }));
+  const readMessage = (body) => {
+    const text = str(body?.text, 1500);
+    if (!text || text.length < 10) throw bad('Write a message of at least 10 characters.');
+    const email = !!body?.email;
+    const subject = str(body?.subject, 120);
+    if (email && !subject) throw bad('Give the email a subject.');
+    const image = MESSAGE_IMAGES.includes(body?.image) ? body.image : MESSAGE_IMAGES[0];
+    return { text, subject, email, image, link: newsLink(body?.link) };
+  };
+  api.get('/admin/messages', requireRole('admin'), wrap(() => ({
+    sample: MESSAGE_SAMPLE, roles: MESSAGE_ROLES, images: MESSAGE_IMAGES.map((f) => ({ file: f, url: `/media/email/${f}` })),
+    countries: db.prepare("SELECT country, COUNT(*) n FROM users WHERE role != 'admin' AND demo = 0 AND country IS NOT NULL GROUP BY country ORDER BY n DESC").all(),
+    agencies: db.prepare("SELECT code, name FROM ambassadors WHERE kind = 'agency' AND active = 1 AND demo = 0 ORDER BY name").all(),
+    history: messageHistory(), job: { ...newsJob },
+  })));
+  api.post('/admin/messages/preview', requireRole('admin'), wrap((req) => audienceSummary(messageAudience(req.body?.audience))));
+  // Sends the message to the admin alone (in the app and by email), to check it before everyone gets it.
+  api.post('/admin/messages/test', requireRole('admin'), wrap(async (req) => {
+    const m = readMessage(req.body);
+    notify(req.user.id, 'news', personalize(m.text, req.user), {}, m.link);
+    await mailer(newsEmail(m, req.user));
+    return { to: req.user.email };
+  }));
+  api.post('/admin/messages', requireRole('admin'), wrap((req) => {
+    const m = readMessage(req.body);
+    const audience = req.body?.audience || {};
+    const { users } = messageAudience(audience);
+    if (!users.length) throw bad('Nobody matches who you picked.');
+    const saved = { ...audience, people: typeof audience.people === 'string' ? `${users.length} named` : undefined };
+    const id = tx(db, () => {
+      const mid = Number(db.prepare('INSERT INTO admin_messages (subject, text, link, image, audience, email, sent, created_by) VALUES (?,?,?,?,?,?,?,?)')
+        .run(m.subject, m.text, m.link, m.image, JSON.stringify(saved), m.email ? 1 : 0, users.length, req.user.id).lastInsertRowid);
+      for (const u of users) {
+        const status = !m.email ? null : u.news_emails === 0 ? 'opted_out' : u.email_verified ? 'pending' : 'skipped';
+        db.prepare('INSERT INTO admin_message_recipients (message_id, user_id, email_status) VALUES (?,?,?)').run(mid, u.id, status);
+        notify(u.id, 'news', personalize(m.text, u), {}, m.link);
+      }
+      return mid;
+    });
+    if (m.email) drainNews();
+    const n = (s) => db.prepare('SELECT COUNT(*) n FROM admin_message_recipients WHERE message_id = ? AND email_status = ?').get(id, s).n;
+    return { id, sent: users.length, emailing: n('pending'), opted_out: n('opted_out') };
+  }));
+  // Carries on with emails that are still waiting, e.g. after the mail service's daily limit.
+  api.post('/admin/messages/resume', requireRole('admin'), wrap(() => {
+    drainNews();
+    return { pending: db.prepare("SELECT COUNT(*) n FROM admin_message_recipients WHERE email_status = 'pending'").get().n };
+  }));
+
+  // The newest message from PairMundo this member hasn't closed yet, shown as a card at the top of the app.
+  api.get('/news', requireAuth, wrap((req) => {
+    const m = db.prepare(`SELECT m.* FROM admin_messages m JOIN admin_message_recipients r ON r.message_id = m.id
+      WHERE r.user_id = ? AND r.seen_at IS NULL AND m.created_at >= datetime('now', '-30 days') ORDER BY m.id DESC LIMIT 1`).get(req.user.id);
+    return { news: m ? { id: m.id, title: m.subject || null, text: personalize(m.text, req.user), link: m.link, created_at: m.created_at } : null };
+  }));
+  api.post('/news/:id/seen', requireAuth, wrap((req) => {
+    db.prepare("UPDATE admin_message_recipients SET seen_at = datetime('now') WHERE message_id = ? AND user_id = ? AND seen_at IS NULL").run(Number(req.params.id), req.user.id);
+    return { ok: true };
+  }));
+  api.get('/news/unsubscribe', wrap((req, res) => {
+    const t = String(req.query.t || '');
+    const u = t ? db.prepare('SELECT id FROM users WHERE news_token = ?').get(t) : null;
+    if (u) db.prepare('UPDATE users SET news_emails = 0 WHERE id = ?').run(u.id);
+    const lang = pickLang(req.get('accept-language')) || 'en';
+    res.type('html').send(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/legal.css"><main><h1>PairMundo</h1><p>${
+      translate(lang, u ? "You're unsubscribed. We won't send you news emails. You still get emails about your account, and you can turn news back on in Account and safety." : 'This link is not valid.')}</p><p><a href="/">pairmundo.com</a></p></main>`);
   }));
 
   app.use('/api', api);

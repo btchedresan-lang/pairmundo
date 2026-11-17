@@ -364,6 +364,29 @@ CREATE TABLE IF NOT EXISTS agency_announcements (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Messages the admin sends to members in the app (bell, push and a card in the app), and by email if ticked.
+-- audience is what was picked (roles, country, city, agency code, or named people), kept for the history.
+CREATE TABLE IF NOT EXISTS admin_messages (
+  id INTEGER PRIMARY KEY,
+  subject TEXT,
+  text TEXT NOT NULL,
+  link TEXT,
+  image TEXT,
+  audience TEXT NOT NULL DEFAULT '{}',
+  email INTEGER NOT NULL DEFAULT 0,
+  sent INTEGER NOT NULL DEFAULT 0,
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+-- Who got each message, when they closed its card in the app, and whether its email went out (or why not).
+CREATE TABLE IF NOT EXISTS admin_message_recipients (
+  message_id INTEGER NOT NULL REFERENCES admin_messages(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  seen_at TEXT,
+  email_status TEXT,                                -- null: no email; pending | sent | failed | opted_out
+  PRIMARY KEY (message_id, user_id)
+);
+
 CREATE TABLE IF NOT EXISTS notifications (
   id INTEGER PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -749,6 +772,9 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
   if (!cols.includes('lang')) db.exec('ALTER TABLE users ADD COLUMN lang TEXT');
   // Demo accounts for app store review (server/demo.js): they and real members never see each other.
   if (!cols.includes('demo')) db.exec('ALTER TABLE users ADD COLUMN demo INTEGER NOT NULL DEFAULT 0');
+  // News emails from the admin: on unless they unsubscribe (link in each email) or turn them off in Account.
+  if (!cols.includes('news_emails')) db.exec('ALTER TABLE users ADD COLUMN news_emails INTEGER NOT NULL DEFAULT 1');
+  if (!cols.includes('news_token')) db.exec('ALTER TABLE users ADD COLUMN news_token TEXT');
   if (!cols.includes('email_verified')) db.exec('ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0; UPDATE users SET email_verified = 1');
   const apcols = db.prepare('PRAGMA table_info(aupair_profiles)').all().map((c) => c.name);
   if (!apcols.includes('traits')) db.exec(`ALTER TABLE aupair_profiles ADD COLUMN traits TEXT NOT NULL DEFAULT '[]';

@@ -31,6 +31,7 @@ h1 { font-size: 1.95rem; } h2 { font-size: 1.4rem; } h3 { font-size: 1.15rem; }
 
 main { max-width: 1120px; margin: 0 auto; padding: 24px 16px 64px; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
+.news-card { border-left: 4px solid var(--primary, #3b5bdb); }
 .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
 .cols { display: grid; gap: 16px; grid-template-columns: 300px 1fr; }
 .cols-2 { display: grid; gap: 16px; grid-template-columns: 1fr 1fr; }
