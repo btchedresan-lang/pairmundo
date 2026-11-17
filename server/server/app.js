@@ -3545,6 +3545,34 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     return { sent: pending.length, agencies: pending.map((a) => a.name), skipped };
   }));
 
+  // ---------- short notes to agencies in the app ----------
+  // The admin writes a note (e.g. "Families in Stockholm are looking for European au pairs"), ticks the agencies
+  // with an account it is for, and each gets it in its notifications (bell) and as a push, linking to its agency page.
+  // {code} in the note becomes the agency's own code. Sending agencies and those working both ways are ticked by default.
+  const ANNOUNCE_SAMPLE = '🇸🇪 Host families in Stockholm (Danderyd, Täby, Lidingö, Bromma, Nacka) are looking for European au pairs. Invite your European candidates with your code {code}, or reply to Badji with a list and we\'ll invite them for you.';
+  const announceable = () => db.prepare(`SELECT a.*, u.email account_email FROM ambassadors a JOIN users u ON u.id = a.user_id
+    WHERE a.kind = 'agency' AND a.active = 1 ORDER BY a.name`).all();
+  api.get('/admin/agency-announce', requireRole('admin'), wrap(() => ({
+    sample: ANNOUNCE_SAMPLE,
+    agencies: announceable().map((a) => ({ id: a.id, code: a.code, name: a.name, country: a.country, email: a.account_email,
+      side: a.network_side || null, suggested: a.network_side !== 'host' })),
+    history: db.prepare('SELECT id, text, agencies, sent, created_at FROM agency_announcements ORDER BY id DESC LIMIT 10').all()
+      .map((h) => ({ ...h, agencies: json.parse(h.agencies) })),
+  })));
+  api.post('/admin/agency-announce', requireRole('admin'), wrap((req) => {
+    const text = str(req.body?.text, 400);
+    if (!text || text.length < 10) throw bad('Write a note of at least 10 characters.');
+    const ids = new Set((Array.isArray(req.body?.ids) ? req.body.ids : []).map(Number));
+    const to = announceable().filter((a) => ids.has(a.id));
+    if (!to.length) throw bad('Pick at least one agency with an account.');
+    tx(db, () => {
+      for (const a of to) notify(a.user_id, 'agency', text, { code: a.code }, '#/agency');
+      db.prepare('INSERT INTO agency_announcements (text, agencies, sent, created_by) VALUES (?,?,?,?)')
+        .run(text, JSON.stringify(to.map((a) => a.name)), to.length, req.user.id);
+    });
+    return { sent: to.length, agencies: to.map((a) => a.name) };
+  }));
+
   app.use('/api', api);
   app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found.' }));
   app.use('/uploads', (_req, res, next) => { res.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'"); next(); },

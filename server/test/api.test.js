@@ -2972,6 +2972,40 @@ test('the Founding Partner Race: the admin announces it in the app, and each age
   assert.equal((await call(admin, 'POST', '/admin/agency-race')).body.sent, 0);
 });
 
+test('the admin sends a short note to chosen agencies in the app, with each agency\'s own code', async () => {
+  const { hashPassword } = await import('../server/auth.js');
+  testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
+  const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
+  const sender = await register('boss@sender.test', 'agency', 'PL', 'Sender Agency', { complete: false });
+  const host = await register('boss@hoster.test', 'agency', 'DE', 'Hoster Agency', { complete: false });
+  for (const [code, name, email] of [['SENDPL', 'Sender Agency', 'boss@sender.test'], ['HOSTDE', 'Hoster Agency', 'boss@hoster.test']]) {
+    assert.equal((await call(admin, 'POST', '/admin/ambassadors', { code, name, kind: 'agency', account_email: email })).status, 201);
+  }
+  testDb.prepare("UPDATE ambassadors SET network_side = 'host' WHERE code = 'HOSTDE'").run();
+  assert.equal((await call(admin, 'POST', '/admin/ambassadors', { code: 'NOACC2', name: 'No Account Two', kind: 'agency' })).status, 201);
+
+  assert.equal((await call(sender.token, 'GET', '/admin/agency-announce')).status, 403, 'admins only');
+  const view = (await call(admin, 'GET', '/admin/agency-announce')).body;
+  const row = (code) => view.agencies.find((a) => a.code === code);
+  assert.equal(row('SENDPL').suggested, true);
+  assert.equal(row('HOSTDE').suggested, false, 'host-only agencies are not ticked by default');
+  assert.equal(row('NOACC2'), undefined, 'agencies without an account are not listed');
+  assert.ok(view.sample.includes('{code}') && view.sample.includes('Stockholm'));
+
+  assert.equal((await call(admin, 'POST', '/admin/agency-announce', { text: 'Hi', ids: [row('SENDPL').id] })).status, 400);
+  assert.equal((await call(admin, 'POST', '/admin/agency-announce', { text: view.sample, ids: [] })).status, 400);
+  const sent = (await call(admin, 'POST', '/admin/agency-announce', { text: view.sample, ids: [row('SENDPL').id, 999999] })).body;
+  assert.equal(sent.sent, 1);
+  assert.deepEqual(sent.agencies, ['Sender Agency']);
+
+  const note = (await call(sender.token, 'GET', '/notifications')).body.notifications.find((n) => n.text.includes('Stockholm'));
+  assert.ok(note && note.text.includes('SENDPL') && !note.text.includes('{code}') && note.link === '#/agency', note?.text);
+  assert.ok(!(await call(host.token, 'GET', '/notifications')).body.notifications.some((n) => n.text.includes('Stockholm')), 'unticked agencies get nothing');
+  const after = (await call(admin, 'GET', '/admin/agency-announce')).body;
+  assert.equal(after.history[0].sent, 1);
+  assert.deepEqual(after.history[0].agencies, ['Sender Agency']);
+});
+
 test('agencies short of au pairs: the admin sees those under 10 with a ready offer email, and can upload their list for them', async () => {
   const { hashPassword } = await import('../server/auth.js');
   testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));

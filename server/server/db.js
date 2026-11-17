@@ -354,6 +354,16 @@ CREATE TABLE IF NOT EXISTS reference_checks (
 );
 CREATE INDEX IF NOT EXISTS reference_checks_user ON reference_checks(user_id);
 
+-- Short notes the admin sends to chosen agency accounts in the app (bell and push), e.g. "Swedish families want European au pairs".
+CREATE TABLE IF NOT EXISTS agency_announcements (
+  id INTEGER PRIMARY KEY,
+  text TEXT NOT NULL,
+  agencies TEXT NOT NULL DEFAULT '[]',
+  sent INTEGER NOT NULL DEFAULT 0,
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS notifications (
   id INTEGER PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
