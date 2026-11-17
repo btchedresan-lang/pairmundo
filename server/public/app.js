@@ -116,8 +116,12 @@ const avatar = (u, size = '') => (u?.photo_url
   ? `<img class="avatar ${size}" src="${esc(u.photos?.[0] || u.photo_url)}" alt="" onerror="this.outerHTML='<span class=&quot;avatar ${size}&quot;>${initials(u.name)}</span>'">`
   : `<span class="avatar ${size}">${initials(u?.name)}</span>`);
 const verifyBadges = (v, agency, agencyBadges = []) => [v?.id && `✔ ${tr('ID verified')}`, v?.references && `✔ ${tr('References')}`, v?.background && `✔ ${tr('Background check')}`,
-  agency && `🎓 ${tr('Prepared by {agency}', { agency: esc(agency) })}`, ...(agency ? agencyBadges || [] : []).map((b) => `🏅 ${tr('{org} member', { org: esc(b) })}`)]
+  agency && `<strong>🎓 ${tr('Prepared and approved by {agency}', { agency: esc(agency) })}</strong>`, ...(agency ? agencyBadges || [] : []).map((b) => `🏅 ${tr('{org} member', { org: esc(b) })}`)]
   .filter(Boolean).map((t) => `<span class="verify">${t}</span>`).join(' ');
+/** The banner on an agency au pair's profile: hard to miss, right under their name. */
+const agencySeal = (u) => (u?.agency ? `<div class="agency-seal" role="note"><span class="agency-seal-icon" aria-hidden="true">🎓</span><div>
+    <div class="agency-seal-title">${tr('Prepared and approved by {agency}', { agency: `<strong>${esc(u.agency)}</strong>` })}</div>
+    <div class="agency-seal-sub">${tr('Their agency prepared this profile and checked it before it went live.')}${(u.agency_badges || []).length ? ` · ${u.agency_badges.map((b) => `🏅 ${tr('{org} member', { org: esc(b) })}`).join(' · ')}` : ''}</div></div></div>` : '');
 const scoreBadge = (s) => `<span class="score ${s >= 75 ? 'high' : s < 50 ? 'low' : ''}" title="${tr('Match score')}">${s}%</span>`;
 /** <option>s for a { value: 'English label' } map, translated and sorted by label. */
 const chipSet = (name, dict, selected) => `<div class="chips" data-chipset="${name}">${Object.entries(dict).map(([k, v]) =>
@@ -226,6 +230,7 @@ function cardCaption(r) {
   const kids = p.children?.length ? `${trn(p.children.length, '{n} child', '{n} children')} (${p.children.map((c) => c.age).join(', ')})` : '';
   const langs = u.role === 'aupair' ? (p.languages || []).map((l) => `${langName(l.code)}${l.level && l.level !== 'native' ? ` ${l.level}` : ''}`) : (p.languages || []).map((l) => langName(l));
   return `<div class="card-info">
+    ${u.agency ? `<div class="agency-pill">🎓 ${tr('Prepared and approved by {agency}', { agency: esc(u.agency) })}</div>` : ''}
     <h2>${esc(u.name)}${ageOf(r) ? ` <span class="age">${ageOf(r)}</span>` : ''} ${u.verification?.id ? `<span class="tick" title="${tr('ID verified')}">✔</span>` : ''}</h2>
     <div class="sub">${flag(u.country)} ${esc([u.city, country(u.country)].filter(Boolean).join(', '))}${u.role === 'aupair' && p.nationality && p.nationality !== u.country ? ` · ${flag(p.nationality)} ${esc(country(p.nationality))}` : ''}</div>
     <div class="sub">${u.role === 'aupair' ? [p.childcare_years ? trn(p.childcare_years, '{n} year of childcare', '{n} years of childcare') : '', p.available_from ? tr('From {date}', { date: fmtDate(p.available_from) }) : ''].filter(Boolean).join(' · ') : [kids, p.start_date ? tr('Starts {date}', { date: fmtDate(p.start_date) }) : ''].filter(Boolean).join(' · ')}</div>
@@ -679,7 +684,7 @@ views.agency = async () => {
   render(`<h1>${tr('{agency} on PairMundo', { agency: esc(amb.name) })}</h1>
     ${amb.race ? raceCard(amb) : ''}
     <div class="card"><h2>${tr('Your agency code')}: <code>${esc(amb.code)}</code></h2>
-      <p>${tr('Your au pairs type this code when they create their free account, or use your link. Families then see "Prepared by {agency}" on their profiles.', { agency: esc(amb.name) })}</p>
+      <p>${tr('Your au pairs type this code when they create their free account, or use your link. Families then see "Prepared and approved by {agency}" on their profiles.', { agency: esc(amb.name) })}</p>
       <div class="row"><input id="ambLink" readonly value="${esc(amb.link)}" style="flex:1"><button class="btn sm" id="ambCopy">${tr('Copy link')}</button></div></div>
     <div class="card"><h2>${tr('Your au pairs')}</h2>
       <table><tr><th></th><th>${tr('Joined this month')}</th><th>${tr('All time')}</th></tr>
@@ -694,9 +699,9 @@ views.agency = async () => {
     : tr('€129 a month (€97 in your first year as a founding partner) and €75 per au pair who starts with one of your families.')}</p>` : ''}
       <p>${trn(amb.space.families, '{n} family has joined with your code.', '{n} families have joined with your code.')} ${trn(amb.space.aupairs, '{n} au pair has joined with your code.', '{n} au pairs have joined with your code.')}</p>
       <ul>${[[true, amb.space.aupair_criteria?.only_own || (amb.space.closed_network && !amb.space.aupair_criteria) ? tr('Your families see only your au pairs and your partner agencies\' au pairs.')
-      : amb.space.aupair_criteria ? tr('Your families see your au pairs, and au pairs on PairMundo who fit your criteria.') : tr('Your families see every au pair on PairMundo, yours first labelled "Prepared by {agency}".', { agency: esc(amb.name) })],
+      : amb.space.aupair_criteria ? tr('Your families see your au pairs, and au pairs on PairMundo who fit your criteria.') : tr('Your families see every au pair on PairMundo, yours first labelled "Prepared and approved by {agency}".', { agency: esc(amb.name) })],
     [true, amb.space.family_criteria?.only_own || (amb.space.closed_network && !amb.space.share_aupairs) ? tr('Your au pairs are shown only to your families and your partner agencies\' families.')
-      : amb.space.family_criteria ? tr('Your au pairs are shown to your families, and to families on PairMundo who fit your criteria.') : tr('Your au pairs are shown to every family on PairMundo, labelled "Prepared by {agency}".', { agency: esc(amb.name) })],
+      : amb.space.family_criteria ? tr('Your au pairs are shown to your families, and to families on PairMundo who fit your criteria.') : tr('Your au pairs are shown to every family on PairMundo, labelled "Prepared and approved by {agency}".', { agency: esc(amb.name) })],
     [amb.space.mask_contacts, tr('Contact details are hidden in chats until a placement is confirmed.')],
     [amb.space.covers_pass, tr("Your families don't pay PairMundo for the Family Pass.")], [amb.space.approve_families, tr('You approve each family before they see your au pairs.')]].map(([on, label]) => `<li>${on ? '✓' : '–'} ${label}</li>`).join('')}</ul>
       <p class="muted small">${tr('Choose who sees whom below. To change the rest, email PairMundo.')}</p></div>
@@ -827,7 +832,7 @@ function raceCard(amb) {
       <h3>${tr('What you can win')}</h3>
       <div class="race-prizes">${prizes.map(([icon, title, text]) => `<div class="race-prize"><div class="race-icon">${icon}</div><strong>${title}</strong><p>${text}</p></div>`).join('')}</div>
       <div class="race-cols">
-        <div><h3>${tr('Share your links')}</h3><p class="muted small">${tr('Your code {code} is filled in for them. Families then see "Prepared by {agency}" on their profiles. Au pairs never pay.', { code: `<code>${esc(amb.code)}</code>`, agency: esc(amb.name) })}</p>
+        <div><h3>${tr('Share your links')}</h3><p class="muted small">${tr('Your code {code} is filled in for them. Families then see "Prepared and approved by {agency}" on their profiles. Au pairs never pay.', { code: `<code>${esc(amb.code)}</code>`, agency: esc(amb.name) })}</p>
           ${link('raceAupair', tr('For your au pairs'), r.links.aupair)}${link('raceFamily', tr('For your host families'), r.links.family)}</div>
         <div><h3>${tr('Or we do the typing')}</h3><p class="small">${tr('Send Badji a list of candidates who agreed to join (name, email, the country they\'d like to go to). We email each one a sign-up link with your code filled in. They add a photo and a few lines, and they\'re live.')}</p>
           <a class="btn sm secondary" href="mailto:badji@pairmundo.com?subject=${encodeURIComponent(`Founding Partner Race: candidates from ${amb.name}`)}">${tr('Email Badji your list')}</a>
@@ -1325,6 +1330,7 @@ function posterHeader(u, p, badge) {
   return `<div class="poster-head"><div class="poster-hi">${tr('Hi!')}</div>
     <div class="poster-name">${tr("I'm {name}", { name: esc(firstName(u.name)) })}${u.verification.id ? ` <span class="tick" title="${tr('ID verified')}">✔</span>` : ''}</div>
     ${from ? `<div class="poster-pill">${tr('Au pair from {country}', { country: esc(country(from)) })} ${flag(from)}</div>` : ''}
+    ${agencySeal(u)}
     <div class="polaroid big">${gallery(u, { cls: 'polaroid-photo' })}<div class="polaroid-cap">${tr('Big dreams · Good vibes · New adventures')}</div></div>
     ${badge}</div>`;
 }
@@ -1406,7 +1412,7 @@ views.u = async ([id]) => {
         ${d.match.reasons.map((r) => `<div class="small" style="color:var(--ok)">✓ ${esc(r)}</div>`).join('')}
         ${d.match.warnings.map((r) => `<div class="small" style="color:var(--warn)">⚠ ${esc(r)}</div>`).join('')}</div>` : ''}
       ${visaCard(d.visa)}
-      ${ap ? `${verifyBadges(u.verification, u.agency) ? `<div style="margin-bottom:10px">${verifyBadges(u.verification, u.agency, u.agency_badges)}</div>` : ''}${posterBody(u, p, d.references)}` : `<div class="card"><h3>${tr('About us')}</h3><p style="white-space:pre-wrap;margin-top:0">${esc(p.bio) || `<span class="muted">${tr('No description yet.')}</span>`}</p>
+      ${ap ? `${verifyBadges(u.verification) ? `<div style="margin-bottom:10px">${verifyBadges(u.verification)}</div>` : ''}${posterBody(u, p, d.references)}` : `<div class="card"><h3>${tr('About us')}</h3><p style="white-space:pre-wrap;margin-top:0">${esc(p.bio) || `<span class="muted">${tr('No description yet.')}</span>`}</p>
         <div>${verifyBadges(u.verification) || `<span class="muted small">${tr('Not yet verified')}</span>`}</div></div>
       <div class="card"><h3>${tr('Basics')}</h3><div class="facts">${facts.filter(([, , v]) => v != null && v !== '').map(([i, k, v]) => `<div class="fact"><span>${i}</span><div><div class="muted small">${k}</div>${esc(v)}</div></div>`).join('')}</div></div>
       <div class="card"><h3>${tr('Languages at home')}</h3><div class="chips">${(p.languages || []).map((l) => `<span class="chip">${esc(langName(l))}</span>`).join('')}</div>
