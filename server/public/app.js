@@ -2548,6 +2548,7 @@ async function adminAmbassadors(head, id, qs) {
   const upd = await api('/admin/agency-update').catch(() => null);
   const race = await api('/admin/agency-race').catch(() => null);
   const nudge = await api('/admin/agency-nudge').catch(() => null);
+  const ann = await api('/admin/agency-announce').catch(() => null);
   render(`${head}<div class="spread"><form id="monthPick" class="row"><label>Month</label><input type="month" name="month" value="${esc(month)}" style="width:auto"></form>
       <a class="btn sm" href="/api/admin/ambassadors.csv?month=${esc(month)}">⬇ Payout sheet for ${esc(month)} (CSV)</a></div>
     <p class="muted small">Rewards: ${usd(rewards.profile)} per completed, ID-verified au pair profile (up to ${usd(rewards.profile_monthly_cap)} a month), ${usd(rewards.pass)} for a family's first Family Pass, ${usd(rewards.placement)} per referred side when a stay starts.</p>
@@ -2576,6 +2577,16 @@ async function adminAmbassadors(head, id, qs) {
         <td>${r.account ? esc(r.email || '') : '<span class="muted">No account</span>'}</td><td>${r.profiles}</td>
         <td>${r.notified_at ? `✓ Told ${fmtTime(r.notified_at)}` : r.account ? '<span class="chip">Will be told</span>' : '<span class="muted">Skipped</span>'}</td></tr>`).join('')}</table></div>
       ${race.recipients.some((r) => r.account && !r.notified_at) ? `<button class="btn sm" id="sendRace">Announce to ${race.recipients.filter((r) => r.account && !r.notified_at).length} agencies</button>` : ''}</div>` : ''}
+    ${ann ? `<div class="card" id="annCard"><h3>📣 Send a note to agencies in the app</h3>
+      <p class="muted small">Each ticked agency gets this in its notifications (🔔) and as a push on its phone, linking to its agency page. <code>{code}</code> becomes the agency's own code. Only agencies with an account can get it. Agencies that send au pairs (or work both ways) are ticked for you.</p>
+      ${ann.agencies.length ? `<div class="field"><label>Note (up to 400 characters)</label><textarea id="annText" rows="4" maxlength="400">${esc(ann.sample)}</textarea></div>
+      <div class="row small" style="gap:12px;flex-wrap:wrap"><a href="#" id="annAll">Tick all</a><a href="#" id="annNone">Untick all</a></div>
+      <div class="table-wrap"><table><tr><th></th><th>Agency</th><th>Country</th><th>Works as</th></tr>${ann.agencies.map((a) => `<tr>
+        <td><input type="checkbox" class="annPick" value="${a.id}" ${a.suggested ? 'checked' : ''} aria-label="${esc(a.name)}"></td>
+        <td>${esc(a.name)} <code>${esc(a.code)}</code></td><td>${cname(a.country) || '—'}</td>
+        <td>${a.side === 'host' ? 'Host' : a.side === 'sending' ? 'Sending' : a.side === 'both' ? 'Both ways' : '<span class="muted">Not set</span>'}</td></tr>`).join('')}</table></div>
+      <button class="btn sm" id="annSend">Send to the ticked agencies</button>` : '<p class="muted small">No agency has an account yet.</p>'}
+      ${ann.history.length ? `<details><summary>Sent before (${ann.history.length})</summary>${ann.history.map((h) => `<p class="small"><strong>${fmtTime(h.created_at)}</strong>, to ${h.sent}: ${esc(h.text)}<br><span class="muted">${esc(h.agencies.join(', '))}</span></p>`).join('')}</details>` : ''}</div>` : ''}
     ${nudge?.short.length ? `<div class="card"><h3>📉 Agencies with fewer than ${nudge.below} au pairs (${nudge.short.length} of ${nudge.agencies})</h3>
       <p class="muted small">Each partner agency should have at least ${nudge.target} au pairs on PairMundo before launch. Press <strong>Preview and send</strong>: you see the email as the agency will (the offer to upload their list for them, once, for free, with their own count and the <a href="${esc(nudge.one_pager)}" target="_blank">one-pager</a> embedded), can change the words, and send it from PairMundo. It comes from "Badji from PairMundo", and replies go to ${esc(nudge.reply_to)}. When they send the list, open the agency and paste it under "Upload their list for them".</p>
       <div class="table-wrap"><table><tr><th>Agency</th><th>Email</th><th>Au pairs</th><th>Families</th><th>Invited by them</th><th>On the waitlist</th><th></th></tr>${nudge.short.map((r) => `<tr>
@@ -2622,6 +2633,20 @@ async function adminAmbassadors(head, id, qs) {
     if (!confirm('Send the update email to these agencies now? This cannot be undone.')) return;
     try { const r = await api('/admin/agency-update', { method: 'POST' }); toast(`Sent to ${r.sent} agencies`); go(`#/admin/ambassadors?month=${month}`); } catch (err) { toast(err.message); }
   };
+  const annSend = document.getElementById('annSend');
+  if (annSend) {
+    const picks = () => [...document.querySelectorAll('.annPick')];
+    document.getElementById('annAll').onclick = (e) => { e.preventDefault(); picks().forEach((c) => { c.checked = true; }); };
+    document.getElementById('annNone').onclick = (e) => { e.preventDefault(); picks().forEach((c) => { c.checked = false; }); };
+    annSend.onclick = async () => {
+      const ids = picks().filter((c) => c.checked).map((c) => Number(c.value));
+      if (!ids.length) return toast('Tick at least one agency.');
+      if (!confirm(`Send this note to ${ids.length} ${ids.length === 1 ? 'agency' : 'agencies'} now? They are notified straight away, and this cannot be undone.`)) return;
+      annSend.disabled = true;
+      try { const r = await api('/admin/agency-announce', { method: 'POST', body: { text: document.getElementById('annText').value, ids } }); toast(`Sent to ${r.sent} agencies`); go(`#/admin/ambassadors?month=${month}`); }
+      catch (err) { annSend.disabled = false; toast(err.message); }
+    };
+  }
   const sr = document.getElementById('sendRace');
   if (sr) sr.onclick = async () => {
     if (!confirm('Announce the Founding Partner Race to these agencies now? They are notified straight away, and this cannot be undone.')) return;
