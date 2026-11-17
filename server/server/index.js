@@ -2,7 +2,7 @@ import { openDb } from './db.js';
 import { createApp, normEmail } from './app.js';
 import { createBackups } from './backup.js';
 import { hashPassword } from './auth.js';
-import { ensureDemoAccounts } from './demo.js';
+import { ensureDemoAccounts, ensureTeamDemo } from './demo.js';
 
 const db = openDb();
 
@@ -18,7 +18,11 @@ if (ADMIN_EMAIL && ADMIN_PASSWORD && !db.prepare('SELECT 1 FROM users WHERE lowe
 }
 
 // Demo accounts for app store review, when DEMO_PASSWORD is set (server/demo.js). Checked again every hour below.
-const demo = () => { try { const r = ensureDemoAccounts(db); if (r === 'built') console.log('Built the demo accounts for app review'); } catch (e) { console.error('Demo accounts failed:', e.message); } };
+// The team's training agency and logins, when DEMO_TEAM_PASSWORD is set, after the review world (a rebuild of it removes them).
+const demo = () => {
+  try { const r = ensureDemoAccounts(db); if (r === 'built') console.log('Built the demo accounts for app review'); } catch (e) { console.error('Demo accounts failed:', e.message); }
+  try { const r = ensureTeamDemo(db); if (r === 'built') console.log('Built the training agency for the team'); } catch (e) { console.error('Team demo failed:', e.message); }
+};
 demo();
 
 const port = Number(process.env.PORT || 3000);
