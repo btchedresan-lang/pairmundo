@@ -58,7 +58,7 @@ function Polaroid({ user, uri, width, tilt, caption, gallery }) {
   );
 }
 
-/** "Prepared and approved by <agency>": a banner under the name of an au pair whose agency made their profile, so families notice it. */
+/** "Prepared & approved by <agency>": a banner under the name of an au pair whose agency made their profile, so families notice it. */
 export function AgencySeal({ u }) {
   if (!u?.agency) return null;
   const badges = u.agency_badges || [];
@@ -70,7 +70,7 @@ export function AgencySeal({ u }) {
       </View>
       <View style={{ flex: 1 }}>
         <Text style={{ fontSize: 16, color: '#1d5f2b', fontWeight: '600' }}>
-          {tr('Prepared and approved by {agency}').split('{agency}').flatMap((part, i) => (i ? [<Text key={i} style={{ fontWeight: '800' }}>{u.agency}</Text>, part] : [part]))}
+          {tr('Prepared & approved by {agency}').split('{agency}').flatMap((part, i) => (i ? [<Text key={i} style={{ fontWeight: '800' }}>{u.agency}</Text>, part] : [part]))}
         </Text>
         <Text style={{ fontSize: 12.5, color: '#4d5a52', marginTop: 2 }}>
           {tr('Their agency prepared this profile and checked it before it went live.')}{badges.length ? ` · ${badges.map((b) => `🏅 ${tr('{org} member', { org: b })}`).join(' · ')}` : ''}

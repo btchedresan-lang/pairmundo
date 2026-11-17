@@ -955,7 +955,7 @@
   "Your account is already linked to a code.": "Ton compte est déjà lié à un code.",
   "Agency accounts are on the website. Sign in at pairmundo.com.": "Les comptes agence sont sur le site web. Connecte-toi sur pairmundo.com.",
   "Ambassador accounts are on the website. Sign in at pairmundo.com.": "Les comptes ambassadeur sont sur le site web. Connecte-toi sur pairmundo.com.",
-  "Prepared and approved by {agency}": "Préparé et approuvé par {agency}",
+  "Prepared & approved by {agency}": "Préparé & approuvé par {agency}",
   "Their agency prepared this profile and checked it before it went live.": "Son agence a préparé ce profil et l'a vérifié avant sa mise en ligne.",
   "Your agency": "Ton agence",
   "Your profile is linked to {agency}. Families see it on your profile.": "Ton profil est lié à {agency}. Les familles le voient sur ton profil.",

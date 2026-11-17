@@ -58,7 +58,7 @@ export function CardCaption({ r, onPress }) {
       {u.agency ? (
         <View style={styles.agency}>
           <Ionicons name="school" size={14} color="#fff" />
-          <Text style={styles.agencyText} numberOfLines={2}>{tr('Prepared and approved by {agency}', { agency: u.agency })}</Text>
+          <Text style={styles.agencyText} numberOfLines={2}>{tr('Prepared & approved by {agency}', { agency: u.agency })}</Text>
         </View>
       ) : null}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
