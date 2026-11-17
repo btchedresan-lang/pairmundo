@@ -1423,5 +1423,9 @@
   "Sent to {name}. They will contact you by email.": "Enviado a {name}. Os contactarán por correo.",
   "That agency is not taking new families in your country.": "Esa agencia no acepta familias nuevas en vuestro país.",
   "Your account already belongs to an agency on PairMundo.": "Vuestra cuenta ya pertenece a una agencia en PairMundo.",
-  "Your family is with {agency} on PairMundo.": "Vuestra familia está con {agency} en PairMundo."
+  "Your family is with {agency} on PairMundo.": "Vuestra familia está con {agency} en PairMundo.",
+  "News from PairMundo": "Novedades de PairMundo",
+  "Email me news and offers from PairMundo": "Envíame por email novedades y ofertas de PairMundo",
+  "You always get emails about your account, matches and messages.": "Siempre recibirás emails sobre tu cuenta, tus matches y tus mensajes.",
+  "Close": "Cerrar"
 }

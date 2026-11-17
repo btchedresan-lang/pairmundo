@@ -145,5 +145,9 @@
   "A new au pair just joined PairMundo. Take a look!": "En ny au pair har precis gått med i PairMundo. Ta en titt!",
   "{n} new au pairs joined PairMundo. Take a look!": "{n} nya au pairer har gått med i PairMundo. Ta en titt!",
   "A new host family just joined PairMundo. Take a look!": "En ny värdfamilj har precis gått med i PairMundo. Ta en titt!",
-  "{n} new host families joined PairMundo. Take a look!": "{n} nya värdfamiljer har gått med i PairMundo. Ta en titt!"
+  "{n} new host families joined PairMundo. Take a look!": "{n} nya värdfamiljer har gått med i PairMundo. Ta en titt!",
+  "Don't want news emails from PairMundo? Unsubscribe here: {url}": "Vill du inte få nyhetsmejl från PairMundo? Avsluta här: {url}",
+  "Open PairMundo": "Öppna PairMundo",
+  "You're unsubscribed. We won't send you news emails. You still get emails about your account, and you can turn news back on in Account and safety.": "Du har avslutat prenumerationen. Vi skickar inga nyhetsmejl till dig. Du får fortfarande mejl om ditt konto, och du kan slå på nyheter igen under Konto och säkerhet.",
+  "This link is not valid.": "Länken är inte giltig."
 }

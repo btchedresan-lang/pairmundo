@@ -423,6 +423,18 @@ export const DICT = {
   '{agency} left PairMundo. Your account, matches, messages and placements stay yours.': {
     es: '{agency} ha dejado PairMundo. Tu cuenta, tus matches, mensajes y colocaciones siguen siendo tuyos.', fr: '{agency} a quitté PairMundo. Votre compte, vos matchs, messages et placements restent à vous.',
     de: '{agency} hat PairMundo verlassen. Dein Konto, deine Matches, Nachrichten und Vermittlungen bleiben deine.', pt: '{agency} saiu da PairMundo. Sua conta, seus matches, mensagens e colocações continuam sendo seus.' },
+  "Don't want news emails from PairMundo? Unsubscribe here: {url}": {
+    es: "¿No quieres recibir novedades de PairMundo por email? Date de baja aquí: {url}", fr: "Vous ne voulez plus recevoir les nouvelles de PairMundo par e-mail ? Désabonnez-vous ici : {url}",
+    de: "Keine Neuigkeiten von PairMundo mehr per E-Mail? Hier abmelden: {url}", pt: "Não quer receber novidades da PairMundo por email? Cancele a inscrição aqui: {url}" },
+  "Open PairMundo": {
+    es: "Abrir PairMundo", fr: "Ouvrir PairMundo",
+    de: "PairMundo öffnen", pt: "Abrir a PairMundo" },
+  "You're unsubscribed. We won't send you news emails. You still get emails about your account, and you can turn news back on in Account and safety.": {
+    es: "Te has dado de baja. No te enviaremos más novedades por email. Seguirás recibiendo emails sobre tu cuenta, y puedes volver a activar las novedades en Cuenta y seguridad.", fr: "Vous êtes désabonné. Nous ne vous enverrons plus de nouvelles par e-mail. Vous recevez toujours les e-mails concernant votre compte, et vous pouvez réactiver les nouvelles dans Compte et sécurité.",
+    de: "Du bist abgemeldet. Wir schicken dir keine Neuigkeiten mehr per E-Mail. E-Mails zu deinem Konto bekommst du weiterhin, und unter Konto und Sicherheit kannst du die Neuigkeiten wieder einschalten.", pt: "Inscrição cancelada. Não enviaremos mais novidades por email. Você continua recebendo emails sobre sua conta e pode reativar as novidades em Conta e segurança." },
+  "This link is not valid.": {
+    es: "Este enlace no es válido.", fr: "Ce lien n'est pas valide.",
+    de: "Dieser Link ist ungültig.", pt: "Este link não é válido." },
 };
 
 // Swedish lives in its own file, keyed by the same English text.

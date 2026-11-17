@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AppState, Linking, Pressable, Share, View } from 'react-native';
+import { AppState, Linking, Pressable, Share, Switch, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useAuth } from '../auth';
 import { api, getBase, setToken } from '../api';
@@ -123,6 +123,16 @@ export default function Account() {
             <Button small kind="ghost" title={tr('Unblock')} onPress={() => unblock(u)} />
           </View>
         )) : <T muted>{tr("You haven't blocked anyone.")}</T>}
+      </Card>
+
+      <Card>
+        <T h2>{tr('News from PairMundo')}</T>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <T style={{ flex: 1 }}>{tr('Email me news and offers from PairMundo')}</T>
+          <Switch value={me.user.news_emails !== false} trackColor={{ true: C.primary }}
+            onValueChange={async (v) => { setMe({ ...me, user: { ...me.user, news_emails: v } }); try { await api('/me', { method: 'PUT', body: { news_emails: v } }); } catch { refresh().catch(() => {}); } }} />
+        </View>
+        <T small muted>{tr('You always get emails about your account, matches and messages.')}</T>
       </Card>
 
       <Card>
