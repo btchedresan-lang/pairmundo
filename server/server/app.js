@@ -1472,6 +1472,10 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   };
   // How many spots are left, for the website and the waitlist.
   api.get('/early-family-offer', wrap(() => { const { open, days, cap, spots_left, launch_date } = earlyOffer(); return { open, days, cap, spots_left, launch_date }; }));
+  // Store links for the landing page. Each store's badge shows once its URL is set on Render (PLAY_STORE_URL,
+  // APP_STORE_URL); a store without one stays "coming soon". Set APP_STORE_URL only once the iPhone app is live.
+  const liveStoreUrl = (v) => { const u = String(v || '').trim(); return /^https:\/\//.test(u) ? u : null; };
+  api.get('/apps', wrap(() => ({ android: liveStoreUrl(process.env.PLAY_STORE_URL), ios: liveStoreUrl(process.env.APP_STORE_URL), launch_date: launchDate() })));
   // The family picks when to use their bonus. The days start now, or when the pass they have ends.
   api.post('/family-pass/early-bonus', requireAuth, wrap((req) => {
     const u = req.user;

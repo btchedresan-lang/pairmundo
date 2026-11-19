@@ -99,6 +99,7 @@ th { color: var(--muted); font-weight: 600; font-size: .8rem; text-transform: up
   .hero { grid-template-columns: 1fr auto; text-align: left; align-items: center; gap: 56px; padding-top: 32px; }
   .hero p { margin-left: 0; }
   .hero .row { justify-content: flex-start !important; }
+  .hero .app-avail, .hero .app-avail .store-badges { justify-content: flex-start; }
   .phone { width: 280px; }
 }
 .feature.reveal { opacity: 0; transform: translateY(14px); transition: opacity .5s ease, transform .5s ease; }
@@ -462,3 +463,15 @@ body { overflow-x: clip; }
 .race-link { margin-bottom: 10px; } .race-link label { font-size: .85rem; font-weight: 600; display: block; margin-bottom: 4px; }
 .race-link input { flex: 1; min-width: 0; }
 .race-body .btn.race-ghost { border-color: var(--brand); color: var(--brand); }
+
+/* App Store and Google Play badges, in the stores' own black style. */
+.app-avail { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center; }
+.store-badges { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 12px 0; }
+.app-avail .store-badges { margin: 0 0 4px; }
+.store-badge { display: inline-flex; align-items: center; gap: 8px; min-width: 150px; height: 48px; padding: 0 14px; border-radius: 9px;
+  background: #000; color: #fff !important; border: 1px solid #a6a6a6; text-decoration: none !important; line-height: 1.05; }
+.store-badge:hover, .store-badge:focus-visible { background: #1a1a1a; color: #fff; }
+.store-badge svg { width: 24px; height: 24px; flex: none; }
+.store-badge span { display: flex; flex-direction: column; text-align: left; }
+.store-badge small { font-size: .62rem; letter-spacing: .02em; }
+.store-badge b { font-size: 1.12rem; font-weight: 600; }
