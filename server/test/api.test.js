@@ -3141,3 +3141,20 @@ test('agency introductions: families ask PairMundo for a partner agency in their
   assert.deepEqual([r.status, r.body.joined], [201, false]);
   assert.equal(testDb.prepare('SELECT ref_code FROM users WHERE id = ?').get(r2.body.user.id).ref_code, 'AMB-DK');
 });
+
+test('landing page store links: each store shows once its link is set', async () => {
+  const saved = { PLAY_STORE_URL: process.env.PLAY_STORE_URL, APP_STORE_URL: process.env.APP_STORE_URL };
+  try {
+    delete process.env.PLAY_STORE_URL;
+    delete process.env.APP_STORE_URL;
+    let apps = (await call(null, 'GET', '/apps')).body;
+    assert.deepEqual([apps.android, apps.ios], [null, null], 'no links, both coming soon');
+    process.env.PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.pairmundo.app';
+    apps = (await call(null, 'GET', '/apps')).body;
+    assert.deepEqual([apps.android, apps.ios], [process.env.PLAY_STORE_URL, null], 'the App Store waits for its link');
+    process.env.APP_STORE_URL = 'https://apps.apple.com/app/id1234567890';
+    assert.equal((await call(null, 'GET', '/apps')).body.ios, process.env.APP_STORE_URL);
+  } finally {
+    for (const [k, v] of Object.entries(saved)) if (v === undefined) delete process.env[k]; else process.env[k] = v;
+  }
+});
