@@ -1688,6 +1688,52 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     return sent;
   };
   app.sendIdNudges = sendIdNudges;
+
+  // Unread chat messages by email (Badji, 19 Nov 2026: families said au pairs weren't replying). A new message only
+  // reaches a phone with the app and notifications on, so people on the website never knew a family wrote. Every few
+  // minutes: anyone with a message unread for 30 minutes gets one email naming who wrote, at most one every 12 hours,
+  // so a busy chat doesn't flood them. Each message is emailed about once. Only messages from the last 14 days, and never
+  // to suspended, demo or unconfirmed accounts, or between people who blocked each other.
+  const UNREAD_ALERT_GAP_HOURS = 12;
+  const sendUnreadMessageAlerts = () => {
+    const rows = db.prepare(`SELECT m.id, m.conversation_id, m.sender_id, m.body, m.call_url,
+        CASE WHEN c.user_a = m.sender_id THEN c.user_b ELSE c.user_a END AS to_id
+      FROM messages m JOIN conversations c ON c.id = m.conversation_id
+      WHERE m.read_at IS NULL AND m.alerted_at IS NULL
+        AND m.created_at <= datetime('now', '-30 minutes') AND m.created_at > datetime('now', '-14 days')
+      ORDER BY m.id`).all();
+    const byUser = new Map();
+    for (const r of rows) (byUser.get(r.to_id) || byUser.set(r.to_id, []).get(r.to_id)).push(r);
+    const mark = db.prepare("UPDATE messages SET alerted_at = datetime('now') WHERE id = ?");
+    let sent = 0;
+    for (const [toId, msgs] of byUser) {
+      const u = getUser(toId);
+      const live = msgs.filter((m) => !blockedBetween(toId, m.sender_id));
+      if (!u || u.suspended || u.demo || !u.email_verified || isDemoEmail(u.email) || !live.length) { msgs.forEach((m) => mark.run(m.id)); continue; }
+      if (u.chat_alert_at && Date.parse(u.chat_alert_at.replace(' ', 'T') + 'Z') > Date.now() - UNREAD_ALERT_GAP_HOURS * 3600000) continue;
+      msgs.forEach((m) => mark.run(m.id));
+      db.prepare("UPDATE users SET chat_alert_at = datetime('now') WHERE id = ?").run(u.id);
+      const senders = [...new Set(live.map((m) => m.sender_id))].map((id) => shortName(getUser(id)?.name) || 'PairMundo');
+      const last = live[live.length - 1];
+      const lang = u.lang || 'en';
+      const link = `${publicBase()}/#/messages/${last.conversation_id}`;
+      const v = { name: firstName(u.name) || translate(lang, 'there'), sender: senders[0], count: senders.length - 1 };
+      const subject = senders.length === 1 ? translate(lang, '{sender} sent you a message on PairMundo', v)
+        : translate(lang, '{sender} and {count} more sent you messages on PairMundo', v);
+      const quote = last.call_url ? '📹' : `“${last.body.length > 200 ? `${last.body.slice(0, 199)}…` : last.body}”`;
+      const text = [
+        translate(lang, senders.length === 1 ? 'Hi {name}! {sender} wrote to you on PairMundo and is waiting for your reply:' : 'Hi {name}! {sender} and {count} more wrote to you on PairMundo and are waiting for your reply. The latest:', v),
+        quote,
+        translate(lang, 'A quick reply is the best first impression, even just "Thanks, I\'ll get back to you tomorrow!" Reply here: {link}', { link }),
+        translate(lang, 'Tip: get the PairMundo app and allow notifications, so new messages reach your phone right away.'),
+      ].join('\n\n');
+      Promise.resolve(mailer(withMedia({ to: u.email, subject, text }, { image: 'swipe-match-chat.jpg', alt: 'PairMundo', base: publicBase(), lang,
+        cta: { label: translate(lang, 'Reply now'), link } }))).catch((e) => console.error('Unread message email failed:', e.message));
+      sent++;
+    }
+    return sent;
+  };
+  app.sendUnreadMessageAlerts = sendUnreadMessageAlerts;
   const mustHavePass = (u) => {
     if (needsPass(u)) throw new HttpError(402, 'Get the Family Pass to message au pairs.', 'pass_required');
   };

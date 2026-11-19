@@ -3158,3 +3158,52 @@ test('landing page store links: each store shows once its link is set', async ()
     for (const [k, v] of Object.entries(saved)) if (v === undefined) delete process.env[k]; else process.env[k] = v;
   }
 });
+
+test('unread messages: emailed after 30 minutes, once per message, at most every 12 hours, never across a block', async () => {
+  const fam = await register('unread-fam@test.io', 'family', 'SE', 'Familjen Berg');
+  const ap = await register('unread-ap@test.io', 'aupair', 'CO', 'Lucia Gomez');
+  const req = await call(fam.token, 'POST', '/requests', { to_user: ap.id, message: 'Hej Lucia! Can we have a video call this week?' });
+  await call(ap.token, 'POST', `/requests/${req.body.id}/respond`, { action: 'accept' });
+  const conv = (await call(fam.token, 'POST', '/conversations', { user_id: ap.id })).body.id;
+  const age = (mins) => testDb.prepare("UPDATE messages SET created_at = datetime('now', ?) WHERE conversation_id = ? AND read_at IS NULL").run(`-${mins} minutes`, conv);
+  const mailsTo = (to) => outbox.filter((m) => m.to === to);
+  outbox.length = 0;
+  // The family's message is fresh: nothing yet.
+  app.sendUnreadMessageAlerts();
+  assert.equal(mailsTo('unread-ap@test.io').length, 0, 'not before 30 minutes');
+  age(31);
+  app.sendUnreadMessageAlerts();
+  const mail = mailsTo('unread-ap@test.io');
+  assert.equal(mail.length, 1);
+  assert.match(mail[0].subject, /^Familjen B\S* sent you a message on PairMundo$/);
+  assert.match(mail[0].text, /Hi Lucia!/);
+  assert.match(mail[0].text, /video call this week/);
+  assert.match(mail[0].text, new RegExp(`#/messages/${conv}`));
+  assert.match(mail[0].html, /swipe-match-chat\.jpg/, 'carries a picture');
+  assert.match(mail[0].html, /Reply now/, 'and a button');
+  app.sendUnreadMessageAlerts();
+  assert.equal(mailsTo('unread-ap@test.io').length, 1, 'each message is emailed about once');
+
+  // A new unread message within 12 hours waits; after 12 hours it is emailed.
+  testDb.prepare('INSERT INTO messages (conversation_id, sender_id, body) VALUES (?,?,?)').run(conv, fam.id, 'Are you still there?');
+  age(40);
+  app.sendUnreadMessageAlerts();
+  assert.equal(mailsTo('unread-ap@test.io').length, 1, 'at most one email every 12 hours');
+  testDb.prepare("UPDATE users SET chat_alert_at = datetime('now', '-13 hours') WHERE id = ?").run(ap.id);
+  app.sendUnreadMessageAlerts();
+  assert.equal(mailsTo('unread-ap@test.io').length, 2);
+  assert.match(mailsTo('unread-ap@test.io')[1].text, /still there/);
+
+  // Reading the chat means no email; a block stops them too.
+  testDb.prepare('INSERT INTO messages (conversation_id, sender_id, body) VALUES (?,?,?)').run(conv, ap.id, 'Hi! Thursday works.');
+  age(31);
+  await call(fam.token, 'GET', `/conversations/${conv}/messages`);
+  testDb.prepare('INSERT INTO messages (conversation_id, sender_id, body) VALUES (?,?,?)').run(conv, fam.id, 'Blocked soon');
+  age(31);
+  testDb.prepare("UPDATE users SET chat_alert_at = NULL WHERE id IN (?, ?)").run(ap.id, fam.id);
+  testDb.prepare('INSERT INTO blocks (user_id, target_id) VALUES (?,?)').run(ap.id, fam.id);
+  outbox.length = 0;
+  app.sendUnreadMessageAlerts();
+  assert.equal(mailsTo('unread-fam@test.io').length, 0, 'read messages are not emailed');
+  assert.equal(mailsTo('unread-ap@test.io').length, 0, 'nothing across a block');
+});
