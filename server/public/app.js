@@ -148,6 +148,33 @@ async function api(path, { method = 'GET', body } = {}) {
 
 const formData = (form) => Object.fromEntries(new FormData(form).entries());
 const render = (html) => { $app.innerHTML = html; window.scrollTo(0, 0); };
+
+// Every password box gets an eye button, so people can check what they typed.
+const EYE = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYE_OFF = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.1 10.1 0 0 1 12 19C5.5 19 2 12 2 12a18.5 18.5 0 0 1 5.06-5.94M9.9 4.24A9.1 9.1 0 0 1 12 4c6.5 0 10 8 10 8a18.6 18.6 0 0 1-2.16 3.19M14.12 14.12a3 3 0 1 1-4.24-4.24"/><path d="M2 2l20 20"/></svg>';
+function addPasswordToggles(root = document) {
+  for (const input of root.querySelectorAll('input[type="password"]:not([data-eye])')) {
+    input.dataset.eye = '1';
+    const wrap = document.createElement('div');
+    wrap.className = 'pw-wrap';
+    input.replaceWith(wrap);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pw-eye';
+    const show = (visible) => {
+      input.type = visible ? 'text' : 'password';
+      btn.innerHTML = visible ? EYE_OFF : EYE;
+      btn.setAttribute('aria-label', visible ? tr('Hide password') : tr('Show password'));
+      btn.setAttribute('aria-pressed', String(visible));
+    };
+    btn.addEventListener('click', () => { const pos = input.selectionStart; show(input.type === 'password'); input.focus(); try { input.setSelectionRange(pos, pos); } catch { /* not supported */ } });
+    // Hide again before submitting, so the browser offers to save it as a password.
+    input.form?.addEventListener('submit', () => show(false), true);
+    wrap.append(input, btn);
+    show(false);
+  }
+}
+new MutationObserver(() => addPasswordToggles()).observe(document.body, { childList: true, subtree: true });
 const go = (hash) => { location.hash = hash; };
 
 // ---------- nav ----------
