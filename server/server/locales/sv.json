@@ -149,5 +149,12 @@
   "Don't want news emails from PairMundo? Unsubscribe here: {url}": "Vill du inte få nyhetsmejl från PairMundo? Avsluta här: {url}",
   "Open PairMundo": "Öppna PairMundo",
   "You're unsubscribed. We won't send you news emails. You still get emails about your account, and you can turn news back on in Account and safety.": "Du har avslutat prenumerationen. Vi skickar inga nyhetsmejl till dig. Du får fortfarande mejl om ditt konto, och du kan slå på nyheter igen under Konto och säkerhet.",
-  "This link is not valid.": "Länken är inte giltig."
+  "This link is not valid.": "Länken är inte giltig.",
+  "{sender} sent you a message on PairMundo": "{sender} har skickat ett meddelande till dig på PairMundo",
+  "{sender} and {count} more sent you messages on PairMundo": "{sender} och {count} till har skickat meddelanden till dig på PairMundo",
+  "Hi {name}! {sender} wrote to you on PairMundo and is waiting for your reply:": "Hej {name}! {sender} har skrivit till dig på PairMundo och väntar på ditt svar:",
+  "Hi {name}! {sender} and {count} more wrote to you on PairMundo and are waiting for your reply. The latest:": "Hej {name}! {sender} och {count} till har skrivit till dig på PairMundo och väntar på ditt svar. Det senaste:",
+  "A quick reply is the best first impression, even just \"Thanks, I'll get back to you tomorrow!\" Reply here: {link}": "Ett snabbt svar är det bästa första intrycket, även bara ”Tack, jag återkommer i morgon!”. Svara här: {link}",
+  "Tip: get the PairMundo app and allow notifications, so new messages reach your phone right away.": "Tips: skaffa PairMundo-appen och tillåt aviseringar, så kommer nya meddelanden direkt till din telefon.",
+  "Reply now": "Svara nu"
 }

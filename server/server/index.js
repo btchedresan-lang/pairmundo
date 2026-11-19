@@ -39,4 +39,8 @@ setInterval(() => {
   try { app.sendIdNudges(); } catch (e) { console.error('ID nudges failed:', e.message); }
   app.sendFlyerPayouts().catch((e) => console.error('Flyer payouts failed:', e.message));
 }, 60 * 60 * 1000).unref();
+// Unread chat messages: email whoever hasn't read a message for 30 minutes (at most one email every 12 hours each).
+setInterval(() => {
+  try { app.sendUnreadMessageAlerts(); } catch (e) { console.error('Unread message emails failed:', e.message); }
+}, 10 * 60 * 1000).unref();
 app.listen(port, () => console.log(`PairMundo running on http://localhost:${port}`));

@@ -294,6 +294,27 @@ export const DICT = {
   "Finish your profile here: {link}": {
     es: "Completa tu perfil aquí: {link}", fr: "Complétez votre profil ici : {link}",
     de: "Vervollständige dein Profil hier: {link}", pt: "Complete seu perfil aqui: {link}" },
+  "{sender} sent you a message on PairMundo": {
+    es: "{sender} te envió un mensaje en PairMundo", fr: "{sender} vous a envoyé un message sur PairMundo",
+    de: "{sender} hat dir auf PairMundo eine Nachricht geschickt", pt: "{sender} enviou uma mensagem para você no PairMundo" },
+  "{sender} and {count} more sent you messages on PairMundo": {
+    es: "{sender} y {count} más te enviaron mensajes en PairMundo", fr: "{sender} et {count} autres vous ont envoyé des messages sur PairMundo",
+    de: "{sender} und {count} weitere haben dir auf PairMundo Nachrichten geschickt", pt: "{sender} e mais {count} enviaram mensagens para você no PairMundo" },
+  "Hi {name}! {sender} wrote to you on PairMundo and is waiting for your reply:": {
+    es: "¡Hola, {name}! {sender} te escribió en PairMundo y espera tu respuesta:", fr: "Bonjour {name} ! {sender} vous a écrit sur PairMundo et attend votre réponse :",
+    de: "Hallo {name}! {sender} hat dir auf PairMundo geschrieben und wartet auf deine Antwort:", pt: "Oi, {name}! {sender} escreveu para você no PairMundo e está esperando sua resposta:" },
+  "Hi {name}! {sender} and {count} more wrote to you on PairMundo and are waiting for your reply. The latest:": {
+    es: "¡Hola, {name}! {sender} y {count} más te escribieron en PairMundo y esperan tu respuesta. El último:", fr: "Bonjour {name} ! {sender} et {count} autres vous ont écrit sur PairMundo et attendent votre réponse. Le dernier :",
+    de: "Hallo {name}! {sender} und {count} weitere haben dir auf PairMundo geschrieben und warten auf deine Antwort. Die neueste:", pt: "Oi, {name}! {sender} e mais {count} escreveram para você no PairMundo e estão esperando sua resposta. A mais recente:" },
+  "A quick reply is the best first impression, even just \"Thanks, I'll get back to you tomorrow!\" Reply here: {link}": {
+    es: "Una respuesta rápida es la mejor primera impresión, aunque sea solo «¡Gracias, te respondo mañana!». Responde aquí: {link}", fr: "Une réponse rapide, c'est la meilleure première impression, même un simple « Merci, je vous réponds demain ! ». Répondez ici : {link}",
+    de: "Eine schnelle Antwort ist der beste erste Eindruck, auch nur „Danke, ich melde mich morgen!“. Hier antworten: {link}", pt: "Uma resposta rápida é a melhor primeira impressão, mesmo que seja só \"Obrigado, respondo amanhã!\". Responda aqui: {link}" },
+  "Tip: get the PairMundo app and allow notifications, so new messages reach your phone right away.": {
+    es: "Consejo: descarga la app de PairMundo y activa las notificaciones para recibir los mensajes nuevos al instante en tu móvil.", fr: "Astuce : installez l'app PairMundo et autorisez les notifications pour recevoir les nouveaux messages tout de suite sur votre téléphone.",
+    de: "Tipp: Hol dir die PairMundo-App und erlaube Benachrichtigungen, dann kommen neue Nachrichten sofort auf dein Handy.", pt: "Dica: baixe o app PairMundo e permita as notificações para receber as novas mensagens na hora no seu celular." },
+  "Reply now": {
+    es: "Responder ahora", fr: "Répondre maintenant",
+    de: "Jetzt antworten", pt: "Responder agora" },
   "Families trust and message verified au pairs first. Verify your ID in Account and safety; it takes about 2 minutes with your passport or ID card and a selfie.": {
     es: "Las familias confían más en las au pairs verificadas y les escriben primero. Verifica tu identidad en Cuenta y seguridad; son unos 2 minutos con tu pasaporte o documento de identidad y una selfie.",
     fr: "Les familles font davantage confiance aux au pairs vérifiés et leur écrivent en premier. Vérifiez votre identité dans Compte et sécurité ; cela prend environ 2 minutes avec votre passeport ou carte d'identité et un selfie.",

@@ -775,6 +775,8 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
   // News emails from the admin: on unless they unsubscribe (link in each email) or turn them off in Account.
   if (!cols.includes('news_emails')) db.exec('ALTER TABLE users ADD COLUMN news_emails INTEGER NOT NULL DEFAULT 1');
   if (!cols.includes('news_token')) db.exec('ALTER TABLE users ADD COLUMN news_token TEXT');
+  if (!cols.includes('chat_alert_at')) db.exec('ALTER TABLE users ADD COLUMN chat_alert_at TEXT');
+  if (!db.prepare('PRAGMA table_info(messages)').all().some((c) => c.name === 'alerted_at')) db.exec('ALTER TABLE messages ADD COLUMN alerted_at TEXT');
   if (!cols.includes('email_verified')) db.exec('ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0; UPDATE users SET email_verified = 1');
   const apcols = db.prepare('PRAGMA table_info(aupair_profiles)').all().map((c) => c.name);
   if (!apcols.includes('traits')) db.exec(`ALTER TABLE aupair_profiles ADD COLUMN traits TEXT NOT NULL DEFAULT '[]';
