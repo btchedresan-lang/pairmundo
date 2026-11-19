@@ -73,7 +73,7 @@ export const Chips = ({ children }) => <View style={{ flexDirection: 'row', flex
 export function Field({ label, hint, value, onChangeText, multiline, keyboardType, placeholder, secureTextEntry, autoCapitalize, textContentType, autoComplete,
   maxLength, autoFocus, returnKeyType, onSubmitEditing, style }) {
   const t = useTheme();
-  // Passwords get a Show/Hide switch, so people can check what they typed.
+  // Passwords get an eye button to show or hide them, so people can check what they typed.
   const [hidden, setHidden] = useState(true);
   const [focused, setFocused] = useState(false);
   return (
@@ -85,12 +85,12 @@ export function Field({ label, hint, value, onChangeText, multiline, keyboardTyp
           autoCorrect={secureTextEntry || keyboardType === 'email-address' ? false : undefined}
           textContentType={textContentType} autoComplete={autoComplete} maxLength={maxLength} autoFocus={autoFocus} returnKeyType={returnKeyType} onSubmitEditing={onSubmitEditing}
           onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
-          style={{ borderWidth: 1.5, borderColor: focused ? C.primary : t.line, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 13, paddingRight: secureTextEntry ? 64 : 14,
+          style={{ borderWidth: 1.5, borderColor: focused ? C.primary : t.line, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 13, paddingRight: secureTextEntry ? 48 : 14,
             fontSize: 16, color: t.ink, backgroundColor: t.card, minHeight: multiline ? 104 : undefined, textAlignVertical: multiline ? 'top' : 'center' }} />
         {secureTextEntry ? (
           <Pressable onPress={() => setHidden(!hidden)} hitSlop={8} accessibilityRole="button" accessibilityLabel={hidden ? tr('Show password') : tr('Hide password')}
             style={{ position: 'absolute', right: 12, top: 0, bottom: 0, justifyContent: 'center' }}>
-            <Text style={{ color: C.primary, fontWeight: '700', fontSize: 13 }}>{hidden ? tr('Show') : tr('Hide')}</Text>
+            <Ionicons name={hidden ? 'eye-outline' : 'eye-off-outline'} size={22} color={t.muted} />
           </Pressable>
         ) : null}
       </View>
