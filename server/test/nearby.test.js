@@ -4,16 +4,19 @@ import { openDb } from '../server/db.js';
 import { createApp } from '../server/app.js';
 import { hashPassword } from '../server/auth.js';
 import { cityKey, distanceBand, isNear, toGrid } from '../server/nearby.js';
+import { createGeo } from '../server/geo.js';
 
 let server; let base; let db;
 const pushed = [];
+// Where the fake geocoder puts each place, standing in for OpenStreetMap's lookup.
+const PLACES = { 'Västerås': { lat: 59.61, lng: 16.55 }, Stockholm: { lat: 59.33, lng: 18.07 }, Solna: { lat: 59.36, lng: 18.0 }, 'Södermalm': { lat: 59.31, lng: 18.07 }, Uppsala: { lat: 59.86, lng: 17.64 } };
 before(async () => {
   process.env.AUTH_RATE_LIMIT = '1000';
   process.env.NEARBY_MIN_PEOPLE = '3';
   process.env.UPLOAD_DIR = (await import('node:fs')).mkdtempSync((await import('node:os')).tmpdir() + '/aupair-near-');
   db = openDb(':memory:');
   const app = createApp(db, { mailer: async () => {}, pusher: async (msgs) => { pushed.push(...msgs); return msgs.map(() => ({ status: 'ok' })); },
-    moderator: async () => ({ verdict: 'allow', category: 'none', note: '' }) });
+    moderator: async () => ({ verdict: 'allow', category: 'none', note: '' }), geo: createGeo(db, { gapMs: 0, lookup: async (place) => PLACES[place] ?? null }) });
   await new Promise((r) => { server = app.listen(0, r); });
   base = `http://127.0.0.1:${server.address().port}/api`;
 });
@@ -275,4 +278,34 @@ test('people nearby: suburbs within 30 km count toward the big city when both sh
   assert.equal((await call(sol.token, 'POST', `/nearby/people/${nac.id}/hello`, { message: 'Hej!' })).status, 201);
   // Without a shared point, a suburb stays on its own.
   assert.equal((await call(nopt.token, 'GET', '/nearby')).body.city.people, 1);
+});
+
+test('map: everyone counts at the general spot of their profile city, without turning on Nearby or location', async () => {
+  const viewer = await member('gv@geo.io', 'family', 'Geo Viewer');
+  const sto = await member('g1@geo.io', 'family', 'Geo One');
+  const sol = await member('g2@geo.io', 'family', 'Geo Two', { city: 'Solna' });
+  const sod = await member('g3@geo.io', 'family', 'Geo Three', { city: 'Södermalm' });
+  const hid = await member('g4@geo.io', 'family', 'Geo Hidden');
+  const upp = await member('g5@geo.io', 'family', 'Geo Uppsala', { city: 'Uppsala' });
+  await member('g6@geo.io', 'aupair', 'Geo Aupair');
+  // One family turned Nearby on and chose to hide: they stay off the map.
+  await call(hid.token, 'PUT', '/me/nearby', { city: 'Stockholm', country: 'SE', visible: false });
+  // The viewer never set up Nearby: the map works from their profile city.
+  const map = (await call(viewer.token, 'GET', '/nearby/map')).body;
+  assert.equal(map.settings, null);
+  assert.deepEqual(map.center, { lat: 59.34, lng: 18.08 });
+  // The viewer, Geo One and the Stockholm family from the first test share Stockholm's general spot: a bubble of 3.
+  // Solna and Södermalm have one family each, too few for their own bubble, so they join Stockholm's: 5 in all.
+  // The hidden family, the au pair and Uppsala (over 30 km away) never count. Only general spots go out, never a person.
+  assert.deepEqual(map.areas, [{ lat: 59.34, lng: 18.08, count: 5 }]);
+  const total = 5;
+  assert.ok(!JSON.stringify(map).includes('Geo '));
+  // Nobody is counted twice, and the hidden family really is left out.
+  await call(hid.token, 'PUT', '/me/nearby', { city: 'Stockholm', country: 'SE', visible: true });
+  const after = (await call(viewer.token, 'GET', '/nearby/map')).body.areas.reduce((n, a) => n + a.count, 0);
+  assert.equal(after, total + 1);
+  void sto; void sol; void sod; void upp;
+  // Without a city on the profile there is nowhere to put the map yet.
+  const nocity = await member('g7@geo.io', 'family', 'Geo Nocity', { city: null });
+  assert.equal((await call(nocity.token, 'GET', '/nearby/map')).body.needs_city, true);
 });

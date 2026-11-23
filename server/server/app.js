@@ -24,6 +24,7 @@ import { createBackups } from './backup.js';
 import { createVideo, CALL_HOURS } from './video.js';
 import { createPayouts } from './payouts.js';
 import { createSocial, SocialError, socialProviders } from './social.js';
+import { createGeo } from './geo.js';
 
 const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
 const MAX_PHOTOS = 6;
@@ -114,7 +115,7 @@ export function seedPrograms(db) {
   }
 }
 
-export function createApp(db, { mailer = createMailer(), pusher = createPusher(), storage, identity = createIdentity(), checkout = createCheckout(), revenuecat = createRevenueCat(), backups = createBackups(db), moderator = createModerator(), video = createVideo(), payouts = createPayouts(), social = createSocial() } = {}) {
+export function createApp(db, { mailer = createMailer(), pusher = createPusher(), storage, identity = createIdentity(), checkout = createCheckout(), revenuecat = createRevenueCat(), backups = createBackups(db), moderator = createModerator(), video = createVideo(), payouts = createPayouts(), social = createSocial(), geo } = {}) {
   const UPLOAD_DIR = process.env.UPLOAD_DIR || 'data/uploads';
   // Demo accounts' addresses don't exist, so nothing is sent to them.
   const sendMail = mailer;
@@ -3000,7 +3001,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   mountHiring(api, { db, wrap, requireRole, rateLimit, HttpError, str, normEmail, mailer, publicBase, notify, video, addTeamMember });
   const community = mountCommunity(api, { db, wrap, requireAuth, requireRole, HttpError, str, normEmail, hashPassword, mailer, withMedia, publicBase, notify, csvCell, shortName });
   const nearby = mountNearby(api, { db, wrap, requireAuth, requireRole, HttpError, str, tx, notify, publicUser, getUser, getProfile, blockedBetween, closedApart,
-    conversationFor, mustBeReady, mustBeVerified, agencySpace, shortName, photosOf, publicBase, communityManagerOf: community.managerOf, logCommunity: community.logActivity });
+    conversationFor, mustBeReady, mustBeVerified, agencySpace, shortName, photosOf, publicBase, communityManagerOf: community.managerOf, logCommunity: community.logActivity, geo: geo || createGeo(db) });
   // The in-app guide: next steps per role, the first-run walkthrough, and the next-step card in the app.
   const guide = mountGuide(api, { db, wrap, requireAuth, profileGaps, passView, identityOn: () => !!identity, community, pickLang, journeyFor });
   // Hourly: ask people who checked in at a meetup that ended to rate it.

@@ -71,7 +71,7 @@ const PRIVATE_PLACE = /\b(my|our) (home|place|flat|apartment|house|room)\b|\bat 
 
 export function mountNearby(api, deps) {
   const { db, wrap, requireAuth, requireRole, HttpError, str, tx, notify, publicUser, getUser, getProfile, blockedBetween, closedApart,
-    conversationFor, mustBeReady, mustBeVerified, agencySpace, shortName, photosOf, publicBase, communityManagerOf, logCommunity } = deps;
+    conversationFor, mustBeReady, mustBeVerified, agencySpace, shortName, photosOf, publicBase, communityManagerOf, logCommunity, geo } = deps;
   /** Records what a Community Manager did to one of their meetups, for the admin's activity log. */
   const track = (m, u, action, detail) => { if (m.source === 'community' && m.host_id === u.id) logCommunity?.(u.id, m.id, action, detail); };
   const ratingDays = () => db.prepare('SELECT rating_days FROM community_rules WHERE id = 1').get()?.rating_days ?? 3;
@@ -558,32 +558,57 @@ export function mountNearby(api, deps) {
   // ---------- the map ----------
   // Never a pin per person: meetups as pins (rounded unless you're going), and people as counts per area of about
   // 5 km, shown only where at least MAP_MIN_BUBBLE people are, so no bubble points at one person.
+  // Everyone counts, not only people who set up Nearby: someone who shared a point counts there, and everyone else
+  // counts at the general spot of the city or neighbourhood on their profile (geo.js), so nobody has to turn on
+  // location. Only people who turned Nearby on and chose to hide are left out.
   const MAP_CELL = 0.05;
   const MAP_MIN_BUBBLE = 3;
-  api.get('/nearby/map', member, wrap((req) => {
+  /** Members of role active lately and in good standing, with their Nearby row if they have one. */
+  const mapPeople = (country, role, demo) => db.prepare(`SELECT u.*, n.city AS n_city, n.city_key AS n_city_key, n.lat AS n_lat, n.lng AS n_lng, n.visible AS n_visible
+      FROM users u LEFT JOIN nearby_settings n ON n.user_id = u.id
+      WHERE u.role = ? AND u.suspended = 0 AND u.email_verified = 1 AND u.demo = ? AND u.last_active_at >= datetime('now', ?)
+        AND COALESCE(n.country, u.country) = ?`).all(role, demo ? 1 : 0, `-${ACTIVE_DAYS} days`, country);
+  api.get('/nearby/map', member, wrap(async (req) => {
     const me = req.user;
-    const area = areaOf(me.id);
-    if (!area) return { settings: null };
-    const all = cityPeople(area, me.role, me.demo);
-    const unlocked = all.length >= minPeople();
+    const settings = areaOf(me.id);
+    // Before someone sets up Nearby, the map uses the city on their profile.
+    const area = settings ?? (me.city && me.country ? { city: me.city, city_key: cityKey(me.city), country: String(me.country).toUpperCase(), lat: null, lng: null, visible: 0 } : null);
+    if (!area) return { settings: null, needs_city: true };
+    const rows = mapPeople(area.country, me.role, me.demo).filter((u) => u.n_visible !== 0);
+    const placeOf = (u) => (u.n_lat != null ? null : [u.n_city || u.city, area.country]);
+    await geo.warm([[area.city, area.country], ...rows.map(placeOf).filter(Boolean)]);
+    const centre = hasPoint(area) ? { lat: area.lat, lng: area.lng } : geo.point(area.city, area.country);
+    const here = { ...area, ...(centre || {}) };
     const cells = new Map();
-    if (unlocked && area.visible) {
-      for (const u of all) {
-        if (!hasPoint(u) || (u.id !== me.id && !canMeet(me, u))) continue;
-        const key = `${Math.round(u.lat / MAP_CELL)}:${Math.round(u.lng / MAP_CELL)}`;
-        const c = cells.get(key) || { n: 0, lat: 0, lng: 0 };
-        c.n++; c.lat += u.lat; c.lng += u.lng;
-        cells.set(key, c);
-      }
+    for (const u of rows) {
+      if (u.id !== me.id && !canMeet(me, u)) continue;
+      const spot = u.n_lat != null ? { lat: u.n_lat, lng: u.n_lng } : geo.point(u.n_city || u.city, area.country);
+      if (!spot) continue;
+      if (!isNear(here, { country: area.country, city_key: u.n_city_key || cityKey(u.city), ...spot }, NEAR_KM)) continue;
+      const key = `${Math.round(spot.lat / MAP_CELL)}:${Math.round(spot.lng / MAP_CELL)}`;
+      const c = cells.get(key) || { n: 0, lat: 0, lng: 0 };
+      c.n++; c.lat += spot.lat; c.lng += spot.lng;
+      cells.set(key, c);
     }
-    const areas = [...cells.values()].filter((c) => c.n >= MAP_MIN_BUBBLE)
-      .map((c) => ({ lat: Number((c.lat / c.n).toFixed(2)), lng: Number((c.lng / c.n).toFixed(2)), count: c.n }));
+    // An area with too few people for its own bubble joins the nearest bubble within 15 km, or else they all add up at
+    // the city's general spot, so people in small neighbourhoods still count without standing out.
+    const mid = (c) => ({ lat: c.lat / c.n, lng: c.lng / c.n });
+    const big = [...cells.values()].filter((c) => c.n >= MAP_MIN_BUBBLE).map((c) => ({ ...mid(c), count: c.n }));
+    const rest = { n: 0 };
+    for (const c of cells.values()) {
+      if (c.n >= MAP_MIN_BUBBLE) continue;
+      const near = big.map((b) => ({ b, km: distanceKm(b, mid(c)) })).filter((x) => x.km <= 15).sort((x, y) => x.km - y.km)[0];
+      if (near) near.b.count += c.n; else rest.n += c.n;
+    }
+    if (rest.n >= MAP_MIN_BUBBLE && centre) big.push({ ...centre, count: rest.n });
+    const areas = big.map((b) => ({ lat: Number(b.lat.toFixed(2)), lng: Number(b.lng.toFixed(2)), count: b.count }));
     const meetups = meetupsIn(area, me).filter((m) => m.point);
+    const listed = settings ? cityPeople(settings, me.role, me.demo).length : 0;
     return {
-      settings: settingsView(area),
-      // Where to centre the map: your own rounded point, else the middle of what's on it.
-      center: hasPoint(area) ? { lat: area.lat, lng: area.lng } : null,
-      city: { name: area.city, country: area.country, unlocked, people: all.length, needed: Math.max(0, minPeople() - all.length) },
+      settings: settingsView(settings),
+      // Where to centre the map: your own rounded point, else your city's general spot, else the middle of what's on it.
+      center: centre,
+      city: { name: area.city, country: area.country, unlocked: listed >= minPeople(), people: listed, needed: Math.max(0, minPeople() - listed) },
       areas, meetups,
     };
   }));
