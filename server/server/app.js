@@ -3722,7 +3722,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   // turned news emails off in Account don't get the email. Demo and suspended accounts never get anything.
   // {name} in the message becomes each person's first name. Nothing goes out until the admin presses Send.
   const MESSAGE_ROLES = { family: 'Host families', aupair: 'Au pairs', agency: 'Agencies', ambassador: 'Ambassadors' };
-  const MESSAGE_IMAGES = ['swipe-match-chat.jpg', 'spot-our-ads-christmas.jpg', 'hero-family.jpg', 'hero-aupair.jpg', 'sweden-families-want-european-aupairs.jpg', 'agency-profile-guide.jpg', 'we-upload-your-au-pairs.jpg', 'launch-day.jpg', 'community-meetups.jpg'];
+  const MESSAGE_IMAGES = ['swipe-match-chat.jpg', 'spot-our-ads-christmas.jpg', 'hero-family.jpg', 'hero-aupair.jpg', 'sweden-families-want-european-aupairs.jpg', 'agency-profile-guide.jpg', 'we-upload-your-au-pairs.jpg', 'launch-day.jpg', 'community-meetups.jpg', 'nearby-map.jpg'];
   const MESSAGE_SAMPLE = 'Hi {name}! 🎄 Our Christmas challenge is on: spot a PairMundo ad around town this December, snap a photo and share it with us. The best spots win a prize.\n\nBadji';
   const newsLink = (link) => {
     const l = str(link, 500);

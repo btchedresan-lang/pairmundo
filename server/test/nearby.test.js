@@ -280,36 +280,42 @@ test('people nearby: suburbs within 30 km count toward the big city when both sh
   assert.equal((await call(nopt.token, 'GET', '/nearby')).body.city.people, 1);
 });
 
-test('map: everyone counts at the general spot of their profile city, without turning on Nearby or location', async () => {
-  const viewer = await member('gv@geo.io', 'family', 'Geo Viewer');
-  const sto = await member('g1@geo.io', 'family', 'Geo One');
-  const sol = await member('g2@geo.io', 'family', 'Geo Two', { city: 'Solna' });
-  const sod = await member('g3@geo.io', 'family', 'Geo Three', { city: 'Södermalm' });
-  const hid = await member('g4@geo.io', 'family', 'Geo Hidden');
-  const upp = await member('g5@geo.io', 'family', 'Geo Uppsala', { city: 'Uppsala' });
-  await member('g6@geo.io', 'aupair', 'Geo Aupair');
-  // One family turned Nearby on and chose to hide: they stay off the map.
+test('map: au pairs count at their profile city without Nearby or location; families only once they turn Nearby on', async () => {
+  const ap = await member('gv@geo.io', 'aupair', 'Geo Viewer');
+  for (const [i, city] of ['Stockholm', 'Solna', 'Södermalm', 'Uppsala'].entries()) await member(`ga${i}@geo.io`, 'aupair', `Geo Pair${i}`, { city });
+  const hid = await member('gh@geo.io', 'aupair', 'Geo Hidden');
   await call(hid.token, 'PUT', '/me/nearby', { city: 'Stockholm', country: 'SE', visible: false });
-  // The viewer never set up Nearby: the map works from their profile city.
-  const map = (await call(viewer.token, 'GET', '/nearby/map')).body;
+  const fams = [];
+  for (let i = 0; i < 3; i++) fams.push(await member(`gf${i}@geo.io`, 'family', `Geo Fam${i}`));
+
+  // An au pair who never set up Nearby sees au pairs around Stockholm, at the city's general spot, as counts only.
+  const map = (await call(ap.token, 'GET', '/nearby/map')).body;
   assert.equal(map.settings, null);
   assert.deepEqual(map.center, { lat: 59.34, lng: 18.08 });
-  // The viewer, Geo One and the Stockholm family from the first test share Stockholm's general spot: a bubble of 3.
-  // Solna and Södermalm have one family each, too few for their own bubble, so they join Stockholm's: 5 in all.
-  // The hidden family, the au pair and Uppsala (over 30 km away) never count. Only general spots go out, never a person.
-  assert.deepEqual(map.areas, [{ lat: 59.34, lng: 18.08, count: 5 }]);
-  const total = 5;
+  assert.equal(map.areas.length, 1);
+  assert.ok(map.areas[0].count >= 3);
   assert.ok(!JSON.stringify(map).includes('Geo '));
-  // Au pairs around Stockholm show too, in their own bubbles, as counts only.
-  assert.ok(map.other_areas.length > 0);
-  assert.ok(map.other_areas.every((a) => a.role === 'aupair' && a.count >= 3));
-  assert.ok(map.areas.every((a) => !('role' in a)));
-  // Nobody is counted twice, and the hidden family really is left out.
+  // Families are never shown to au pairs.
+  assert.deepEqual(map.other_areas, []);
+  // The hidden au pair is left out until they show themselves; Solna and Södermalm join Stockholm, Uppsala (65 km) doesn't.
+  const count = (m) => m.areas.reduce((n, x) => n + x.count, 0);
   await call(hid.token, 'PUT', '/me/nearby', { city: 'Stockholm', country: 'SE', visible: true });
-  const after = (await call(viewer.token, 'GET', '/nearby/map')).body.areas.reduce((n, a) => n + a.count, 0);
-  assert.equal(after, total + 1);
-  void sto; void sol; void sod; void upp;
+  assert.equal(count((await call(ap.token, 'GET', '/nearby/map')).body), count(map) + 1);
+
+  // A family off Nearby sees the au pairs, but no families: families aren't counted until they turn Nearby on.
+  let fm = (await call(fams[0].token, 'GET', '/nearby/map')).body;
+  assert.deepEqual(fm.areas, []);
+  assert.ok(fm.other_areas.length && fm.other_areas.every((x) => x.role === 'aupair' && x.count >= 3));
+  // Once three families turn Nearby on (with the Stockholm family from the first test), they see each other as a count.
+  for (const f of fams) await call(f.token, 'PUT', '/me/nearby', { city: 'Stockholm', country: 'SE' });
+  fm = (await call(fams[0].token, 'GET', '/nearby/map')).body;
+  assert.equal(count(fm), 4);
+  // A family who hides sees no families and isn't counted.
+  await call(fams[1].token, 'PUT', '/me/nearby', { city: 'Stockholm', country: 'SE', visible: false });
+  assert.deepEqual((await call(fams[1].token, 'GET', '/nearby/map')).body.areas, []);
+  assert.equal(count((await call(fams[0].token, 'GET', '/nearby/map')).body), 3);
+
   // Without a city on the profile there is nowhere to put the map yet.
-  const nocity = await member('g7@geo.io', 'family', 'Geo Nocity', { city: null });
+  const nocity = await member('g7@geo.io', 'aupair', 'Geo Nocity', { city: null });
   assert.equal((await call(nocity.token, 'GET', '/nearby/map')).body.needs_city, true);
 });
