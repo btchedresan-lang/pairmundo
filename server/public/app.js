@@ -2879,15 +2879,23 @@ views.admin = async ([tab = 'overview', id], qs) => {
     `<a class="btn ${k === tab ? '' : 'ghost'} sm" href="#/admin/${k}">${v}</a>`).join('')}</div>`;
   if (tab === 'overview') {
     const s = await api('/admin/stats');
-    const tiles = [['Au pairs', s.aupairs], ['Host families', s.families], ['Awaiting ID check', s.pending_verification], ['Pending requests', s.open_requests],
+    const stage = (x) => `<div style="font-size:1.8rem;font-weight:800">${x.signed_up}</div>
+      <div class="small">${x.confirmed} confirmed email · <strong>${x.complete} complete profile</strong></div>`;
+    const tiles = [['Awaiting ID check', s.pending_verification], ['Pending requests', s.open_requests],
       ['Matches', s.matches], ['Active placements', s.placements_active], ['Completed placements', s.placements_completed], ['Reviews', s.reviews], ['Open reports', s.open_reports], ['On the waitlist', s.waitlist]];
-    render(`${head}<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(170px,1fr))">${tiles.map(([k, v]) =>
+    const out = s.left_out;
+    render(`${head}<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr))">
+      <div class="card"><div class="muted small">Au pairs signed up</div>${stage(s.aupairs)}</div>
+      <div class="card"><div class="muted small">Host families signed up</div>${stage(s.families)}</div></div>
+      <p class="muted small" style="margin:-4px 0 12px">Every number here counts real members only. Left out: ${out.demo} demo, ${out.test} test and ${out.suspended} suspended account${out.suspended === 1 ? '' : 's'}.
+        A complete profile has a confirmed email, a photo and a few words about them. Mark the team's own sign-ups as test accounts under <a href="#/admin/users">Users</a>.</p>
+      <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(170px,1fr))">${tiles.map(([k, v]) =>
       `<div class="card"><div class="muted small">${k}</div><div style="font-size:1.8rem;font-weight:800">${v}</div></div>`).join('')}</div>
       <div class="card"><h2>Would families also use us for a babysitter?</h2><p class="muted small">Asked during family onboarding in the app.</p>
       <table><tr><th>Yes</th><th>Maybe</th><th>No</th><th>Not answered</th></tr>
       <tr>${['yes', 'maybe', 'no', 'unanswered'].map((k) => `<td>${s.sitter_interest[k]}</td>`).join('')}</tr></table></div>
-      <div class="card"><h2>Members by country</h2><table><tr><th>Country</th><th>Role</th><th>Members</th></tr>
-      ${s.by_country.map((r) => `<tr><td>${cname(r.country) || '—'}</td><td>${r.role === 'aupair' ? 'Au pair' : 'Family'}</td><td>${r.n}</td></tr>`).join('')}</table></div>
+      <div class="card table-wrap"><h2>Members by country</h2><table><tr><th>Country</th><th>Role</th><th>Signed up</th><th>Confirmed email</th><th>Complete profile</th></tr>
+      ${s.by_country.map((r) => `<tr><td>${cname(r.country) || '—'}</td><td>${r.role === 'aupair' ? 'Au pair' : 'Family'}</td><td>${r.signed_up}</td><td>${r.confirmed}</td><td>${r.complete}</td></tr>`).join('')}</table></div>
       <div class="card" id="backupCard"><h2>Database backups</h2><div id="backupInfo" class="muted">Loading…</div></div>`);
     return adminBackup();
   }
@@ -2895,24 +2903,31 @@ views.admin = async ([tab = 'overview', id], qs) => {
   if (tab === 'meetups') return adminMeetups(head);
   if (tab === 'community') return adminCommunity(head, qs);
   if (tab === 'users') {
-    const { users } = await api('/admin/users');
-    render(`${head}<div class="card table-wrap"><table><tr><th>Member</th><th>Role</th><th>Rating</th><th>ID</th><th>References</th><th>Background</th><th>Suspended</th><th>Family Pass</th></tr>
-      ${users.map((u) => `<tr><td><a href="#/u/${u.id}">${esc(u.name)}</a><div class="muted small">${esc(u.email)} · ${cname(u.country)}${u.source ? ` · via ${esc(u.source)}` : ''}</div>
+    const showDemo = qs?.get('demo') === '1';
+    const { users, demo_hidden: demoHidden } = await api(`/admin/users${showDemo ? '?demo=1' : ''}`);
+    const flags = (u) => [u.demo ? '<span class="chip">Demo</span>' : '', u.test_account ? '<span class="chip warn">Test</span>' : '',
+      u.email_verified ? '' : '<span class="chip">Email not confirmed</span>'].join(' ');
+    render(`${head}<p class="muted small">${showDemo ? 'Showing demo accounts too. <a href="#/admin/users">Hide them</a>.' : `${demoHidden} demo account${demoHidden === 1 ? ' is' : 's are'} hidden. <a href="#/admin/users?demo=1">Show them</a>.`}
+      Tick <strong>Test</strong> for accounts the team made to try the app: they keep working but are left out of every number.</p>
+      <div class="card table-wrap"><table><tr><th>Member</th><th>Role</th><th>Rating</th><th>ID</th><th>References</th><th>Background</th><th>Suspended</th><th>Test</th><th>Family Pass</th></tr>
+      ${users.map((u) => `<tr><td><a href="#/u/${u.id}">${esc(u.name)}</a> ${flags(u)}<div class="muted small">${esc(u.email)} · ${cname(u.country)}${u.source ? ` · via ${esc(u.source)}` : ''}</div>
         <a class="small" href="#/admin/messages?to=${encodeURIComponent(u.email)}">✉️ Message</a></td>
-        <td>${u.role === 'aupair' ? 'Au pair' : 'Family'}</td><td>${u.rating.avg ?? '—'}</td>
+        <td>${({ aupair: 'Au pair', family: 'Family', ambassador: 'Ambassador or Community Manager', agency: 'Agency', partner_manager: 'Partner manager' })[u.role] || esc(u.role)}</td><td>${u.rating.avg ?? '—'}</td>
         ${['id_verified:id', 'references_checked:references', 'background_checked:background'].map((x) => { const [f, k] = x.split(':');
     return `<td><input type="checkbox" style="width:auto" data-u="${u.id}" data-f="${f}" ${u.verification[k] ? 'checked' : ''}></td>`; }).join('')}
         <td><input type="checkbox" style="width:auto" data-u="${u.id}" data-f="suspended" ${u.suspended ? 'checked' : ''}></td>
+        <td>${u.demo ? '' : `<input type="checkbox" style="width:auto" data-u="${u.id}" data-f="test_account" ${u.test_account ? 'checked' : ''}>`}</td>
         <td>${u.role === 'family' ? `<div class="small">${u.pass_ends_at ? `until ${fmtDate(u.pass_ends_at)}` : '<span class="muted">none</span>'}</div>
           <button class="btn ghost sm" data-free="${u.id}">+ Free days</button>` : ''}</td></tr>`).join('')}</table></div>`);
     document.querySelectorAll('[data-free]').forEach((b) => { b.onclick = async () => {
       const days = Number(prompt('How many free days of the Family Pass?', '30'));
       if (!(days > 0)) return;
-      try { await api(`/admin/users/${b.dataset.free}`, { method: 'POST', body: { grant_pass_days: days } }); toast('Free days added'); views.admin(['users']); }
+      try { await api(`/admin/users/${b.dataset.free}`, { method: 'POST', body: { grant_pass_days: days } }); toast('Free days added'); route(); }
       catch (e) { toast(e.message); }
     }; });
     document.querySelectorAll('[data-u]').forEach((cb) => { cb.onchange = async () => {
       await api(`/admin/users/${cb.dataset.u}`, { method: 'POST', body: { [cb.dataset.f]: cb.checked } }); toast('Saved');
+      if (cb.dataset.f === 'test_account') route();
     }; });
     return;
   }
@@ -3083,7 +3098,7 @@ function wireReviews(ambId, reload, only = null) {
     if (note?.trim()) review(b.dataset.reject, { decision: 'reject', note });
   }; });
 }
-const kindChip = (a) => ({ agency: '<span class="chip">Agency</span>', distributor: '<span class="chip">Flyer distributor</span>' })[a.kind] || '';
+const kindChip = (a) => `${({ agency: '<span class="chip">Agency</span>', distributor: '<span class="chip">Flyer distributor</span>' })[a.kind] || ''}${a.demo ? ' <span class="chip">Demo</span>' : ''}`;
 /** Shows the flyer pay fields only when the type is flyer distributor. */
 const spaceFields = (form) => ({ ...Object.fromEntries(['closed_network', 'mask_contacts', 'covers_pass', 'approve_families', 'share_aupairs', 'takes_families'].map((k) => [k, form[k].checked])), pilot_until: form.pilot_until.value });
 function wireKind(form) {

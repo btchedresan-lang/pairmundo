@@ -599,7 +599,7 @@ export function mountNearby(api, deps) {
           FROM meetups m WHERE m.starts_at >= ? OR m.status = 'hidden' ORDER BY m.status = 'hidden' DESC, open_reports DESC, m.starts_at LIMIT 300`).all(since)
         .map((m) => ({ ...meetupView(m, req.user, true), place: m.place, open_reports: m.open_reports })),
       cities: db.prepare(`SELECT n.country, n.city, u.role, COUNT(*) people FROM nearby_settings n JOIN users u ON u.id = n.user_id
-          WHERE u.demo = 0 GROUP BY n.country, n.city_key, u.role ORDER BY people DESC LIMIT 50`).all(),
+          WHERE u.demo = 0 AND u.test_account = 0 AND u.suspended = 0 GROUP BY n.country, n.city_key, u.role ORDER BY people DESC LIMIT 50`).all(),
       min_people: minPeople(), kinds: MEETUP_KINDS,
     };
   }));

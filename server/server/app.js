@@ -465,7 +465,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const u = getUser(userId);
     const a = u?.ref_code ? db.prepare('SELECT * FROM ambassadors WHERE code = ?').get(u.ref_code) : null;
     // Partner agencies tag their au pairs but earn nothing; flyer distributors are paid per flyer instead.
-    if (!a?.active || a.kind !== 'ambassador' || a.user_id === u.id || u.suspended) return;
+    if (!a?.active || a.kind !== 'ambassador' || a.user_id === u.id || u.suspended || u.demo || u.test_account) return;
     if (kind === 'profile') {
       const used = db.prepare("SELECT COALESCE(SUM(amount_cents), 0) n FROM referral_rewards WHERE ambassador_id = ? AND kind = 'profile' AND created_at >= datetime('now', 'start of month')").get(a.id).n;
       amount = Math.max(0, Math.min(amount, AMBASSADOR_REWARDS.profile_monthly_cap - used));
@@ -499,7 +499,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   const ambassadorStats = (a, month = null) => {
     const when = month ? " AND strftime('%Y-%m', created_at) = ?" : '';
     const m = month ? [month] : [];
-    const people = db.prepare(`SELECT SUM(role = 'aupair') aupairs, SUM(role = 'family') families FROM users WHERE ref_code = ? AND id IS NOT ?${when}`).get(a.code, a.user_id, ...m);
+    const people = db.prepare(`SELECT SUM(role = 'aupair') aupairs, SUM(role = 'family') families FROM users
+      WHERE ref_code = ? AND id IS NOT ? AND demo = ? AND test_account = 0 AND suspended = 0${when}`).get(a.code, a.user_id, a.demo ? 1 : 0, ...m);
     const r = db.prepare(`SELECT SUM(kind = 'profile') profiles, SUM(kind = 'pass') passes, SUM(kind = 'placement') placements,
       COALESCE(SUM(amount_cents), 0) earned_cents FROM referral_rewards WHERE ambassador_id = ?${when}`).get(a.id, ...m);
     return {
@@ -509,6 +510,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       owed_cents: db.prepare('SELECT COALESCE(SUM(amount_cents), 0) n FROM referral_rewards WHERE ambassador_id = ? AND paid_at IS NULL').get(a.id).n,
     };
   };
+  // Both count real members only (not suspended or test accounts); the staff training agency (demo) counts its demo members.
   /** What a partner agency's code brought in, for one month (YYYY-MM, by when the au pair joined) or all time. */
   const agencyStats = (a, month = null) => {
     const when = month ? " AND strftime('%Y-%m', u.created_at) = ?" : '';
@@ -516,8 +518,9 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
         SUM((json_array_length(coalesce(u.photos, '[]')) > 0 OR u.photo_url IS NOT NULL) AND trim(coalesce(p.bio, '')) <> '') profiles,
         SUM(u.id_verified) verified,
         SUM(EXISTS (SELECT 1 FROM placements pl WHERE pl.aupair_id = u.id AND pl.status IN ('confirmed', 'active', 'completed'))) placements
-      FROM users u LEFT JOIN aupair_profiles p ON p.user_id = u.id WHERE u.ref_code = ? AND u.role = 'aupair' AND u.id IS NOT ?${when}`)
-      .get(a.code, a.user_id, ...(month ? [month] : []));
+      FROM users u LEFT JOIN aupair_profiles p ON p.user_id = u.id WHERE u.ref_code = ? AND u.role = 'aupair' AND u.id IS NOT ?
+        AND u.demo = ? AND u.test_account = 0 AND u.suspended = 0${when}`)
+      .get(a.code, a.user_id, a.demo ? 1 : 0, ...(month ? [month] : []));
     return { aupairs: r.aupairs || 0, profiles: r.profiles || 0, verified: r.verified || 0, placements: r.placements || 0 };
   };
   // ---------- flyer distributors ----------
@@ -536,7 +539,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const families = db.prepare(`INSERT OR IGNORE INTO flyer_bonuses (ambassador_id, session_id, email, area, amount_ore, joined_at)
       SELECT ?, ?, email, ?, ?, MIN(created_at) FROM (
         SELECT lower(trim(email)) email, source, created_at FROM waitlist WHERE coalesce(role, '') <> 'aupair'
-        UNION ALL SELECT lower(trim(email)), source, created_at FROM users WHERE role = 'family' AND NOT suspended)
+        UNION ALL SELECT lower(trim(email)), source, created_at FROM users WHERE role = 'family' AND NOT suspended AND NOT demo AND NOT test_account)
       WHERE source = ? AND created_at >= ? AND created_at < datetime(?, ?) GROUP BY email`);
     const areas = areasOf(a);
     for (const s of db.prepare("SELECT * FROM flyer_sessions WHERE ambassador_id = ? AND status = 'approved' ORDER BY delivered_on, id").all(a.id)) {
@@ -3447,36 +3450,55 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     try { await backups.run(); } catch (e) { throw bad(`Backup failed: ${e.message}`); }
     return backups.status();
   }));
+  // Who counts as a real member in admin numbers: not demo (app store review, staff training), not a team test account
+  // the admin marked, and not suspended. Real members are then split by how far they got: signed up, confirmed their
+  // email, and a complete profile (a photo and a few words, the same as needed to like anyone).
+  const REAL = "u.role IN ('aupair', 'family') AND u.demo = 0 AND u.test_account = 0 AND u.suspended = 0";
+  const FAKE_IDS = '(SELECT id FROM users WHERE demo = 1 OR test_account = 1)';
+  const HAS_PHOTO = "(json_array_length(coalesce(u.photos, '[]')) > 0 OR u.photo_url IS NOT NULL)";
+  const HAS_BIO = `trim(coalesce(CASE u.role WHEN 'aupair' THEN (SELECT bio FROM aupair_profiles WHERE user_id = u.id)
+    ELSE (SELECT bio FROM family_profiles WHERE user_id = u.id) END, '')) <> ''`;
+  const STAGES = `COUNT(*) signed_up, COALESCE(SUM(u.email_verified = 1), 0) confirmed,
+    COALESCE(SUM(u.email_verified = 1 AND ${HAS_PHOTO} AND ${HAS_BIO}), 0) complete`;
   api.get('/admin/stats', requireRole('admin'), wrap(() => {
     const n = (q, ...a) => db.prepare(q).get(...a).n;
+    const stages = (role) => db.prepare(`SELECT ${STAGES} FROM users u WHERE ${REAL} AND u.role = ?`).get(role);
     return {
-      aupairs: n("SELECT COUNT(*) n FROM users WHERE role = 'aupair' AND demo = 0"),
-      families: n("SELECT COUNT(*) n FROM users WHERE role = 'family' AND demo = 0"),
-      pending_verification: n("SELECT COUNT(*) n FROM users WHERE role != 'admin' AND id_verified = 0 AND demo = 0"),
+      aupairs: stages('aupair'),
+      families: stages('family'),
+      left_out: {
+        suspended: n("SELECT COUNT(*) n FROM users WHERE role IN ('aupair', 'family') AND demo = 0 AND test_account = 0 AND suspended = 1"),
+        test: n("SELECT COUNT(*) n FROM users WHERE role != 'admin' AND test_account = 1 AND demo = 0"),
+        demo: n("SELECT COUNT(*) n FROM users WHERE role != 'admin' AND demo = 1"),
+      },
+      pending_verification: n(`SELECT COUNT(*) n FROM users u WHERE ${REAL} AND u.email_verified = 1 AND u.id_verified = 0`),
       pending_certificates: n("SELECT COUNT(*) n FROM certificate_proofs WHERE status = 'pending'"),
-      open_requests: n("SELECT COUNT(*) n FROM match_requests WHERE status = 'pending' AND from_user NOT IN (SELECT id FROM users WHERE demo = 1)"),
-      matches: n("SELECT COUNT(*) n FROM match_requests WHERE status = 'accepted' AND from_user NOT IN (SELECT id FROM users WHERE demo = 1)"),
-      placements_active: n("SELECT COUNT(*) n FROM placements WHERE status IN ('confirmed','active') AND family_id NOT IN (SELECT id FROM users WHERE demo = 1)"),
-      placements_completed: n("SELECT COUNT(*) n FROM placements WHERE status = 'completed' AND family_id NOT IN (SELECT id FROM users WHERE demo = 1)"),
-      reviews: n('SELECT COUNT(*) n FROM reviews WHERE reviewer_id NOT IN (SELECT id FROM users WHERE demo = 1)'),
+      open_requests: n(`SELECT COUNT(*) n FROM match_requests WHERE status = 'pending' AND from_user NOT IN ${FAKE_IDS} AND to_user NOT IN ${FAKE_IDS}`),
+      matches: n(`SELECT COUNT(*) n FROM match_requests WHERE status = 'accepted' AND from_user NOT IN ${FAKE_IDS} AND to_user NOT IN ${FAKE_IDS}`),
+      placements_active: n(`SELECT COUNT(*) n FROM placements WHERE status IN ('confirmed','active') AND family_id NOT IN ${FAKE_IDS} AND aupair_id NOT IN ${FAKE_IDS}`),
+      placements_completed: n(`SELECT COUNT(*) n FROM placements WHERE status = 'completed' AND family_id NOT IN ${FAKE_IDS} AND aupair_id NOT IN ${FAKE_IDS}`),
+      reviews: n(`SELECT COUNT(*) n FROM reviews WHERE reviewer_id NOT IN ${FAKE_IDS} AND reviewee_id NOT IN ${FAKE_IDS}`),
       open_reports: n("SELECT COUNT(*) n FROM reports WHERE status = 'open'"),
       waitlist: n('SELECT COUNT(*) n FROM waitlist'),
       sitter_interest: Object.fromEntries([...SITTER_ANSWERS, null].map((a) => [a ?? 'unanswered',
-        n(`SELECT COUNT(*) n FROM users u JOIN family_profiles f ON f.user_id = u.id WHERE u.role = 'family' AND u.demo = 0 AND f.wants_sitter ${a ? '= ?' : 'IS NULL'}`, ...(a ? [a] : []))])),
-      by_country: db.prepare("SELECT country, role, COUNT(*) n FROM users WHERE role != 'admin' AND demo = 0 GROUP BY country, role ORDER BY n DESC").all(),
+        n(`SELECT COUNT(*) n FROM users u JOIN family_profiles f ON f.user_id = u.id WHERE ${REAL} AND u.role = 'family' AND f.wants_sitter ${a ? '= ?' : 'IS NULL'}`, ...(a ? [a] : []))])),
+      by_country: db.prepare(`SELECT u.country, u.role, ${STAGES} FROM users u WHERE ${REAL} GROUP BY u.country, u.role ORDER BY signed_up DESC`).all(),
     };
   }));
   api.get('/admin/users', requireRole('admin'), wrap((req) => {
     const like = `%${req.query.q || ''}%`;
     return {
-      users: db.prepare("SELECT * FROM users WHERE role != 'admin' AND (name LIKE ? OR email LIKE ?) ORDER BY created_at DESC LIMIT 200").all(like, like)
-        .map((u) => ({ ...publicUser(u, req.user), email: u.email, suspended: !!u.suspended, rating: ratingSummary(u.id), source: u.source, pass_ends_at: u.role === 'family' ? activePass(u.id)?.ends_at ?? null : undefined })),
+      // Demo accounts (app store review, staff training) are hidden unless the admin asks for them (?demo=1).
+      users: db.prepare(`SELECT * FROM users WHERE role != 'admin' AND (name LIKE ? OR email LIKE ?)${req.query.demo === '1' ? '' : ' AND demo = 0'} ORDER BY created_at DESC LIMIT 200`).all(like, like)
+        .map((u) => ({ ...publicUser(u, req.user), email: u.email, suspended: !!u.suspended, demo: !!u.demo, test_account: !!u.test_account, email_verified: !!u.email_verified,
+          rating: ratingSummary(u.id), source: u.source, pass_ends_at: u.role === 'family' ? activePass(u.id)?.ends_at ?? null : undefined })),
+      demo_hidden: req.query.demo === '1' ? 0 : db.prepare("SELECT COUNT(*) n FROM users WHERE role != 'admin' AND demo = 1").get().n,
     };
   }));
   api.post('/admin/users/:id', requireRole('admin'), wrap((req) => {
     const u = getUser(req.params.id);
     if (!u || u.role === 'admin') throw notFound();
-    const map = { id_verified: 'id_verified', references_checked: 'references_checked', background_checked: 'background_checked', suspended: 'suspended' };
+    const map = { id_verified: 'id_verified', references_checked: 'references_checked', background_checked: 'background_checked', suspended: 'suspended', test_account: 'test_account' };
     const sets = Object.keys(map).filter((k) => k in (req.body || {}));
     // An admin can give a family a free pass (for example to test, or as a goodwill gesture).
     const passDays = Number(req.body?.grant_pass_days);
@@ -3484,9 +3506,10 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (!sets.length) throw bad('Nothing to change.');
     db.prepare(`UPDATE users SET ${sets.map((k) => `${map[k]} = ?`).join(', ')} WHERE id = ?`).run(...sets.map((k) => (req.body[k] ? 1 : 0)), u.id);
     if (req.body.suspended) db.prepare('DELETE FROM sessions WHERE user_id = ?').run(u.id);
-    if (sets.some((k) => k !== 'suspended' && req.body[k])) notify(u.id, 'verification', 'Your profile has a new verification badge.', {}, '#/profile');
+    if (sets.some((k) => !['suspended', 'test_account'].includes(k) && req.body[k])) notify(u.id, 'verification', 'Your profile has a new verification badge.', {}, '#/profile');
     if (req.body.id_verified) checkProfileReward(u.id);
-    return { ...publicUser(getUser(u.id), req.user), suspended: !!getUser(u.id).suspended };
+    const after = getUser(u.id);
+    return { ...publicUser(after, req.user), suspended: !!after.suspended, test_account: !!after.test_account };
   }));
   api.get('/admin/reports', requireRole('admin'), wrap(() => ({
     reports: db.prepare(`SELECT rp.*, ru.name reporter_name, tu.name target_name, rv.comment review_comment, rv.hidden review_hidden,
@@ -3542,8 +3565,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   const NUDGE_TARGET = 50;
   api.get('/admin/agency-nudge', requireRole('admin'), wrap(() => {
     const rows = db.prepare(`SELECT a.*, u.email account_email,
-        (SELECT COUNT(*) FROM users m WHERE m.ref_code = a.code AND m.role = 'aupair' AND m.demo = 0 AND m.id IS NOT a.user_id) aupairs,
-        (SELECT COUNT(*) FROM users m WHERE m.ref_code = a.code AND m.role = 'family' AND m.demo = 0 AND m.id IS NOT a.user_id) families,
+        (SELECT COUNT(*) FROM users m WHERE m.ref_code = a.code AND m.role = 'aupair' AND m.demo = 0 AND m.test_account = 0 AND m.suspended = 0 AND m.id IS NOT a.user_id) aupairs,
+        (SELECT COUNT(*) FROM users m WHERE m.ref_code = a.code AND m.role = 'family' AND m.demo = 0 AND m.test_account = 0 AND m.suspended = 0 AND m.id IS NOT a.user_id) families,
         (SELECT COUNT(*) FROM agency_family_invites i WHERE i.ambassador_id = a.id) invited,
         (SELECT COUNT(*) FROM waitlist w WHERE w.ref_code = a.code) waitlist
       FROM ambassadors a LEFT JOIN users u ON u.id = a.user_id WHERE a.kind = 'agency' AND a.active = 1 AND a.demo = 0 ORDER BY a.created_at, a.name`).all();
