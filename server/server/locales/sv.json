@@ -156,5 +156,11 @@
   "Hi {name}! {sender} and {count} more wrote to you on PairMundo and are waiting for your reply. The latest:": "Hej {name}! {sender} och {count} till har skrivit till dig på PairMundo och väntar på ditt svar. Det senaste:",
   "A quick reply is the best first impression, even just \"Thanks, I'll get back to you tomorrow!\" Reply here: {link}": "Ett snabbt svar är det bästa första intrycket, även bara ”Tack, jag återkommer i morgon!”. Svara här: {link}",
   "Tip: get the PairMundo app and allow notifications, so new messages reach your phone right away.": "Tips: skaffa PairMundo-appen och tillåt aviseringar, så kommer nya meddelanden direkt till din telefon.",
-  "Reply now": "Svara nu"
+  "Reply now": "Svara nu",
+  "{name}, an au pair near you, said hi. Open Nearby to answer.": "{name}, en au pair nära dig, sa hej. Öppna I närheten för att svara.",
+  "{name}, a family near you, said hi. Open Nearby to answer.": "{name}, en familj nära dig, sa hej. Öppna I närheten för att svara.",
+  "{name} said hi back. You can chat now.": "{name} sa hej tillbaka. Nu kan ni chatta.",
+  "{agency} invited you to a meetup in {city}: {title}": "{agency} bjuder in dig till en träff i {city}: {title}",
+  "{name} is coming to {title}.": "{name} kommer till {title}.",
+  "{title} was cancelled.": "{title} är inställd."
 }

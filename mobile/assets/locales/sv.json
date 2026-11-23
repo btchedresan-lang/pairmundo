@@ -2,6 +2,7 @@
   "ios": {
     "NSPhotoLibraryUsageDescription": "PairMundo behöver komma åt dina bilder så att du kan lägga till dem i din profil.",
     "NSCameraUsageDescription": "PairMundo behöver din kamera för videosamtal med familjer och au pairer.",
-    "NSMicrophoneUsageDescription": "PairMundo behöver din mikrofon för videosamtal med familjer och au pairer."
+    "NSMicrophoneUsageDescription": "PairMundo behöver din mikrofon för videosamtal med familjer och au pairer.",
+    "NSLocationWhenInUseUsageDescription": "PairMundo använder din ungefärliga plats, bara när du ber om det, för att hitta din stad i I närheten. Din exakta position sparas aldrig."
   }
 }

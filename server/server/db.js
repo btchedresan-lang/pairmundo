@@ -754,6 +754,74 @@ CREATE TABLE IF NOT EXISTS new_member_alerts (
   last_sent_at TEXT
 );
 
+-- Nearby: opt-in, approximate location for meeting other au pairs (or other families) in the same city.
+-- Only the city and, if the person shares it, a point rounded to a ~2 km grid are kept: never their exact spot.
+CREATE TABLE IF NOT EXISTS nearby_settings (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  city TEXT NOT NULL,
+  city_key TEXT NOT NULL,                         -- the city without case or accents, so "Malmö" and "malmo" match
+  country TEXT NOT NULL,
+  lat REAL,                                       -- rounded to the grid in server/nearby.js, or null
+  lng REAL,
+  visible INTEGER NOT NULL DEFAULT 1,             -- shown to others of the same side (au pairs to au pairs, families to families)
+  families_can_find INTEGER NOT NULL DEFAULT 0,   -- au pairs only: shown in families' "Find an au pair near you"
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS nearby_city ON nearby_settings(country, city_key);
+-- "Say hi" between two au pairs (or two families) nearby. Accepting opens a chat.
+CREATE TABLE IF NOT EXISTS nearby_hellos (
+  id INTEGER PRIMARY KEY,
+  from_user INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  to_user INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  message TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',         -- pending | accepted | declined
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  responded_at TEXT,
+  UNIQUE (from_user, to_user)
+);
+-- Group meetups in a public place: hosted by a member (source member), by a partner agency for its people (agency),
+-- or listed by the admin from elsewhere, linking out (external). Times are ISO 8601 in UTC.
+CREATE TABLE IF NOT EXISTS meetups (
+  id INTEGER PRIMARY KEY,
+  source TEXT NOT NULL DEFAULT 'member',          -- member | agency | external
+  host_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  agency_id INTEGER REFERENCES ambassadors(id) ON DELETE CASCADE,
+  audience TEXT NOT NULL,                         -- aupair | family | both
+  agency_only INTEGER NOT NULL DEFAULT 0,         -- only the agency's own au pairs and families see it
+  kind TEXT NOT NULL,
+  title TEXT NOT NULL,
+  about TEXT,
+  city TEXT NOT NULL,
+  city_key TEXT NOT NULL,
+  country TEXT NOT NULL,
+  area TEXT,                                      -- neighbourhood, shown in the list
+  place TEXT NOT NULL,                            -- the public place; only people going see it (external: everyone)
+  starts_at TEXT NOT NULL,
+  ends_at TEXT,
+  max_people INTEGER,
+  external_url TEXT,
+  organizer TEXT,
+  status TEXT NOT NULL DEFAULT 'open',            -- open | cancelled | hidden (by the admin, or by reports)
+  demo INTEGER NOT NULL DEFAULT 0,
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS meetups_city ON meetups(country, city_key, starts_at);
+CREATE TABLE IF NOT EXISTS meetup_attendees (
+  meetup_id INTEGER NOT NULL REFERENCES meetups(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (meetup_id, user_id)
+);
+-- The meetup's group chat, for the host and the people going ("I'm by the fountain, red jacket").
+CREATE TABLE IF NOT EXISTS meetup_messages (
+  id INTEGER PRIMARY KEY,
+  meetup_id INTEGER NOT NULL REFERENCES meetups(id) ON DELETE CASCADE,
+  sender_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_reviews_reviewee ON reviews(reviewee_id);
 CREATE INDEX IF NOT EXISTS idx_requests_to ON match_requests(to_user, status);
@@ -910,6 +978,8 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
       .run("role IN ('aupair','family','admin','agency','ambassador'))", "role IN ('aupair','family','admin','agency','ambassador','partner_manager'))");
     db.exec(`PRAGMA schema_version = ${v + 1}; PRAGMA writable_schema = OFF;`);
   }
+  // Reports can be about a meetup.
+  if (!db.prepare('PRAGMA table_info(reports)').all().some((c) => c.name === 'meetup_id')) db.exec('ALTER TABLE reports ADD COLUMN meetup_id INTEGER REFERENCES meetups(id) ON DELETE SET NULL');
   return db;
 }
 

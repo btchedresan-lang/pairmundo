@@ -41,13 +41,14 @@ export default function Chat() {
   }, [id]);
 
   // A new match: suggest openers from their profile.
-  const otherId = other?.id; const empty = !msgs.length;
+  const otherId = other?.id; const otherRole = other?.role; const empty = !msgs.length;
   useEffect(() => {
-    if (!otherId || !empty) return undefined;
+    // Au pairs and families who met through Nearby chat as peers: the openers are for families and au pairs.
+    if (!otherId || !empty || otherRole === me.user.role) return undefined;
     let alive = true;
     api(`/users/${otherId}`).then((d) => alive && setOpeners(icebreakers(me.user.role, d.user, d.profile))).catch(() => {});
     return () => { alive = false; };
-  }, [otherId, empty, me.user.role]);
+  }, [otherId, otherRole, empty, me.user.role]);
 
   const send = async () => {
     const body = text.trim(); if (!body) return;

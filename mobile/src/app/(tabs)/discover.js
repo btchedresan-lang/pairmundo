@@ -27,10 +27,12 @@ export default function Discover() {
   const [showFilters, setShowFilters] = useState(false);
   const [match, setMatch] = useState(null);
   const [error, setError] = useState(null);
+  const [needsCity, setNeedsCity] = useState(false);
   const isFamily = me.user.role === 'family';
 
   const qs = new URLSearchParams(Object.entries(filters).filter(([, v]) => v)).toString();
-  const load = useCallback((frontId) => api(`/discover${qs ? `?${qs}` : ''}`).then(({ results }) => {
+  const load = useCallback((frontId) => api(`/discover${qs ? `?${qs}` : ''}`).then(({ results, near_needs_city }) => {
+    setNeedsCity(!!near_needs_city);
     if (frontId) { const i = results.findIndex((r) => r.user.id === frontId); if (i > 0) results.unshift(...results.splice(i, 1)); }
     setError(null); setDeck(results);
   }).catch((e) => { setError(e.message); setDeck([]); }), [qs]);
@@ -70,17 +72,27 @@ export default function Discover() {
     : tr('I am looking for a host family on {app}: swipe, match and chat with families all over the world. Join here: {link}', { app: brand.name, link: 'https://pairmundo.com' }) }).catch(() => {});
 
   if (!deck) return <Loading />;
-  const nFilters = Object.values(filters).filter(Boolean).length;
+  const nFilters = Object.entries(filters).filter(([k, v]) => v && k !== 'near').length;
   return (
     <View style={{ flex: 1, backgroundColor: t.bg, paddingTop: insets.top + 6 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 8 }}>
         <Text style={{ fontSize: 28, fontFamily: HEADING_BOLD, color: t.ink, letterSpacing: -0.5 }}>{brand.name.split(/(?=[A-Z])/)[0]}<Text style={{ color: C.primary, fontFamily: HEADING_BOLD }}>{brand.name.split(/(?=[A-Z])/).slice(1).join('')}</Text></Text>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+        {isFamily ? (
+          // "Find an au pair near you": au pairs who let families in their city find them (Nearby).
+          <Pressable onPress={() => { setFilters((f) => ({ ...f, near: f.near ? '' : '1' })); setDeck(null); }} accessibilityRole="button" accessibilityLabel={tr('Near you')} hitSlop={8}
+            style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: filters.near ? C.primary : t.card, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9, transform: [{ scale: pressed ? 0.95 : 1 }] }, lift.sm]}>
+            <Ionicons name="location-outline" size={18} color={filters.near ? '#fff' : t.ink} />
+            <Text style={{ color: filters.near ? '#fff' : t.ink, fontWeight: '600', fontSize: 14 }}>{tr('Near you')}</Text>
+          </Pressable>
+        ) : null}
         <Pressable onPress={() => setShowFilters(true)} accessibilityRole="button" accessibilityLabel={tr('Filters')} hitSlop={8}
           style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: t.card, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9, transform: [{ scale: pressed ? 0.95 : 1 }] }, lift.sm]}>
           <Ionicons name="options-outline" size={18} color={t.ink} />
           <Text style={{ color: t.ink, fontWeight: '600', fontSize: 14 }}>{tr('Filters')}</Text>
           {nFilters ? <View style={{ backgroundColor: C.primary, borderRadius: 999, minWidth: 20, height: 20, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 }}><Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>{nFilters}</Text></View> : null}
         </Pressable>
+        </View>
       </View>
       {!me.user.email_verified ? (
         <Pressable onPress={() => router.push('/verify-email')} style={{ marginHorizontal: 16, marginBottom: 8 }}>
@@ -94,11 +106,16 @@ export default function Discover() {
       ) : null}
       <NewsCard style={{ marginHorizontal: 16, marginBottom: 8 }} />
       {error ? <View style={{ marginHorizontal: 16, marginBottom: 8 }}><Alert level="error" text={error} /></View> : null}
+      {filters.near && needsCity ? (
+        <Pressable onPress={() => router.push('/nearby')} style={{ marginHorizontal: 16, marginBottom: 8 }}>
+          <Alert level="info" text={tr('Add your city in Nearby to find au pairs near you. Tap here.')} />
+        </Pressable>
+      ) : null}
       <View style={{ flex: 1, marginHorizontal: 12 }}>
         {deck.length ? (
           <SwipeDeck ref={deckRef} cards={deck} onSwipe={onSwipe} onOpen={(r) => router.push(`/user/${r.user.id}`)} />
         ) : (
-          <Empty icon="sparkles-outline" title={tr("You've seen everyone for now")} text={isFamily ? tr('New au pairs join every day. Widen your filters or take another look at people you passed.') : tr('New families join every day. Widen your filters or take another look at people you passed.')}>
+          <Empty icon={filters.near ? 'location-outline' : 'sparkles-outline'} title={filters.near ? tr('No au pairs near you yet') : tr("You've seen everyone for now")} text={filters.near ? tr('Au pairs already in your country choose whether families nearby can find them. Turn off Near you to see au pairs everywhere.') : isFamily ? tr('New au pairs join every day. Widen your filters or take another look at people you passed.') : tr('New families join every day. Widen your filters or take another look at people you passed.')}>
             {me.new_member_alert ? (
               <Pressable onPress={() => alerts(false)} hitSlop={6}><T small muted style={{ textAlign: 'center' }}>{tr("We'll let you know when someone new joins.")} <T small style={{ color: C.primary }}>{tr('Turn off')}</T></T></Pressable>
             ) : <Button icon="notifications-outline" title={tr('Tell me when someone new joins')} onPress={() => alerts(true)} />}
@@ -121,7 +138,7 @@ export default function Discover() {
 
       <Modal visible={showFilters} animationType="slide" transparent onRequestClose={() => setShowFilters(false)}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}>
-          <FiltersSheet initial={filters} isFamily={isFamily} onClose={() => setShowFilters(false)} onApply={(f) => { setFilters(f); setShowFilters(false); setDeck(null); }} />
+          <FiltersSheet initial={filters} isFamily={isFamily} onClose={() => setShowFilters(false)} onApply={(f) => { setFilters({ ...f, near: filters.near }); setShowFilters(false); setDeck(null); }} />
         </View>
       </Modal>
     </View>
