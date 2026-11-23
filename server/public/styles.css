@@ -480,3 +480,50 @@ body { overflow-x: clip; }
 .store-badge span { display: flex; flex-direction: column; text-align: left; }
 .store-badge small { font-size: .62rem; letter-spacing: .02em; }
 .store-badge b { font-size: 1.12rem; font-weight: 600; }
+
+/* ---------- admin: left-hand menu, page head, key numbers ---------- */
+main:has(> .admin-side) { max-width: 1380px; position: relative; padding-left: 288px; }
+.badge[hidden] { display: none; }
+.admin-side { position: absolute; left: 16px; top: 24px; bottom: 64px; width: 248px; }
+.admin-side nav { position: sticky; top: 80px; max-height: calc(100vh - 96px); overflow-y: auto; background: var(--card);
+  border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; }
+.admin-group + .admin-group { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
+.admin-group-label { font-size: .7rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 4px 10px 2px; }
+.admin-side a { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 8px; color: var(--ink); font-size: .92rem; }
+.admin-side a:hover { background: var(--brand-soft); text-decoration: none; }
+.admin-side a.active { background: var(--brand); color: var(--brand-ink); font-weight: 600; }
+.admin-side .ai { width: 20px; text-align: center; flex: none; }
+.admin-side .al { flex: 1; white-space: nowrap; }
+.admin-side .badge { margin-left: auto; }
+.admin-head { margin-bottom: 18px; }
+.admin-head h1 { margin-bottom: 2px; }
+.admin-head p { margin: 0; }
+.admin-section { margin-bottom: 8px; }
+.section-title { font-family: inherit; font-size: .78rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 8px 0 10px; }
+.kpi-row { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); margin-bottom: 12px; }
+.kpi-pair { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; margin-bottom: 12px; }
+.kpi-pair .card { margin: 0; }
+.kpi { display: block; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; color: var(--ink); }
+a.kpi:hover { border-color: var(--brand); text-decoration: none; }
+.kpi-label { font-size: .85rem; color: var(--muted); }
+.kpi-num { font-size: 1.8rem; font-weight: 800; line-height: 1.15; }
+.kpi.attention { border-color: var(--warn); background: var(--warn-soft); }
+.kpi.attention .kpi-num { color: var(--warn); }
+.kpi.clear .kpi-num { color: var(--ok); }
+.kpi-big .kpi-num { font-size: 2.4rem; }
+.funnel { display: grid; grid-template-columns: 1fr; gap: 4px; margin-top: 8px; font-size: .85rem; }
+.funnel > div:not(.bar) { display: flex; justify-content: space-between; }
+.funnel .bar { margin-bottom: 6px; }
+.card-accent { border-left: 4px solid var(--brand); }
+@media (max-width: 900px) {
+  main:has(> .admin-side) { padding-left: 16px; }
+  .admin-side { position: static; width: auto; margin: -8px -16px 16px; }
+  .admin-side nav { position: static; max-height: none; display: flex; overflow-x: auto; gap: 4px; border-radius: 0; border-width: 0 0 1px; padding: 8px 12px; scrollbar-width: none; }
+  .admin-group { display: contents; }
+  .admin-group-label { display: none; }
+  .admin-side a { white-space: nowrap; flex: none; border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; }
+  .admin-side .al { flex: none; }
+  .admin-head h1 { font-size: 1.6rem; }
+  .kpi-pair { grid-template-columns: 1fr; }
+  .kpi-row { grid-template-columns: repeat(2, 1fr); }
+}

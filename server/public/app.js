@@ -147,7 +147,12 @@ async function api(path, { method = 'GET', body } = {}) {
 }
 
 const formData = (form) => Object.fromEntries(new FormData(form).entries());
-const render = (html) => { $app.innerHTML = html; window.scrollTo(0, 0); };
+const render = (html) => {
+  $app.innerHTML = html; window.scrollTo(0, 0);
+  // On a phone the admin menu is one scrolling row: bring the current page's link into view.
+  const nav = $app.querySelector('.admin-side nav'); const cur = nav?.querySelector('a.active');
+  if (nav && cur && nav.scrollWidth > nav.clientWidth) nav.scrollLeft = cur.offsetLeft - nav.clientWidth / 2 + cur.offsetWidth / 2;
+};
 
 // Every password box gets an eye button, so people can check what they typed.
 const EYE = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
@@ -189,7 +194,8 @@ function renderNav() {
   if (!me) { $nav.innerHTML = link('#/programs', tr('Country programs')) + link('#/login', tr('Sign in')) + `<a class="btn sm" href="#/register">${tr('Join free')}</a>`; return; }
   const c = me.counts;
   if (me.user.role === 'admin') {
-    $nav.innerHTML = [link('#/admin', 'Admin'), link('#/pipeline', 'Partnerships'), link('#/placements', 'Placements'), link('#/programs', 'Programs'), link('#/notifications', '🔔', c.notifications), `<a href="#/logout">${tr('Sign out')}</a>`].join('');
+    // Everything else the admin does is in the admin's left-hand menu.
+    $nav.innerHTML = [link('#/admin', 'Admin'), link('#/pipeline', 'Partnerships'), link('#/notifications', '🔔', c.notifications), `<a href="#/logout">${tr('Sign out')}</a>`].join('');
     return;
   }
   if (me.user.role === 'partner_manager') {
@@ -1426,7 +1432,7 @@ async function adminCommunity(head, qs) {
 
 async function adminMeetups(head) {
   const d = await api('/admin/meetups');
-  render(`${head}<div class="card"><h2>Meetups</h2>
+  render(`${head}<div class="card"><h2>All meetups</h2>
     <p class="muted small">Members host meetups in the app's Nearby tab (hosts need an ID check); agencies host official ones from their page. Three reports hide a meetup until you show it again. A city lists its people once ${d.min_people} are on Nearby (<code>NEARBY_MIN_PEOPLE</code>); meetups always show.</p>
     ${d.meetups.length ? `<div class="table-wrap"><table><tr><th>Meetup</th><th>When</th><th>City</th><th>Host</th><th>Going</th><th></th></tr>${d.meetups.map((m) => meetupRow(m, { admin: true })).join('')}</table></div>` : '<div class="empty">No meetups yet.</div>'}</div>
     <div class="card" id="extMeetup"><h2>Add a meetup from elsewhere</h2>
@@ -2872,33 +2878,102 @@ async function adminLaunchEmail() {
   };
   try { const l = await api('/admin/launch-email'); show(l); if (l.job.running) watch(l.samples); } catch (e) { box.textContent = e.message; }
 }
+// The admin's left-hand menu, grouped so each job has one obvious place. Partnerships and Hiring live under
+// #/pipeline but sit in the same menu so the admin never loses it. The red numbers are things waiting on the admin.
+const ADMIN_MENU = [
+  ['', [['overview', '🏠', 'Overview', 'Key numbers and what needs you today.']]],
+  ['Launch', [['waitlist', '🚀', 'Waitlist & launch email', 'Turn the waitlist into members and send the launch email.'],
+    ['messages', '📣', 'Message users', 'In-app messages, push and email to members, now or scheduled.']]],
+  ['Members', [['users', '👥', 'Users & verification', 'Every member, their checks, test accounts and Family Pass days.', 'pending_verification'],
+    ['reports', '🚩', 'Reports', 'Profiles, reviews and meetups members reported.', 'open_reports'],
+    ['certificates', '📄', 'Certificates', 'Childcare and first-aid certificates to check.', 'pending_certificates']]],
+  ['Agencies & partners', [['ambassadors', '🤝', 'Agencies & ambassadors', 'Agency codes, ambassadors, payouts and agency emails.'],
+    ['pipeline', '📈', 'Partnerships pipeline', null, null, '#/pipeline'],
+    ['partners', '🧩', 'Partner offers', 'Offers shown on the placement checklist.'],
+    ['referrals', '🔁', 'Referrals', 'People sent to a partner agency for help.'],
+    ['affiliations', '🏅', 'Affiliations', 'Memberships agencies say they have.', null, null, 'agency_network']]],
+  ['Community', [['community', '🌍', 'Community Managers', 'Managers, their events, costs and monthly pay.'],
+    ['meetups', '📍', 'Meetups', 'Meetups members and agencies host on Nearby.']]],
+  ['Program', [['placements', '🧳', 'Placements', 'Every placement on the platform.'],
+    ['programs', '📘', 'Program rules', 'The country rules the platform checks.']]],
+  ['Team', [['hiring', '💼', 'Careers & hiring', null, null, '#/pipeline/hiring']]],
+];
+let adminCounts = null; let adminCountsAt = 0;
+// Fetch the numbers for the menu badges at most once a minute; the page never waits on them.
+function loadAdminCounts(force) {
+  if (!force && Date.now() - adminCountsAt < 60000) return;
+  adminCountsAt = Date.now();
+  api('/admin/stats').then((s) => { adminCounts = s; paintAdminBadges(); }).catch(() => {});
+}
+function paintAdminBadges() {
+  document.querySelectorAll('.admin-side [data-count]').forEach((el) => {
+    const n = adminCounts?.[el.dataset.count] || 0;
+    el.textContent = n; el.hidden = !n;
+  });
+}
+function adminShell(active) {
+  if (me?.user.role !== 'admin') return '';
+  loadAdminCounts();
+  const groups = ADMIN_MENU.map(([label, items]) => {
+    const links = items.filter((i) => !i[6] || me[i[6]]).map(([k, icon, name, , count, href]) => `<a href="${href || `#/admin/${k}`}" class="${k === active ? 'active' : ''}">
+      <span class="ai">${icon}</span><span class="al">${name}</span>${count ? `<span class="badge" data-count="${count}" ${adminCounts?.[count] ? '' : 'hidden'}>${adminCounts?.[count] || ''}</span>` : ''}</a>`).join('');
+    return `<div class="admin-group">${label ? `<div class="admin-group-label">${label}</div>` : ''}${links}</div>`;
+  }).join('');
+  return `<aside class="admin-side"><nav aria-label="Admin">${groups}</nav></aside>`;
+}
+const adminTitle = (tab) => { for (const [, items] of ADMIN_MENU) { const i = items.find((x) => x[0] === tab); if (i) return i; } return null; };
+async function adminOverview(head) {
+  const s = await api('/admin/stats');
+  adminCounts = s; adminCountsAt = Date.now();
+  const out = s.left_out;
+  const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
+  const funnel = (label, x, icon) => `<div class="card kpi-big"><div class="kpi-label">${icon} ${label}</div><div class="kpi-num">${x.signed_up}</div>
+    <div class="funnel"><div><span>Confirmed email</span><strong>${x.confirmed}</strong></div><div class="bar"><span style="width:${pct(x.confirmed, x.signed_up)}%"></span></div>
+      <div><span>Complete profile</span><strong>${x.complete}</strong></div><div class="bar"><span style="width:${pct(x.complete, x.signed_up)}%"></span></div></div></div>`;
+  const todo = [['Awaiting ID check', s.pending_verification, '#/admin/users'], ['Open reports', s.open_reports, '#/admin/reports'],
+    ['Certificates to check', s.pending_certificates, '#/admin/certificates']];
+  const kpis = [['On the waitlist', s.waitlist, '#/admin/waitlist'], ['Pending likes', s.open_requests], ['Matches', s.matches],
+    ['Active placements', s.placements_active, '#/admin/placements'], ['Completed placements', s.placements_completed], ['Reviews', s.reviews]];
+  const tile = ([k, v, href], cls = '') => `<${href ? `a href="${href}"` : 'div'} class="kpi ${cls}"><div class="kpi-label">${k}</div><div class="kpi-num">${v}</div></${href ? 'a' : 'div'}>`;
+  render(`${head}
+    <section class="admin-section"><h2 class="section-title">Needs you</h2>
+      <div class="kpi-row">${todo.map((t) => tile(t, t[1] ? 'attention' : 'clear')).join('')}</div></section>
+    <section class="admin-section"><h2 class="section-title">Members</h2>
+      <div class="kpi-pair">${funnel('Au pairs', s.aupairs, '🧑‍🎓')}${funnel('Host families', s.families, '🏡')}</div>
+      <div class="kpi-row">${kpis.map((t) => tile(t)).join('')}</div>
+      <p class="muted small">Real members only. Left out: ${out.demo} demo, ${out.test} test and ${out.suspended} suspended account${out.suspended === 1 ? '' : 's'}.
+        A complete profile has a confirmed email, a photo and a few words about them. Mark the team's own sign-ups as test accounts under <a href="#/admin/users">Users</a>.</p></section>
+    <section class="admin-section"><div class="card" id="launchDay"><div class="spread"><h2 style="margin:0">🚀 Launch emails and scheduled messages</h2>
+        <div class="row"><a class="btn sm" href="#/admin/waitlist">Launch email</a><a class="btn secondary sm" href="#/admin/messages">Message users</a></div></div>
+      <div id="launchDayBody" class="muted small" style="margin-top:10px">Loading…</div></div></section>
+    <section class="admin-section cols-2">
+      <div class="card table-wrap"><h2>Members by country</h2>${s.by_country.length ? `<table><tr><th>Country</th><th>Role</th><th>Signed up</th><th>Confirmed</th><th>Complete</th></tr>
+        ${s.by_country.map((r) => `<tr><td>${cname(r.country) || '—'}</td><td>${r.role === 'aupair' ? 'Au pair' : 'Family'}</td><td>${r.signed_up}</td><td>${r.confirmed}</td><td>${r.complete}</td></tr>`).join('')}</table>` : '<p class="muted">Nobody yet.</p>'}</div>
+      <div><div class="card"><h2>Would families also use us for a babysitter?</h2><p class="muted small">Asked during family onboarding in the app.</p>
+        <table><tr><th>Yes</th><th>Maybe</th><th>No</th><th>Not answered</th></tr>
+        <tr>${['yes', 'maybe', 'no', 'unanswered'].map((k) => `<td>${s.sitter_interest[k]}</td>`).join('')}</tr></table></div>
+      <div class="card" id="backupCard"><h2>Database backups</h2><div id="backupInfo" class="muted">Loading…</div></div></div></section>`);
+  paintAdminBadges();
+  adminLaunchDay();
+  return adminBackup();
+}
+// On the overview: everything set to go out by itself, so the admin can check it at a glance (and cancel) while away.
+async function adminLaunchDay() {
+  const box = document.getElementById('launchDayBody'); if (!box) return;
+  const [l, m] = await Promise.all([api('/admin/launch-email').catch(() => null), api('/admin/messages').catch(() => null)]);
+  if (!document.body.contains(box)) return;
+  const rows = [...(l?.scheduled || []), ...(m?.scheduled || [])].filter((r) => r.status === 'scheduled' || r.status === 'running')
+    .sort((a, b) => a.run_at.localeCompare(b.run_at));
+  const launch = l ? `<p class="small" style="margin:0 0 8px">Launch email: <strong>${l.sent}</strong> of ${l.total} sent, <strong>${l.remaining}</strong> still to go${l.job.running ? ' (sending now…)' : ''}.</p>` : '';
+  box.classList.remove('muted');
+  box.innerHTML = `${launch}${rows.length ? scheduledTable(rows, 'What') : '<p class="muted small" style="margin:0">Nothing scheduled right now.</p>'}`;
+  wireCancel(box, adminLaunchDay);
+}
 views.admin = async ([tab = 'overview', id], qs) => {
   if (me.user.role !== 'admin') return go('#/');
-  const tabs = { overview: 'Overview', users: 'Users & verification', reports: 'Reports', programs: 'Program rules', placements: 'Placements', waitlist: 'Waitlist', ambassadors: 'Ambassadors', messages: 'Message users', meetups: 'Meetups', community: 'Community', certificates: 'Certificates', partners: 'Partners', referrals: 'Referrals', ...(me.agency_network ? { affiliations: 'Affiliations' } : {}) };
-  const head = `<h1>Program administration</h1><div class="row" style="margin-bottom:16px">${Object.entries(tabs).map(([k, v]) =>
-    `<a class="btn ${k === tab ? '' : 'ghost'} sm" href="#/admin/${k}">${v}</a>`).join('')}</div>`;
-  if (tab === 'overview') {
-    const s = await api('/admin/stats');
-    const stage = (x) => `<div style="font-size:1.8rem;font-weight:800">${x.signed_up}</div>
-      <div class="small">${x.confirmed} confirmed email · <strong>${x.complete} complete profile</strong></div>`;
-    const tiles = [['Awaiting ID check', s.pending_verification], ['Pending requests', s.open_requests],
-      ['Matches', s.matches], ['Active placements', s.placements_active], ['Completed placements', s.placements_completed], ['Reviews', s.reviews], ['Open reports', s.open_reports], ['On the waitlist', s.waitlist]];
-    const out = s.left_out;
-    render(`${head}<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr))">
-      <div class="card"><div class="muted small">Au pairs signed up</div>${stage(s.aupairs)}</div>
-      <div class="card"><div class="muted small">Host families signed up</div>${stage(s.families)}</div></div>
-      <p class="muted small" style="margin:-4px 0 12px">Every number here counts real members only. Left out: ${out.demo} demo, ${out.test} test and ${out.suspended} suspended account${out.suspended === 1 ? '' : 's'}.
-        A complete profile has a confirmed email, a photo and a few words about them. Mark the team's own sign-ups as test accounts under <a href="#/admin/users">Users</a>.</p>
-      <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(170px,1fr))">${tiles.map(([k, v]) =>
-      `<div class="card"><div class="muted small">${k}</div><div style="font-size:1.8rem;font-weight:800">${v}</div></div>`).join('')}</div>
-      <div class="card"><h2>Would families also use us for a babysitter?</h2><p class="muted small">Asked during family onboarding in the app.</p>
-      <table><tr><th>Yes</th><th>Maybe</th><th>No</th><th>Not answered</th></tr>
-      <tr>${['yes', 'maybe', 'no', 'unanswered'].map((k) => `<td>${s.sitter_interest[k]}</td>`).join('')}</tr></table></div>
-      <div class="card table-wrap"><h2>Members by country</h2><table><tr><th>Country</th><th>Role</th><th>Signed up</th><th>Confirmed email</th><th>Complete profile</th></tr>
-      ${s.by_country.map((r) => `<tr><td>${cname(r.country) || '—'}</td><td>${r.role === 'aupair' ? 'Au pair' : 'Family'}</td><td>${r.signed_up}</td><td>${r.confirmed}</td><td>${r.complete}</td></tr>`).join('')}</table></div>
-      <div class="card" id="backupCard"><h2>Database backups</h2><div id="backupInfo" class="muted">Loading…</div></div>`);
-    return adminBackup();
-  }
+  const info = adminTitle(tab);
+  const head = `${adminShell(tab)}<div class="admin-head"><h1>${info ? info[2] : 'Admin'}</h1>${info?.[3] ? `<p class="muted">${info[3]}</p>` : ''}</div>`;
+  if (tab === 'overview') return adminOverview(head);
   if (tab === 'messages') return adminMessages(head, qs);
   if (tab === 'meetups') return adminMeetups(head);
   if (tab === 'community') return adminCommunity(head, qs);
@@ -2949,10 +3024,11 @@ views.admin = async ([tab = 'overview', id], qs) => {
   if (tab === 'waitlist') {
     const w = await api('/admin/waitlist');
     const role = (r) => (r === 'aupair' ? 'Au pair' : r === 'family' ? 'Family' : '—');
-    render(`${head}<div class="spread"><p><strong>${w.total}</strong> people want to hear when the apps launch.</p><a class="btn sm" href="/api/admin/waitlist.csv">⬇ Download as a spreadsheet (CSV)</a></div>
-      <div class="card"><h2>Turn the waitlist into profiles</h2><div id="accountInvites" class="muted small">Loading…</div></div>
-      <div class="card"><h2>Invite families to make their profile now</h2><div id="profileInvites" class="muted small">Loading…</div></div>
-      <div class="card"><h2>Launch email</h2><div id="launchEmail" class="muted small">Loading…</div></div>
+    render(`${head}<div class="card spread" style="padding:14px 20px"><p style="margin:0"><strong style="font-size:1.4rem">${w.total}</strong> people want to hear when the apps launch.</p><a class="btn ghost sm" href="/api/admin/waitlist.csv">⬇ Download as a spreadsheet (CSV)</a></div>
+      <div class="card card-accent"><h2>🚀 Launch email</h2><div id="launchEmail" class="muted small">Loading…</div></div>
+      <div class="cols-2"><div class="card"><h2>Turn the waitlist into profiles</h2><div id="accountInvites" class="muted small">Loading…</div></div>
+      <div class="card"><h2>Invite families to make their profile now</h2><div id="profileInvites" class="muted small">Loading…</div></div></div>
+      <h2 class="section-title">Who is on the waitlist</h2>
       ${w.early_bonus ? `<div class="card"><h2>Early family bonus</h2><p><strong>${w.early_bonus.taken}</strong> of ${w.early_bonus.cap} spots taken (${w.early_bonus.accounts} with an account), <strong>${w.early_bonus.redeemed}</strong> used.
         ${w.early_bonus.open ? 'Open to new families.' : 'Closed to new families.'} ${w.early_bonus.launch_date ? `Launch date ${esc(w.early_bonus.launch_date)}; families can use their ${w.early_bonus.days} days until ${esc(w.early_bonus.use_by)}.` : 'Set LAUNCH_DATE to close it at launch and start the 12 months families have to use it.'}</p></div>` : ''}
       ${w.gifts?.saved ? `<div class="card"><h2>Gift days</h2><p>From ambassador codes: <strong>${w.gifts.saved}</strong> families have them saved, <strong>${w.gifts.redeemed}</strong> used.</p></div>` : ''}
@@ -3111,7 +3187,7 @@ async function adminMessages(head, qs) {
   const to = qs?.get('to') || '';
   const who = (a) => (a.people ? `${a.people}` : [(a.roles || []).map((r) => d.roles[r]).join(', '), a.country ? cname(a.country) : '', a.city || '', a.agency ? `code ${a.agency}` : ''].filter(Boolean).join(' · '));
   render(`${head}
-    <div class="card"><h2>📣 Message users</h2>
+    <div class="card"><h2>✍️ Write a message</h2>
       <p class="muted small">Each person gets it in their notifications, as a push on their phone and as a card at the top of the app until they close it. Tick "Also email it" to send an email too, with a picture, a button and an unsubscribe link. Demo and suspended accounts never get it. Nothing goes out until you press Send.</p>
       <div class="row" style="margin-bottom:10px"><label class="row small" style="gap:6px"><input type="radio" name="msgMode" value="group" style="width:auto" ${to ? '' : 'checked'}> A group</label>
         <label class="row small" style="gap:6px"><input type="radio" name="msgMode" value="people" style="width:auto" ${to ? 'checked' : ''}> Named people</label></div>
@@ -3442,7 +3518,7 @@ views.pipeline = async ([tab = 'today', id], qs) => {
   if (!isStaff()) return go('#/');
   const admin = me.user.role === 'admin';
   const tabs = { today: 'Today', leads: 'All partners', import: 'Import', report: 'Weekly report', pay: admin ? 'Pay & team' : 'Your pay', ...(admin ? { hiring: 'Hiring' } : {}) };
-  const head = `<h1>Partnerships</h1><div class="row" style="margin-bottom:16px">${Object.entries(tabs).map(([k, v]) =>
+  const head = `${admin ? adminShell(tab === 'hiring' ? 'hiring' : 'pipeline') : ''}<h1>Partnerships</h1><div class="row" style="margin-bottom:16px">${Object.entries(tabs).map(([k, v]) =>
     `<a class="btn ${k === tab || (tab === 'lead' && k === 'leads') ? '' : 'ghost'} sm" href="#/pipeline/${k}">${v}</a>`).join('')}</div>`;
   if (tab === 'lead') return pipelineLead(head, id);
   if (tab === 'import') return pipelineImport(head);
