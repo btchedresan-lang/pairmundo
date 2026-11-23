@@ -59,6 +59,8 @@ function RootStack() {
         <Stack.Screen name="account" options={{ title: tr('Account and safety') }} />
         <Stack.Screen name="meetup/[id]" options={{ title: tr('Meetup') }} />
         <Stack.Screen name="new-meetup" options={{ title: tr('Host a meetup'), presentation: 'modal' }} />
+        <Stack.Screen name="community/index" options={{ title: tr('Your community') }} />
+        <Stack.Screen name="community/qr/[id]" options={{ title: tr('Check-in QR code') }} />
       </Stack.Protected>
       <Stack.Screen name="programs/index" options={{ title: tr('Country programs') }} />
       <Stack.Screen name="programs/[code]" options={{ title: tr('Program') }} />

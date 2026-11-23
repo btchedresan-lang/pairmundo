@@ -13,11 +13,24 @@
 // - newcomer_fee for each newcomer at those paid events.
 // - family_pass_fee for each family whose first check-in at a Community Manager's event was at this manager's, and who
 //   then bought their first Family Pass within pass_days. It counts in the month the pass was bought.
+// - Approved event costs they sent (with a receipt link), in the month they were spent.
+//
+// Tracking: everything a manager does to their meetups (created, changed, cancelled), the costs they send and what the
+// admin decides is kept in community_activity, shown under Admin → Community with per-manager numbers and CSV exports.
 //
 // Amounts are kept in minor units (öre, cents) in the manager's own currency. Months are calendar months in UTC.
 import { randomBytes } from 'node:crypto';
 import { cityKey } from './nearby.js';
 
+/** The Community Manager resource kit, linked from their page (files in public/media/community). */
+export const KIT = {
+  guide: '/media/community/PairMundo-Community-Manager-Kit.pdf',
+  templates: [
+    { file: '/media/community/template-event-square.png', label: 'Event post template (square, 1080×1080)' },
+    { file: '/media/community/template-event-story.png', label: 'Event story template (1080×1920)' },
+    { file: '/media/community/poster-meetups-A4.pdf', label: 'Poster for notice boards (A4)' },
+  ],
+};
 const PAID_PASS_SOURCES = ['apple', 'google', 'stripe'];
 const CURRENCIES = ['SEK', 'EUR', 'USD', 'COP', 'BRL', 'MXN', 'ZAR', 'PHP', 'NOK', 'DKK', 'GBP', 'CHF'];
 const RULE_KEYS = { min_checkins: [1, 500], min_newcomers: [0, 500], min_rating: [1, 5], min_ratings: [1, 500], rating_days: [1, 14], pass_days: [1, 365] };
@@ -36,6 +49,11 @@ export function mountCommunity(api, deps) {
   const admin = requireRole('admin');
 
   const rules = () => db.prepare('SELECT * FROM community_rules WHERE id = 1').get();
+  /** Adds a line to the activity log. actorId is the admin, when it wasn't the manager. */
+  const logActivity = (userId, meetupId, action, detail = null, actorId = null) => {
+    db.prepare('INSERT INTO community_activity (user_id, meetup_id, action, detail, actor_id) VALUES (?,?,?,?,?)')
+      .run(userId, meetupId ?? null, action, detail == null ? null : JSON.stringify(detail), actorId);
+  };
   const managerRow = (userId) => db.prepare('SELECT * FROM community_managers WHERE user_id = ?').get(userId);
   /** The active Community Manager behind an account, or null. */
   const managerOf = (u) => {
@@ -99,16 +117,19 @@ export function mountCommunity(api, deps) {
     const retainer = retainerEarned ? (trial ? cm.trial_retainer : cm.retainer) : 0;
     const newcomers = paid.reduce((s, e) => s + e.newcomers, 0);
     const passes = familyPasses(cm, r).filter((p) => p.month === month);
+    const costs = db.prepare(`SELECT status, COUNT(*) n, COALESCE(SUM(amount), 0) amount FROM community_expenses WHERE user_id = ? AND substr(spent_on, 1, 7) = ? GROUP BY status`).all(cm.user_id, month);
+    const cost = (st) => costs.find((c) => c.status === st) || { n: 0, amount: 0 };
     const lines = {
       retainer: { earned: retainerEarned, trial, amount: retainer, held, required },
       events: { successful: successful.length, paid: paid.length, cap: cm.max_paid_events, rate: cm.event_fee, amount: paid.length * cm.event_fee },
       newcomers: { count: newcomers, rate: cm.newcomer_fee, amount: newcomers * cm.newcomer_fee },
       family_passes: { count: passes.length, rate: cm.family_pass_fee, amount: passes.length * cm.family_pass_fee },
+      expenses: { count: cost('approved').n, amount: cost('approved').amount, pending: cost('pending').n, pending_amount: cost('pending').amount },
     };
-    const total = lines.retainer.amount + lines.events.amount + lines.newcomers.amount + lines.family_passes.amount;
+    const total = lines.retainer.amount + lines.events.amount + lines.newcomers.amount + lines.family_passes.amount + lines.expenses.amount;
     const payout = db.prepare('SELECT * FROM community_payouts WHERE user_id = ? AND month = ?').get(cm.user_id, month);
     return { month, currency: cm.currency, first_month: firstMonth, target: cm.target_events, events, lines, total,
-      final: !events.some((e) => e.status === 'scoring' || e.status === 'upcoming') && month < thisMonth(),
+      final: !events.some((e) => e.status === 'scoring' || e.status === 'upcoming') && !lines.expenses.pending && month < thisMonth(),
       paid: payout ? { amount: payout.amount, paid_at: payout.paid_at } : null };
   };
 
@@ -137,11 +158,50 @@ export function mountCommunity(api, deps) {
       events: db.prepare(`SELECT * FROM meetups WHERE source = 'community' AND host_id = ? AND starts_at >= ? ORDER BY starts_at DESC LIMIT 60`).all(cm.user_id, since)
         .map((m) => ({ ...scoreOf(m, r), checkin_code: m.checkin_code, checkin_url: `${publicBase()}/#/checkin/${m.id}/${m.checkin_code}`, qr: `/api/meetups/${m.id}/qr.svg`,
           going: db.prepare('SELECT COUNT(*) n FROM meetup_attendees WHERE meetup_id = ?').get(m.id).n, max_people: m.max_people,
+          area: m.area, about: m.about, ends_at: m.ends_at, lat: m.lat, lng: m.lng, city: m.city, country: m.country,
           comments: db.prepare("SELECT stars, comment FROM meetup_ratings WHERE meetup_id = ? AND comment IS NOT NULL AND comment != '' ORDER BY created_at DESC LIMIT 20").all(m.id) })),
       payouts: db.prepare('SELECT month, currency, amount, paid_at FROM community_payouts WHERE user_id = ? ORDER BY month DESC LIMIT 24').all(cm.user_id),
+      expenses: db.prepare(`SELECT e.id, e.meetup_id, m.title meetup_title, e.amount, e.currency, e.description, e.receipt_url, e.spent_on, e.status, e.review_note, e.created_at
+        FROM community_expenses e LEFT JOIN meetups m ON m.id = e.meetup_id WHERE e.user_id = ? ORDER BY e.created_at DESC, e.id DESC LIMIT 50`).all(cm.user_id),
+      kit: KIT,
       community: db.prepare(`SELECT u.role, COUNT(*) n FROM nearby_settings n JOIN users u ON u.id = n.user_id WHERE n.country = ? AND n.city_key = ? AND u.demo = 0 AND u.suspended = 0 GROUP BY u.role`)
         .all(cm.country, cm.city_key),
     };
+  }));
+
+  // ---------- event costs ----------
+  // Agreed in advance with PairMundo (the agreement says so); the receipt link lets the admin check it.
+  api.post('/community/expenses', requireAuth, wrap((req, res) => {
+    const cm = mine(req), b = req.body || {};
+    const amount = money(b.amount, 'The amount');
+    if (!amount) throw bad('Enter what it cost.');
+    const description = str(b.description, 300);
+    if (!description) throw bad('Say what it was for.');
+    const receipt = str(b.receipt_url, 500) || null;
+    if (receipt && !/^https:\/\/\S+$/.test(receipt)) throw bad('The receipt link should start with https://');
+    const spentOn = /^\d{4}-\d{2}-\d{2}$/.test(String(b.spent_on || '')) ? String(b.spent_on) : new Date().toISOString().slice(0, 10);
+    if (Date.parse(spentOn) > Date.now() + 86400e3) throw bad('Pick the day you paid.');
+    let meetupId = null;
+    if (b.meetup_id) {
+      const m = db.prepare("SELECT id FROM meetups WHERE id = ? AND source = 'community' AND host_id = ?").get(Number(b.meetup_id), cm.user_id);
+      if (!m) throw bad('Pick one of your meetups.');
+      meetupId = m.id;
+    }
+    if (db.prepare("SELECT 1 FROM community_payouts WHERE user_id = ? AND month = ?").get(cm.user_id, spentOn.slice(0, 7))) throw bad('That month is already paid. Pick a later day, or tell Badji.');
+    const id = Number(db.prepare('INSERT INTO community_expenses (user_id, meetup_id, amount, currency, description, receipt_url, spent_on) VALUES (?,?,?,?,?,?,?)')
+      .run(cm.user_id, meetupId, amount, cm.currency, description, receipt, spentOn).lastInsertRowid);
+    logActivity(cm.user_id, meetupId, 'expense', { id, amount, currency: cm.currency, description });
+    for (const a of db.prepare("SELECT id FROM users WHERE role = 'admin'").all()) {
+      notify(a.id, 'ambassador', '{name} sent an event cost to approve: {amount}.', { name: req.user.name, amount: `${(amount / 100).toFixed(2)} ${cm.currency}` }, '#/admin/community');
+    }
+    res.status(201);
+    return { id };
+  }));
+  api.delete('/community/expenses/:id', requireAuth, wrap((req) => {
+    const cm = mine(req);
+    const r = db.prepare("DELETE FROM community_expenses WHERE id = ? AND user_id = ? AND status = 'pending'").run(Number(req.params.id), cm.user_id);
+    if (!r.changes) throw notFound();
+    return { ok: true };
   }));
 
   // ---------- admin ----------
@@ -194,7 +254,24 @@ export function mountCommunity(api, deps) {
     const r = rules();
     return {
       month, rules: r, currencies: CURRENCIES,
-      managers: db.prepare('SELECT * FROM community_managers ORDER BY active DESC, city').all().map((cm) => ({ ...managerView(cm), summary: monthSummary(cm, month, r) })),
+      managers: db.prepare('SELECT * FROM community_managers ORDER BY active DESC, city').all().map((cm) => {
+        const summary = monthSummary(cm, month, r);
+        const scored = summary.events.filter((e) => e.ratings);
+        return { ...managerView(cm), summary,
+          tracking: {
+            created: db.prepare("SELECT COUNT(*) n FROM community_activity WHERE user_id = ? AND action = 'created' AND substr(created_at, 1, 7) = ?").get(cm.user_id, month).n,
+            upcoming: db.prepare("SELECT COUNT(*) n FROM meetups WHERE source = 'community' AND host_id = ? AND status = 'open' AND starts_at > ?").get(cm.user_id, new Date().toISOString()).n,
+            checkins: summary.events.reduce((n, e) => n + e.checkins, 0),
+            newcomers: summary.events.reduce((n, e) => n + e.newcomers, 0),
+            rating: scored.length ? Math.round(scored.reduce((n, e) => n + e.rating * e.ratings, 0) / scored.reduce((n, e) => n + e.ratings, 0) * 10) / 10 : null,
+            last_active: db.prepare('SELECT MAX(created_at) t FROM community_activity WHERE user_id = ? AND actor_id IS NULL').get(cm.user_id).t,
+            last_seen: db.prepare('SELECT last_active_at FROM users WHERE id = ?').get(cm.user_id)?.last_active_at ?? null,
+          } };
+      }),
+      expenses: db.prepare(`SELECT e.*, u.name manager, m.title meetup_title FROM community_expenses e JOIN users u ON u.id = e.user_id LEFT JOIN meetups m ON m.id = e.meetup_id
+        WHERE e.status = 'pending' OR substr(e.spent_on, 1, 7) = ? ORDER BY e.status = 'pending' DESC, e.created_at DESC LIMIT 200`).all(month),
+      activity: activityRows(null, 40),
+      events: eventRows(month),
     };
   }));
 
@@ -235,6 +312,7 @@ export function mountCommunity(api, deps) {
     }, { image: 'community-meetups.jpg', alt: 'PairMundo meetups: au pairs and host families meeting in their city', base: publicBase() }) }))
       .catch((e) => console.error('Email failed:', e.message));
     notify(user.id, 'ambassador', 'You are now the PairMundo Community Manager for {city}. Host your first meetup from your page.', { city: cm.city }, '#/community');
+    logActivity(user.id, null, 'joined', { city: cm.city, country: cm.country }, req.user.id);
     res.status(201);
     return managerView(cm);
   }));
@@ -244,7 +322,12 @@ export function mountCommunity(api, deps) {
     if (!cm) throw notFound();
     const fields = readManager(req.body || {}, cm);
     const cols = Object.keys(fields);
-    if (cols.length) db.prepare(`UPDATE community_managers SET ${cols.map((k) => `${k} = ?`).join(', ')} WHERE user_id = ?`).run(...cols.map((k) => fields[k]), cm.user_id);
+    const changed = cols.filter((k) => String(fields[k] ?? '') !== String(cm[k] ?? ''));
+    if (changed.length) {
+      db.prepare(`UPDATE community_managers SET ${changed.map((k) => `${k} = ?`).join(', ')} WHERE user_id = ?`).run(...changed.map((k) => fields[k]), cm.user_id);
+      const action = changed.includes('active') ? (fields.active ? 'resumed' : 'paused') : 'terms';
+      logActivity(cm.user_id, null, action, Object.fromEntries(changed.filter((k) => k !== 'active').map((k) => [k, { from: cm[k] ?? null, to: fields[k] ?? null }])), req.user.id);
+    }
     return managerView(managerRow(cm.user_id));
   }));
 
@@ -270,9 +353,59 @@ export function mountCommunity(api, deps) {
     if (!s.final) throw bad('Wait until the month is over and every event in it is scored.');
     db.prepare('INSERT INTO community_payouts (user_id, month, currency, amount, breakdown) VALUES (?,?,?,?,?)')
       .run(cm.user_id, month, cm.currency, s.total, JSON.stringify({ lines: s.lines, events: s.events.map(({ id, title, starts_at, status, checkins, newcomers, rating, ratings }) => ({ id, title, starts_at, status, checkins, newcomers, rating, ratings })) }));
+    logActivity(cm.user_id, null, 'paid', { month, amount: s.total, currency: cm.currency }, req.user.id);
     if (s.total > 0) notify(cm.user_id, 'ambassador', 'Your pay for {month} is on its way: {amount}.', { month, amount: `${(s.total / 100).toFixed(2)} ${cm.currency}` }, '#/community');
     return monthSummary(cm, month);
   }));
+
+  // ---------- tracking ----------
+  const activityRows = (userId, limit) => db.prepare(`SELECT a.*, u.name manager, c.city, m.title meetup_title, x.name actor
+      FROM community_activity a JOIN users u ON u.id = a.user_id LEFT JOIN community_managers c ON c.user_id = a.user_id
+      LEFT JOIN meetups m ON m.id = a.meetup_id LEFT JOIN users x ON x.id = a.actor_id
+      ${userId ? 'WHERE a.user_id = ?' : ''} ORDER BY a.created_at DESC, a.id DESC LIMIT ?`).all(...(userId ? [userId] : []), limit)
+    .map((a) => ({ ...a, detail: a.detail ? JSON.parse(a.detail) : null }));
+  /** One row per Community Manager event, with everything the admin tracks. */
+  const eventRows = (month, userId = null) => {
+    const r = rules();
+    return db.prepare(`SELECT m.*, u.name manager, c.city manager_city FROM meetups m JOIN users u ON u.id = m.host_id JOIN community_managers c ON c.user_id = m.host_id
+        WHERE m.source = 'community' AND substr(m.starts_at, 1, 7) = ? ${userId ? 'AND m.host_id = ?' : ''} ORDER BY m.starts_at`).all(month, ...(userId ? [userId] : []))
+      .map((m) => ({ ...scoreOf(m, r), manager: m.manager, manager_id: m.host_id, city: m.city, created_at: m.created_at,
+        going: db.prepare('SELECT COUNT(*) n FROM meetup_attendees WHERE meetup_id = ?').get(m.id).n, max_people: m.max_people,
+        edits: db.prepare("SELECT COUNT(*) n FROM community_activity WHERE meetup_id = ? AND action = 'edited'").get(m.id).n,
+        costs: db.prepare("SELECT COALESCE(SUM(amount), 0) n FROM community_expenses WHERE meetup_id = ? AND status != 'rejected'").get(m.id).n,
+        reports: db.prepare('SELECT COUNT(*) n FROM reports WHERE meetup_id = ?').get(m.id).n }));
+  };
+  api.get('/admin/community/activity', admin, wrap((req) => ({ activity: activityRows(Number(req.query.user_id) || null, Math.min(1000, Number(req.query.limit) || 200)) })));
+  api.get('/admin/community/events', admin, wrap((req) => {
+    const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(req.query.month || '') ? req.query.month : thisMonth();
+    return { month, events: eventRows(month, Number(req.query.user_id) || null) };
+  }));
+  api.post('/admin/community/expenses/:id', admin, wrap((req) => {
+    const e = db.prepare('SELECT * FROM community_expenses WHERE id = ?').get(Number(req.params.id));
+    if (!e) throw notFound();
+    const status = req.body?.status;
+    if (!['approved', 'rejected'].includes(status)) throw bad('Approve or turn it down.');
+    const note = str(req.body?.note, 500) || null;
+    if (status === 'rejected' && !note) throw bad('Say why, so they know.');
+    if (db.prepare('SELECT 1 FROM community_payouts WHERE user_id = ? AND month = ?').get(e.user_id, e.spent_on.slice(0, 7))) throw bad('That month is already paid.');
+    db.prepare("UPDATE community_expenses SET status = ?, review_note = ?, reviewed_at = datetime('now') WHERE id = ?").run(status, note, e.id);
+    logActivity(e.user_id, e.meetup_id, `expense_${status}`, { id: e.id, amount: e.amount, currency: e.currency, description: e.description, note }, req.user.id);
+    notify(e.user_id, 'ambassador', status === 'approved' ? 'Your event cost was approved: {what}. It is added to your pay.' : 'Your event cost was turned down: {what}. {note}',
+      { what: e.description, note: note || '' }, '#/community');
+    return { ok: true };
+  }));
+  const csvOf = (head, rows) => [head.join(','), ...rows.map((x) => x.map(csvCell).join(','))].join('\n') + '\n';
+  api.get('/admin/community/activity.csv', admin, (req, res) => {
+    const rows = activityRows(Number(req.query.user_id) || null, 10000).map((a) => [a.created_at, a.manager, a.city, a.action, a.meetup_id, a.meetup_title, a.actor || a.manager, a.detail ? JSON.stringify(a.detail) : '']);
+    res.set('Content-Disposition', 'attachment; filename="pairmundo-community-activity.csv"').type('text/csv')
+      .send(csvOf(['time (UTC)', 'manager', 'city', 'action', 'meetup id', 'meetup', 'by', 'detail'], rows));
+  });
+  api.get('/admin/community/events.csv', admin, (req, res) => {
+    const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(req.query.month || '') ? req.query.month : thisMonth();
+    const rows = eventRows(month).map((e) => [e.manager, e.city, e.id, e.title, e.kind, e.audience, e.starts_at, e.created_at, e.status, e.going, e.checkins, e.newcomers, e.ratings, e.rating ?? '', e.misses.join('; '), e.edits, (e.costs / 100).toFixed(2), e.reports]);
+    res.set('Content-Disposition', `attachment; filename="pairmundo-community-events-${month}.csv"`).type('text/csv')
+      .send(csvOf(['manager', 'city', 'meetup id', 'title', 'kind', 'for', 'starts (UTC)', 'created (UTC)', 'status', 'going', 'checked in', 'newcomers', 'ratings', 'average rating', 'missed', 'edits', 'costs', 'reports'], rows));
+  });
 
   // The monthly payout sheet: one row per manager.
   api.get('/admin/community.csv', admin, (req, res) => {
@@ -289,5 +422,5 @@ export function mountCommunity(api, deps) {
         ...rows.map((x) => x.map(csvCell).join(','))].join('\n') + '\n');
   });
 
-  return { managerOf, monthSummary, scoreOf };
+  return { managerOf, monthSummary, scoreOf, logActivity };
 }

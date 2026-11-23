@@ -23,6 +23,8 @@ export async function loadSession() {
   return { base, token };
 }
 export const getBase = () => base;
+/** For images the server only shows to the signed-in account (a meetup's check-in QR code). */
+export const authHeaders = () => (token ? { Authorization: `Bearer ${token}` } : {});
 export async function setBase(url) {
   base = String(url || '').trim().replace(/\/$/, '') || defaultBase();
   // Only remember a server someone typed in, so a new default reaches everyone else.

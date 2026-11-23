@@ -898,6 +898,34 @@ CREATE TABLE IF NOT EXISTS community_payouts (
   paid_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (user_id, month)
 );
+-- What Community Managers do, for the admin: meetups created, changed and cancelled, costs sent, pay marked paid.
+CREATE TABLE IF NOT EXISTS community_activity (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, -- the Community Manager
+  meetup_id INTEGER REFERENCES meetups(id) ON DELETE SET NULL,
+  action TEXT NOT NULL,                           -- created | edited | cancelled | expense | expense_approved | expense_rejected | paid | joined | paused | resumed
+  detail TEXT,                                    -- JSON
+  actor_id INTEGER REFERENCES users(id) ON DELETE SET NULL, -- who did it, when not the manager (the admin)
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS community_activity_user ON community_activity(user_id, created_at);
+-- Event costs a Community Manager pays and asks back (a picnic, a room), with a link to the receipt. The admin approves
+-- or turns them down; approved ones are added to that month's pay.
+CREATE TABLE IF NOT EXISTS community_expenses (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  meetup_id INTEGER REFERENCES meetups(id) ON DELETE SET NULL,
+  amount INTEGER NOT NULL,                        -- minor units, in the manager's currency
+  currency TEXT NOT NULL,
+  description TEXT NOT NULL,
+  receipt_url TEXT,
+  spent_on TEXT NOT NULL,                         -- YYYY-MM-DD; the month it is paid in
+  status TEXT NOT NULL DEFAULT 'pending',         -- pending | approved | rejected
+  review_note TEXT,
+  reviewed_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS community_expenses_user ON community_expenses(user_id, spent_on);
 -- The meetup's group chat, for the host and the people going ("I'm by the fountain, red jacket").
 CREATE TABLE IF NOT EXISTS meetup_messages (
   id INTEGER PRIMARY KEY,

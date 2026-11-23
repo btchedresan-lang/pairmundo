@@ -13,6 +13,7 @@ export default function Index() {
     if (ask) store.get(setupKey(ask)).then((v) => setSkipped((s) => ({ ...s, [ask]: !!v })), () => setSkipped((s) => ({ ...s, [ask]: true })));
   }, [ask]);
   if (!me) return <Redirect href="/login" />;
+  if (me.user.role === 'ambassador') return <Redirect href="/community" />;
   if (!ask) return <Redirect href="/discover" />;
   if (skipped[ask] === undefined) return null;
   return <Redirect href={skipped[ask] ? '/discover' : '/setup'} />;
