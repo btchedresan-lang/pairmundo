@@ -238,3 +238,57 @@ test('the Community Manager job is on the careers page in six cities, and hiring
   assert.equal(hired.status, 200);
   assert.match(hired.body.next, /^#\/admin\/community\?new=1&name=Camila\+Ruiz&email=camila%40cm\.io&country=CO&city=Bogot%C3%A1$/);
 });
+
+test('managers change their upcoming meetups and send event costs; the admin sees it all in the activity log', async () => {
+  await call(adminT, 'PUT', `/admin/community/managers/${cm}`, { active: true });
+  const m = (await call(cmT, 'POST', '/meetups', { title: 'Museum Sunday', kind: 'culture', place: 'Moderna Museet', starts_at: iso(50), audience: 'both', public_place: true, max_people: 20 })).body.meetup;
+  await call(people[1].token, 'POST', `/meetups/${m.id}/join`);
+  // Someone else can't change it.
+  assert.equal((await call(people[1].token, 'PUT', `/meetups/${m.id}`, { title: 'Mine now', kind: 'culture', place: 'Somewhere', starts_at: iso(50), public_place: true })).status, 404);
+  const edit = await call(cmT, 'PUT', `/meetups/${m.id}`, { title: 'Museum Sunday', kind: 'culture', place: 'Fotografiska, Stadsgårdshamnen', starts_at: iso(74), audience: 'aupair', public_place: true, max_people: 20 });
+  assert.equal(edit.status, 200, JSON.stringify(edit.body));
+  assert.equal(edit.body.meetup.place, 'Fotografiska, Stadsgårdshamnen');
+  assert.equal(edit.body.meetup.audience, 'aupair');
+  // People going hear about a new time or place.
+  assert.ok(db.prepare("SELECT 1 FROM notifications WHERE user_id = ? AND link = ? AND text LIKE '%new time or place%'").get(people[1].id, `#/meetups/${m.id}`));
+  assert.equal((await call(cmT, 'PUT', `/meetups/${m.id}`, { title: 'Museum Sunday', kind: 'culture', place: 'x', starts_at: iso(74), public_place: true, max_people: 0 })).status, 400);
+  // The app gets the QR code as a PNG.
+  const png = await call(cmT, 'GET', `/meetups/${m.id}/qr.png`);
+  assert.equal(png.status, 200);
+  assert.match(png.type, /image\/png/);
+
+  // An event cost: sent, approved, and added to the month's pay.
+  assert.equal((await call(cmT, 'POST', '/community/expenses', { amount: '120', description: 'Tickets', receipt_url: 'http://x' })).status, 400);
+  const exp = await call(cmT, 'POST', '/community/expenses', { amount: '249,50', description: 'Picnic blankets', receipt_url: 'https://drive.example/r1', meetup_id: m.id });
+  assert.equal(exp.status, 201, JSON.stringify(exp.body));
+  let mine = (await call(cmT, 'GET', '/community/me')).body;
+  assert.equal(mine.expenses[0].amount, 24950);
+  assert.equal(mine.expenses[0].status, 'pending');
+  assert.equal(mine.this_month.lines.expenses.pending, 1);
+  assert.match(mine.kit.guide, /Community-Manager-Kit\.pdf$/);
+  assert.equal((await call(adminT, 'POST', `/admin/community/expenses/${exp.body.id}`, { status: 'rejected' })).status, 400); // needs a reason
+  await call(adminT, 'POST', `/admin/community/expenses/${exp.body.id}`, { status: 'approved' });
+  mine = (await call(cmT, 'GET', '/community/me')).body;
+  assert.equal(mine.this_month.lines.expenses.amount, 24950);
+
+  // The admin's view: numbers per manager, events with their edits and costs, and the log.
+  const a = (await call(adminT, 'GET', '/admin/community')).body;
+  const row = a.managers.find((x) => x.user_id === cm);
+  assert.ok(row.tracking.created >= 1);
+  assert.ok(row.tracking.upcoming >= 1);
+  const e = a.events.find((x) => x.id === m.id);
+  assert.equal(e.edits, 1);
+  assert.equal(e.costs, 24950);
+  const actions = a.activity.map((x) => x.action);
+  for (const k of ['created', 'edited', 'expense', 'expense_approved', 'paid', 'paused', 'resumed', 'joined']) assert.ok(actions.includes(k), `log has ${k}`);
+  const edited = a.activity.find((x) => x.action === 'edited');
+  assert.deepEqual(Object.keys(edited.detail).sort(), ['audience', 'place', 'starts_at']);
+  const csv = await call(adminT, 'GET', '/admin/community/activity.csv');
+  assert.match(csv.body, /^time \(UTC\),manager,city,action/);
+  assert.match(csv.body, /Lina Ek,Stockholm,edited/);
+  const evCsv = await call(adminT, 'GET', `/admin/community/events.csv?month=${m.starts_at.slice(0, 7)}`);
+  assert.match(evCsv.body, /Museum Sunday/);
+  // Cancelling is logged too.
+  await call(cmT, 'POST', `/meetups/${m.id}/cancel`);
+  assert.ok((await call(adminT, 'GET', `/admin/community/activity?user_id=${cm}`)).body.activity.some((x) => x.action === 'cancelled'));
+});

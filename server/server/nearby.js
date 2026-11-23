@@ -70,7 +70,9 @@ const PRIVATE_PLACE = /\b(my|our) (home|place|flat|apartment|house|room)\b|\bat 
 
 export function mountNearby(api, deps) {
   const { db, wrap, requireAuth, requireRole, HttpError, str, tx, notify, publicUser, getUser, getProfile, blockedBetween, closedApart,
-    conversationFor, mustBeReady, mustBeVerified, agencySpace, shortName, photosOf, publicBase, communityManagerOf } = deps;
+    conversationFor, mustBeReady, mustBeVerified, agencySpace, shortName, photosOf, publicBase, communityManagerOf, logCommunity } = deps;
+  /** Records what a Community Manager did to one of their meetups, for the admin's activity log. */
+  const track = (m, u, action, detail) => { if (m.source === 'community' && m.host_id === u.id) logCommunity?.(u.id, m.id, action, detail); };
   const ratingDays = () => db.prepare('SELECT rating_days FROM community_rules WHERE id = 1').get()?.rating_days ?? 3;
   const bad = (m, code) => new HttpError(400, m, code);
   const notFound = () => new HttpError(404, 'Not found.');
@@ -358,6 +360,7 @@ export function mountNearby(api, deps) {
     m.created_by = me.id;
     if (me.demo) m.demo = 1;
     const saved = insertMeetup(m);
+    track(saved, me, 'created', { title: saved.title, starts_at: saved.starts_at, place: saved.place, audience: saved.audience });
     if (saved.source === 'community') {
       // Everyone on Nearby in the city it's for hears about it: that's how a community grows.
       const roles = saved.audience === 'both' ? ['aupair', 'family'] : [saved.audience];
@@ -415,7 +418,35 @@ export function mountNearby(api, deps) {
     for (const a of db.prepare('SELECT user_id FROM meetup_attendees WHERE meetup_id = ?').all(m.id)) {
       notify(a.user_id, 'nearby', '{title} was cancelled.', { title: m.title }, `#/meetups/${m.id}`);
     }
+    track(m, req.user, 'cancelled', { title: m.title, going: goingCount(m) });
     return { ok: true };
+  }));
+
+  // The host changes a meetup that hasn't started: what, when, where and for whom. The city stays. People going hear
+  // about a new time or place.
+  api.put('/meetups/:id', requireAuth, wrap((req) => {
+    const me = req.user, m = getMeetup(req.params.id), b = req.body || {};
+    if (!m || m.source === 'external' || !runsIt(m, me) || me.role === 'admin') throw notFound();
+    if (m.status !== 'open') throw bad('Only open meetups can be changed.');
+    if (Date.parse(m.starts_at) <= Date.now()) throw bad('This meetup has already started, so it can no longer be changed.');
+    if (b.public_place !== true) throw bad('Confirm the meetup is in a public place.', 'public_place');
+    const sameStart = new Date(String(b.starts_at || '')).getTime() === Date.parse(m.starts_at);
+    const next = readMeetup(b, { maxPeople: m.source === 'member' ? 30 : 300, minLeadMs: sameStart ? -Infinity : (m.source === 'agency' ? 0 : 3600e3) });
+    if (m.source === 'member') next.audience = m.audience;
+    else next.audience = ['aupair', 'family', 'both'].includes(b.audience) ? b.audience : m.audience;
+    if (m.source === 'member' && next.max_people == null) next.max_people = m.max_people;
+    if (next.max_people && goingCount(m) > next.max_people) throw bad(`${goingCount(m)} people are already going, so allow at least that many.`);
+    const changed = Object.keys(next).filter((k) => String(next[k] ?? '') !== String(m[k] ?? ''));
+    if (changed.length) {
+      db.prepare(`UPDATE meetups SET ${changed.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`).run(...changed.map((k) => next[k]), m.id);
+      if (changed.some((k) => ['starts_at', 'ends_at', 'place'].includes(k))) {
+        for (const a of db.prepare('SELECT user_id FROM meetup_attendees WHERE meetup_id = ?').all(m.id)) {
+          notify(a.user_id, 'nearby', '{title} has a new time or place. Check the details.', { title: next.title }, `#/meetups/${m.id}`);
+        }
+      }
+      track(m, me, 'edited', Object.fromEntries(changed.map((k) => [k, { from: m[k] ?? null, to: next[k] ?? null }])));
+    }
+    return { meetup: meetupView(getMeetup(m.id), me, true) };
   }));
 
   // The meetup's group chat: the host and the people going.
@@ -488,6 +519,13 @@ export function mountNearby(api, deps) {
     if (!m || m.source === 'external' || !runsIt(m, req.user)) throw notFound();
     const svg = await QRCode.toString(`${publicBase()}/#/checkin/${m.id}/${codeOf(m)}`, { type: 'svg', margin: 2, errorCorrectionLevel: 'M', color: { dark: '#1d1b3a', light: '#ffffff' } });
     res.set({ 'Content-Type': 'image/svg+xml', 'Cache-Control': 'private, no-store' }).send(svg);
+  }));
+  // The same as a PNG, for the phone app.
+  api.get('/meetups/:id/qr.png', requireAuth, wrap(async (req, res) => {
+    const m = getMeetup(req.params.id);
+    if (!m || m.source === 'external' || !runsIt(m, req.user)) throw notFound();
+    const png = await QRCode.toBuffer(`${publicBase()}/#/checkin/${m.id}/${codeOf(m)}`, { type: 'png', width: 720, margin: 2, errorCorrectionLevel: 'M', color: { dark: '#1d1b3a', light: '#ffffff' } });
+    res.set({ 'Content-Type': 'image/png', 'Cache-Control': 'private, no-store' }).send(png);
   }));
   /** Asks everyone who checked in at a meetup that ended to rate it, once. Run hourly. */
   const askForRatings = () => {

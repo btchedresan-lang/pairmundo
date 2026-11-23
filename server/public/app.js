@@ -957,24 +957,116 @@ function cmMonthCard(s, title) {
       <tr><td>Successful events<div class="muted small">${l.events.paid} × ${cmMoney(l.events.rate, cur)}${l.events.successful > l.events.cap ? ` (paid up to ${l.events.cap})` : ''}</div></td><td style="text-align:right">${cmMoney(l.events.amount, cur)}</td></tr>
       <tr><td>Newcomers at successful events<div class="muted small">${l.newcomers.count} × ${cmMoney(l.newcomers.rate, cur)}</div></td><td style="text-align:right">${cmMoney(l.newcomers.amount, cur)}</td></tr>
       <tr><td>Families who bought a Family Pass<div class="muted small">${l.family_passes.count} × ${cmMoney(l.family_passes.rate, cur)}</div></td><td style="text-align:right">${cmMoney(l.family_passes.amount, cur)}</td></tr>
+      <tr><td>Approved event costs<div class="muted small">${l.expenses.count} approved${l.expenses.pending ? ` · ${l.expenses.pending} waiting (${cmMoney(l.expenses.pending_amount, cur)})` : ''}</div></td><td style="text-align:right">${cmMoney(l.expenses.amount, cur)}</td></tr>
       <tr><td><strong>Total</strong></td><td style="text-align:right"><strong>${cmMoney(s.total, cur)}</strong></td></tr></table></div>`;
+}
+const cmLocalInput = (iso) => { if (!iso) return ''; const d = new Date(iso); return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); };
+/** Fills the meetup form with a meetup's details, to change it. */
+function fillMeetupForm(f, e) {
+  f.title.value = e.title; f.kind.value = e.kind; f.place.value = e.place || ''; f.area.value = e.area || ''; f.about.value = e.about || '';
+  f.pin.value = e.lat != null ? `${e.lat}, ${e.lng}` : ''; f.starts_at.value = cmLocalInput(e.starts_at); f.ends_at.value = cmLocalInput(e.ends_at);
+  f.audience.value = e.audience; f.max_people.value = e.max_people || ''; f.public_place.checked = true;
+}
+// Social captions for an event: English, plus the city's own language.
+const CM_LOCAL = { SE: 'sv', CO: 'es', MX: 'es', BR: 'pt' };
+function cmCaptions(e, city, country) {
+  const when = (lang) => new Date(e.starts_at).toLocaleString(lang, { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+  const who = { aupair: ['au pairs and future au pairs', 'au pairer', 'au pairs y futuras au pairs', 'au pairs e futuras au pairs'], family: ['host families', 'värdfamiljer', 'familias anfitrionas', 'famílias anfitriãs'], both: ['au pairs and host families', 'au pairer och värdfamiljer', 'au pairs y familias anfitrionas', 'au pairs e famílias anfitriãs'] }[e.audience] || [];
+  const where = e.area ? `${e.area}, ${city}` : city;
+  const out = [['English', `☕ ${e.title}\n📅 ${when('en-GB')}\n📍 ${where}\n\nA free PairMundo meetup for ${who[0]} in ${city}. Come as you are, bring a friend, and meet your people! 🌍\n\nJoin in the Nearby tab of the PairMundo app (free): the exact place shows once you join. Scan the QR code at the door to check in.\n\n#PairMundo #aupair #aupairlife #${city.replace(/[^\p{L}]/gu, '')}`]];
+  const local = CM_LOCAL[country];
+  if (local === 'sv') out.push(['Svenska', `☕ ${e.title}\n📅 ${when('sv-SE')}\n📍 ${where}\n\nEn gratis PairMundo-träff för ${who[1]} i ${city}. Kom som du är, ta med en vän och träffa nya vänner! 🌍\n\nAnmäl dig under fliken I närheten i PairMundo-appen (gratis): den exakta platsen syns när du anmält dig. Skanna QR-koden vid dörren för att checka in.\n\n#PairMundo #aupair #reklam`]);
+  if (local === 'es') out.push(['Español', `☕ ${e.title}\n📅 ${when('es')}\n📍 ${where}\n\nUn encuentro gratis de PairMundo para ${who[2]} en ${city}. ¡Ven como eres, trae a una amiga y conoce gente nueva! 🌍\n\nInscríbete en la pestaña Cerca de la app PairMundo (gratis): el lugar exacto aparece al inscribirte. Escanea el código QR en la entrada para registrarte.\n\n#PairMundo #aupair #aupairlife`]);
+  if (local === 'pt') out.push(['Português', `☕ ${e.title}\n📅 ${when('pt-BR')}\n📍 ${where}\n\nUm encontro gratuito da PairMundo para ${who[3]} em ${city}. Venha como você é, traga uma amiga e conheça gente nova! 🌍\n\nParticipe pela aba Perto de você do app PairMundo (grátis): o local exato aparece quando você entra. Escaneie o QR code na entrada para fazer check-in.\n\n#PairMundo #aupair #intercambio`]);
+  return out;
+}
+/** A square promo image for an event, drawn as SVG so it can be saved as a PNG in the browser. */
+function cmPromoSvg(e, city) {
+  const x = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const words = String(e.title).split(/\s+/); const lines = []; let cur = '';
+  for (const w of words) { if ((cur + ' ' + w).trim().length > 16 && cur) { lines.push(cur); cur = w; } else cur = (cur + ' ' + w).trim(); }
+  if (cur) lines.push(cur);
+  const emoji = (MEETUP_KINDS[e.kind] || '✨').split(' ')[0];
+  const d = new Date(e.starts_at);
+  const day = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+  const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  const who = { aupair: 'For au pairs', family: 'For host families', both: 'For au pairs and host families' }[e.audience];
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080">
+    <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5c7cfa"/><stop offset="1" stop-color="#2c46b8"/></linearGradient></defs>
+    <rect width="1080" height="1080" fill="url(#g)"/><circle cx="930" cy="160" r="260" fill="#ffffff" opacity=".08"/><circle cx="120" cy="1000" r="200" fill="#ffd43b" opacity=".12"/>
+    <text x="80" y="130" font-family="Georgia, serif" font-weight="700" font-size="46" fill="#fff">PairMundo</text>
+    <text x="80" y="220" font-family="Arial, sans-serif" font-weight="800" font-size="30" letter-spacing="4" fill="#ffd43b">FREE MEETUP · ${x(city.toUpperCase())}</text>
+    <text x="80" y="400" font-size="140">${x(emoji)}</text>
+    ${lines.slice(0, 3).map((l, i) => `<text x="80" y="${540 + i * 100}" font-family="Georgia, serif" font-weight="700" font-size="90" fill="#fff">${x(l)}</text>`).join('')}
+    <rect x="80" y="${590 + Math.min(lines.length, 3) * 100 - 60}" width="920" height="2" fill="#fff" opacity=".3"/>
+    <text x="80" y="${650 + Math.min(lines.length, 3) * 100 - 50}" font-family="Arial, sans-serif" font-size="40" fill="#fff">📅 ${x(day)} · ${x(time)}</text>
+    <text x="80" y="${710 + Math.min(lines.length, 3) * 100 - 50}" font-family="Arial, sans-serif" font-size="40" fill="#fff">📍 ${x(e.area ? `${e.area}, ${city}` : city)}</text>
+    <text x="80" y="${770 + Math.min(lines.length, 3) * 100 - 50}" font-family="Arial, sans-serif" font-size="34" fill="#dfe6ff">${x(who)}</text>
+    <rect x="80" y="960" width="560" height="80" rx="40" fill="#ffd43b"/><text x="360" y="1012" text-anchor="middle" font-family="Arial, sans-serif" font-weight="800" font-size="32" fill="#1d1b3a">Join in the PairMundo app →</text>
+  </svg>`;
 }
 views.community = async ([sub, id]) => {
   const d = await api('/community/me');
+  const r = d.rules, cm = d.manager;
+  const ev = (x) => d.events.find((e) => String(e.id) === String(x));
   if (sub === 'qr') {
-    const e = d.events.find((x) => String(x.id) === String(id));
+    const e = ev(id);
     if (!e) return render('<div class="empty">That event is not yours, or it is too old.</div>');
     return render(`<div class="card" style="max-width:520px;margin:24px auto;text-align:center">
-      <p class="muted" style="margin:0">PairMundo meetup · ${esc(d.manager.city)}</p><h1 style="margin:6px 0">${esc(e.title)}</h1><p class="small">${meetupWhen(e.starts_at)} · ${esc(e.place || '')}</p>
+      <p class="muted" style="margin:0">PairMundo meetup · ${esc(cm.city)}</p><h1 style="margin:6px 0">${esc(e.title)}</h1><p class="small">${meetupWhen(e.starts_at)} · ${esc(e.place || '')}</p>
       <img src="${esc(e.qr)}" alt="Check-in QR code" style="width:100%;max-width:380px;aspect-ratio:1;image-rendering:pixelated">
       <h2 style="margin:6px 0">Scan to check in</h2><p>Open your phone camera and point it at the code. Or open the meetup in the PairMundo app and type <strong style="font-size:1.4em;letter-spacing:3px">${esc(e.checkin_code)}</strong></p>
       <p class="muted small">Check-in opens 30 minutes before the start. New here? Sign up free at pairmundo.com, then scan again.</p>
       <div class="row" style="justify-content:center"><button class="btn ghost sm" onclick="window.print()">Print</button><a class="btn ghost sm" href="#/community">Back</a></div></div>`);
   }
-  const r = d.rules, cm = d.manager;
+  if (sub === 'edit') {
+    const e = ev(id);
+    if (!e || e.status !== 'upcoming') return render('<div class="empty">Only your upcoming events can be changed. <a href="#/community">Back</a></div>');
+    render(`<p><a href="#/community">← Your community</a></p><div class="card" id="cmEdit"><h2>Change “${esc(e.title)}”</h2>
+      <p class="muted small">${e.going} going. If you change the time or the place, they get a notification.</p>${meetupFormHtml({ community: cm })}</div>`);
+    const f = document.querySelector('#cmEdit .meetupForm');
+    fillMeetupForm(f, e);
+    f.querySelector('button.btn').textContent = 'Save changes';
+    f.onsubmit = async (x) => {
+      x.preventDefault();
+      try { await api(`/meetups/${e.id}`, { method: 'PUT', body: readMeetupForm(f) }); toast('Saved'); go('#/community'); }
+      catch (err) { f.querySelector('.meetupErr').innerHTML = `<div class="alert error">${esc(err.message)}</div>`; }
+    };
+    return;
+  }
+  if (sub === 'promo') {
+    const e = ev(id);
+    if (!e) return render('<div class="empty">That event is not yours, or it is too old.</div>');
+    const svg = cmPromoSvg(e, cm.city);
+    const caps = cmCaptions(e, cm.city, cm.country);
+    render(`<p><a href="#/community">← Your community</a></p><h1>Promote “${esc(e.title)}”</h1>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))"><div class="card"><h3>Post image</h3>
+        <img id="promoImg" alt="Promo image" style="width:100%;border-radius:12px" src="data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}">
+        <button class="btn sm" id="promoSave" style="margin-top:10px">Download image (PNG)</button>
+        <p class="muted small">For Instagram, Facebook and WhatsApp groups. More templates are in your kit.</p></div>
+      <div class="card"><h3>Captions</h3>${caps.map(([lang, text], i) => `<div class="field"><label>${esc(lang)}</label><textarea rows="9" id="cap${i}">${esc(text)}</textarea><button class="btn ghost sm" data-copy="cap${i}">Copy</button></div>`).join('')}
+        <p class="muted small">Your posts are paid promotion: keep the ad label where your country needs it (like #reklam in Sweden). Never post the check-in code or QR code: show those only at the door.</p></div></div>`);
+    document.querySelectorAll('[data-copy]').forEach((b) => { b.onclick = () => { navigator.clipboard.writeText(document.getElementById(b.dataset.copy).value).then(() => toast('Copied')); }; });
+    document.getElementById('promoSave').onclick = () => {
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement('canvas'); c.width = 1080; c.height = 1080;
+        c.getContext('2d').drawImage(img, 0, 0);
+        c.toBlob((blob) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `pairmundo-meetup-${e.id}.png`; a.click(); });
+      };
+      img.src = document.getElementById('promoImg').src;
+    };
+    return;
+  }
   const people = Object.fromEntries(d.community.map((x) => [x.role, x.n]));
+  const upcoming = d.events.filter((e) => ['upcoming', 'scoring'].includes(e.status) || Date.parse(e.starts_at) > Date.now() - 30 * 86400e3);
+  const EXP = { pending: ['Waiting', ''], approved: ['✓ Approved', 'ok'], rejected: ['Turned down', 'warn'] };
   render(`<h1>Your community: ${esc(cm.city)} ${flag(cm.country)}</h1>
     <p class="muted">${people.aupair || 0} au pairs and ${people.family || 0} host families in ${esc(cm.city)} are on Nearby. Everyone there hears about your meetups when you post them.</p>
+    <div class="card" style="background:var(--brand-soft)"><div class="spread"><div><h3 style="margin:0">🧰 Your Community Manager kit</h3>
+      <p class="small" style="margin:4px 0 0">How to get started, 20 event ideas with templates, the venue checklist, how check-in works, the safety guide and caption templates.</p></div>
+      <a class="btn sm" href="${esc(d.kit.guide)}" target="_blank" rel="noopener">Open the kit (PDF)</a></div>
+      <p class="small" style="margin:10px 0 0">Templates: ${d.kit.templates.map((t) => `<a href="${esc(t.file)}" target="_blank" rel="noopener" download>${esc(t.label)}</a>`).join(' · ')}</p></div>
     <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">${cmMonthCard(d.this_month, 'This month')}${cmMonthCard(d.last_month, 'Last month')}</div>
     <div class="card"><h3>How an event counts as successful</h3><ul class="small">
       <li>At least <strong>${r.min_checkins}</strong> people check in by scanning your QR code at the meetup.</li>
@@ -983,20 +1075,37 @@ views.community = async ([sub, id]) => {
       <li>A host family who checks in at your event and buys their first Family Pass within ${r.pass_days} days earns you a bonus.</li></ul>
       <p class="muted small">Always meet in a public place, like a café, a park or a library. Show the QR code at the door, and remind people to rate the meetup afterwards.</p></div>
     <div class="card"><h2>Your events</h2>
-      ${d.events.length ? `<div class="table-wrap"><table><tr><th>Event</th><th>When</th><th>Checked in</th><th>Rating</th><th>Status</th><th></th></tr>
-      ${d.events.map((e) => `<tr><td><strong>${esc(e.title)}</strong><div class="muted small">${esc(AUDIENCE[e.audience] || '')} · ${esc(e.place || '')} · ${e.going}${e.max_people ? ` / ${e.max_people}` : ''} going</div>
+      ${upcoming.length ? `<div class="table-wrap"><table><tr><th>Event</th><th>When</th><th>Checked in</th><th>Rating</th><th>Status</th><th></th></tr>
+      ${upcoming.map((e) => `<tr><td><strong>${esc(e.title)}</strong><div class="muted small">${esc(AUDIENCE[e.audience] || '')} · ${esc(e.place || '')} · ${e.going}${e.max_people ? ` / ${e.max_people}` : ''} going</div>
           ${e.comments.length ? `<details class="small"><summary>${e.comments.length} comment${e.comments.length === 1 ? '' : 's'}</summary>${e.comments.map((c) => `<p>${'★'.repeat(c.stars)} ${esc(c.comment)}</p>`).join('')}</details>` : ''}</td>
         <td>${meetupWhen(e.starts_at)}</td><td>${e.checkins}<div class="muted small">${e.newcomers} new</div></td><td>${e.rating == null ? '—' : `${e.rating} ★`}<div class="muted small">${e.ratings} rating${e.ratings === 1 ? '' : 's'}</div></td>
         <td>${cmStatusChip(e)}${e.misses.length && e.status !== 'upcoming' ? `<div class="muted small">${e.misses.map(esc).join(', ')}</div>` : ''}${e.status === 'scoring' ? `<div class="muted small">Scored ${fmtDate(e.scored_at)}</div>` : ''}</td>
-        <td>${['upcoming', 'scoring'].includes(e.status) ? `<a class="btn sm" href="#/community/qr/${e.id}">QR code</a>` : ''}${e.status === 'upcoming' ? ` <button class="btn ghost sm" data-cancel="${e.id}">Cancel</button>` : ''}</td></tr>`).join('')}</table></div>`
-      : '<p class="muted">No events yet. Host your first one below: a coffee or a picnic is a great start.</p>'}</div>
-    <div class="card" id="cmHost"><h2>Host a meetup in ${esc(cm.city)}</h2><p class="muted small">Pick who it's for: au pairs, host families (playdates, "first time hosting" coffees, visa and contract Q&As) or both.</p>${meetupFormHtml({ community: cm })}</div>
+        <td><div class="row" style="gap:6px">${['upcoming', 'scoring'].includes(e.status) ? `<a class="btn sm" href="#/community/qr/${e.id}">QR code</a>` : ''}${e.status === 'upcoming' ? `<a class="btn ghost sm" href="#/community/promo/${e.id}">Promote</a><a class="btn ghost sm" href="#/community/edit/${e.id}">Edit</a><button class="btn ghost sm" data-cancel="${e.id}">Cancel</button>` : ''}</div></td></tr>`).join('')}</table></div>`
+      : '<p class="muted">No events yet. Host your first one below: a coffee or a picnic is a great start. Your kit has 20 ideas.</p>'}</div>
+    <div class="card" id="cmHost"><h2>Host a meetup in ${esc(cm.city)}</h2><p class="muted small">Pick who it's for: au pairs, host families (playdates, "first time hosting" coffees, visa and contract Q&As) or both. Post it at least 5 days ahead so people can plan.</p>${meetupFormHtml({ community: cm })}</div>
+    <div class="card"><h2>Event costs</h2><p class="muted small">Agree a cost with Badji before you pay it, then send it here with a link to the receipt (a photo in Google Drive or Dropbox is fine). Approved costs are added to that month's pay.</p>
+      ${d.expenses.length ? `<table>${d.expenses.map((x) => `<tr><td>${esc(x.description)}<div class="muted small">${fmtDate(x.spent_on)}${x.meetup_title ? ` · ${esc(x.meetup_title)}` : ''}${x.receipt_url ? ` · <a href="${esc(x.receipt_url)}" target="_blank" rel="noopener">receipt</a>` : ''}${x.review_note ? ` · ${esc(x.review_note)}` : ''}</div></td>
+        <td>${cmMoney(x.amount, x.currency)}</td><td><span class="chip ${EXP[x.status][1]}">${EXP[x.status][0]}</span>${x.status === 'pending' ? ` <button class="btn ghost sm" data-delexp="${x.id}">Take back</button>` : ''}</td></tr>`).join('')}</table>` : ''}
+      <details><summary>Send a cost</summary><form id="expForm"><div class="form-grid">
+        <div class="field"><label>What for</label><input name="description" required maxlength="300" placeholder="Picnic blankets and fruit"></div>
+        <div class="field"><label>Amount (${esc(cm.currency)})</label><input name="amount" required inputmode="decimal"></div>
+        <div class="field"><label>Day you paid</label><input name="spent_on" type="date" value="${new Date().toISOString().slice(0, 10)}"></div>
+        <div class="field"><label>Event (optional)</label><select name="meetup_id"><option value="">—</option>${d.events.filter((e) => e.status !== 'cancelled').map((e) => `<option value="${e.id}">${esc(e.title)} (${fmtDate(e.starts_at)})</option>`).join('')}</select></div>
+        <div class="field"><label>Link to the receipt</label><input name="receipt_url" type="url" placeholder="https://"></div></div>
+        <button class="btn sm">Send</button><div id="err"></div></form></details></div>
     ${d.payouts.length ? `<div class="card"><h3>Paid</h3><table>${d.payouts.map((p) => `<tr><td>${esc(p.month)}</td><td>${cmMoney(p.amount, p.currency)}</td><td class="muted small">${fmtDate(p.paid_at)}</td></tr>`).join('')}</table></div>` : ''}`);
   wireMeetupForm(document.getElementById('cmHost'), () => views.community([]));
   document.querySelectorAll('[data-cancel]').forEach((b) => { b.onclick = async () => {
     if (!confirm('Cancel this meetup? Everyone going gets a notification.')) return;
     try { await api(`/meetups/${b.dataset.cancel}/cancel`, { method: 'POST' }); views.community([]); } catch (e) { toast(e.message); }
   }; });
+  document.querySelectorAll('[data-delexp]').forEach((b) => { b.onclick = async () => {
+    try { await api(`/community/expenses/${b.dataset.delexp}`, { method: 'DELETE' }); views.community([]); } catch (e) { toast(e.message); }
+  }; });
+  document.getElementById('expForm').onsubmit = async (x) => {
+    x.preventDefault();
+    try { await api('/community/expenses', { method: 'POST', body: formData(x.target) }); toast('Sent for approval'); views.community([]); } catch (err) { errBox(err); }
+  };
 };
 
 // A meetup on the website, for members: mostly reached by scanning the host's QR code (#/checkin/<id>/<code>), which
@@ -1206,6 +1315,26 @@ views.nearby = async (_, qs) => {
   }; });
 };
 
+/** One line of the Community Manager activity log, in words. */
+function cmActivityText(a) {
+  const d = a.detail || {}, t = a.meetup_title ? `“${a.meetup_title}”` : 'a meetup';
+  const money = (n, c) => (n == null ? '' : cmMoney(n, c || ''));
+  const fields = { title: 'title', kind: 'kind', place: 'place', area: 'neighbourhood', about: 'description', starts_at: 'time', ends_at: 'end time', max_people: 'places', audience: 'audience', lat: 'map pin', lng: 'map pin' };
+  switch (a.action) {
+    case 'created': return `posted ${t} for ${d.starts_at ? new Date(d.starts_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}`;
+    case 'edited': return `changed the ${[...new Set(Object.keys(d).map((k) => fields[k] || k))].join(', ')} of ${t}`;
+    case 'cancelled': return `cancelled ${t}${d.going ? ` (${d.going} going)` : ''}`;
+    case 'expense': return `sent a cost: ${d.description} (${money(d.amount, d.currency)})`;
+    case 'expense_approved': return `cost approved: ${d.description} (${money(d.amount, d.currency)})`;
+    case 'expense_rejected': return `cost turned down: ${d.description}${d.note ? `: ${d.note}` : ''}`;
+    case 'paid': return `${d.month} marked paid: ${money(d.amount, d.currency)}`;
+    case 'joined': return `became Community Manager for ${d.city}`;
+    case 'paused': return 'was paused';
+    case 'resumed': return 'was made active again';
+    case 'terms': return `pay or terms changed: ${Object.keys(d).join(', ')}`;
+    default: return a.action;
+  }
+}
 async function adminCommunity(head, qs) {
   const month = qs.get('month') || new Date().toISOString().slice(0, 7);
   const d = await api(`/admin/community?month=${encodeURIComponent(month)}`);
@@ -1231,9 +1360,11 @@ async function adminCommunity(head, qs) {
       <form id="cmMonth" class="row"><input type="month" name="month" value="${esc(d.month)}" style="width:auto"><button class="btn ghost sm">Show</button>
         <a class="btn ghost sm" href="/api/admin/community.csv?month=${esc(d.month)}">Payout sheet (CSV)</a></form></div>
     <p class="muted small">Paid hosts who run one city's community each, for au pairs and host families. Pay for a month is final once the month is over and every event in it is scored (${r.rating_days} days after it starts). Pay them, then mark the month paid.</p>
-    ${d.managers.length ? `<div class="table-wrap"><table><tr><th>Manager</th><th>Held</th><th>Successful</th><th>Newcomers</th><th>Family passes</th><th>Total</th><th></th></tr>
-      ${d.managers.map((m) => { const s = m.summary, l = s.lines; return `<tr><td><strong>${esc(m.name)}</strong> ${m.active ? '' : '<span class="chip warn">Paused</span>'}<div class="muted small">${esc(m.city)} ${flag(m.country)} · ${esc(m.email)}</div></td>
-        <td>${l.retainer.held} / ${l.retainer.required}${l.retainer.earned ? ' ✓' : ''}</td><td>${l.events.successful}${l.events.successful > l.events.cap ? ` (${l.events.cap} paid)` : ''}</td><td>${l.newcomers.count}</td><td>${l.family_passes.count}</td>
+    ${d.managers.length ? `<div class="table-wrap"><table><tr><th>Manager</th><th>Created</th><th>Held</th><th>Successful</th><th>Checked in</th><th>Newcomers</th><th>Rating</th><th>Family passes</th><th>Costs</th><th>Total</th><th></th></tr>
+      ${d.managers.map((m) => { const s = m.summary, l = s.lines, t = m.tracking; return `<tr><td><strong>${esc(m.name)}</strong> ${m.active ? '' : '<span class="chip warn">Paused</span>'}<div class="muted small">${esc(m.city)} ${flag(m.country)} · ${esc(m.email)}</div>
+          <div class="muted small">Last active ${t.last_active ? fmtDate(t.last_active) : 'never'} · seen ${t.last_seen ? fmtDate(t.last_seen) : '—'} · ${t.upcoming} upcoming</div></td>
+        <td>${t.created}</td><td>${l.retainer.held} / ${l.retainer.required}${l.retainer.earned ? ' ✓' : ''}</td><td>${l.events.successful}${l.events.successful > l.events.cap ? ` (${l.events.cap} paid)` : ''}</td><td>${t.checkins}</td><td>${t.newcomers}</td><td>${t.rating == null ? '—' : `${t.rating} ★`}</td><td>${l.family_passes.count}</td>
+        <td>${cmMoney(l.expenses.amount, s.currency)}${l.expenses.pending ? `<div class="muted small">${l.expenses.pending} waiting</div>` : ''}</td>
         <td><strong>${cmMoney(s.total, s.currency)}</strong>${l.retainer.trial ? '<div class="muted small">trial</div>' : ''}</td>
         <td>${s.paid ? `<span class="chip ok">Paid</span>` : s.final ? `<button class="btn sm" data-paid="${m.user_id}">Mark paid</button>` : '<span class="muted small">In progress</span>'}
           <details><summary class="small">Edit</summary><form class="cmEdit" data-id="${m.user_id}">
@@ -1242,6 +1373,18 @@ async function adminCommunity(head, qs) {
             ${payFields(m)}<div class="field"><label>Notes</label><textarea name="notes" rows="2">${esc(m.notes || '')}</textarea></div>
             <label class="small"><input type="checkbox" name="active" ${m.active ? 'checked' : ''} style="width:auto"> Active (pausing stops their hosting)</label><br><button class="btn sm">Save</button></form></details></td></tr>`; }).join('')}</table></div>`
     : '<div class="empty">No Community Managers yet. Add the first one below, or hire one from the Community Manager job in Careers.</div>'}</div>
+    ${d.expenses.length ? `<div class="card"><h2>Event costs</h2><p class="muted small">Costs Community Managers paid for events, with their receipts. Approved ones are added to that month's pay; a month with costs waiting can't be marked paid.</p>
+      <table>${d.expenses.map((x) => `<tr><td><strong>${esc(x.manager)}</strong> · ${esc(x.description)}<div class="muted small">${fmtDate(x.spent_on)}${x.meetup_title ? ` · ${esc(x.meetup_title)}` : ''}${x.receipt_url ? ` · <a href="${esc(x.receipt_url)}" target="_blank" rel="noopener">receipt</a>` : ' · no receipt'}${x.review_note ? ` · ${esc(x.review_note)}` : ''}</div></td>
+        <td>${cmMoney(x.amount, x.currency)}</td><td>${x.status === 'pending' ? `<button class="btn sm" data-exp="${x.id}" data-st="approved">Approve</button> <button class="btn ghost sm" data-exp="${x.id}" data-st="rejected">Turn down</button>` : `<span class="chip ${x.status === 'approved' ? 'ok' : 'warn'}">${x.status}</span>`}</td></tr>`).join('')}</table></div>` : ''}
+    <div class="card"><div class="spread"><h2 style="margin:0">Events in ${esc(d.month)}</h2><a class="btn ghost sm" href="/api/admin/community/events.csv?month=${esc(d.month)}">Events (CSV)</a></div>
+      ${d.events.length ? `<div class="table-wrap"><table><tr><th>Event</th><th>Manager</th><th>When</th><th>Going</th><th>Checked in</th><th>New</th><th>Rating</th><th>Status</th><th>Edits</th><th>Costs</th></tr>
+      ${d.events.map((e) => `<tr><td><strong>${esc(e.title)}</strong><div class="muted small">${esc(AUDIENCE[e.audience] || '')} · ${esc(e.place || '')}${e.reports ? ` · <span class="chip warn">${e.reports} report${e.reports > 1 ? 's' : ''}</span>` : ''}</div></td>
+        <td>${esc(e.manager)}<div class="muted small">${esc(e.city)}</div></td><td>${meetupWhen(e.starts_at)}<div class="muted small">posted ${fmtDate(e.created_at)}</div></td><td>${e.going}${e.max_people ? ` / ${e.max_people}` : ''}</td>
+        <td>${e.checkins}</td><td>${e.newcomers}</td><td>${e.rating == null ? '—' : `${e.rating} ★ (${e.ratings})`}</td><td>${cmStatusChip(e)}${e.misses.length && !['upcoming', 'cancelled'].includes(e.status) ? `<div class="muted small">${e.misses.map(esc).join(', ')}</div>` : ''}</td>
+        <td>${e.edits}</td><td>${e.costs ? (e.costs / 100).toFixed(2) : '—'}</td></tr>`).join('')}</table></div>` : '<p class="muted">No events this month.</p>'}</div>
+    <div class="card"><div class="spread"><h2 style="margin:0">Activity</h2><a class="btn ghost sm" href="/api/admin/community/activity.csv">Full log (CSV)</a></div>
+      <p class="muted small">Everything Community Managers do to their meetups, the costs they send, and changes you make to their terms and pay.</p>
+      ${d.activity.length ? `<table>${d.activity.map((a) => `<tr><td class="muted small" style="white-space:nowrap">${fmtTime(a.created_at)}</td><td><strong>${esc(a.manager)}</strong> ${esc(cmActivityText(a))}${a.actor ? ` <span class="muted small">(by ${esc(a.actor)})</span>` : ''}</td></tr>`).join('')}</table>` : '<p class="muted">Nothing yet.</p>'}</div>
     <form class="card" id="cmNew" ${prefill ? '' : ''}><h2>Add a Community Manager</h2>
       <p class="muted small">They get their own login (never an au pair or family account; use another email if they have one) and an email to set their password. Amounts are in the currency you pick. Pay for the 3-month trial ends on the date below.</p>
       <div class="form-grid"><div class="field"><label>Name</label><input name="name" required value="${esc(prefill?.name || '')}"></div><div class="field"><label>Email</label><input name="email" type="email" required value="${esc(prefill?.email || '')}"></div>
@@ -1268,6 +1411,11 @@ async function adminCommunity(head, qs) {
   document.querySelectorAll('.cmEdit').forEach((f) => { f.onsubmit = async (e) => {
     e.preventDefault();
     try { await api(`/admin/community/managers/${f.dataset.id}`, { method: 'PUT', body: { ...formData(f), active: f.active.checked } }); toast('Saved'); route(); } catch (x) { toast(x.message); }
+  }; });
+  document.querySelectorAll('[data-exp]').forEach((b) => { b.onclick = async () => {
+    const note = b.dataset.st === 'rejected' ? prompt('Why? They see this.') : null;
+    if (b.dataset.st === 'rejected' && !note) return;
+    try { await api(`/admin/community/expenses/${b.dataset.exp}`, { method: 'POST', body: { status: b.dataset.st, note } }); toast('Saved'); route(); } catch (x) { toast(x.message); }
   }; });
   document.querySelectorAll('[data-paid]').forEach((b) => { b.onclick = async () => {
     if (!confirm(`Mark ${d.month} as paid?`)) return;

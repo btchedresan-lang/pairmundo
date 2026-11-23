@@ -2983,7 +2983,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   mountHiring(api, { db, wrap, requireRole, rateLimit, HttpError, str, normEmail, mailer, publicBase, notify, video, addTeamMember });
   const community = mountCommunity(api, { db, wrap, requireAuth, requireRole, HttpError, str, normEmail, hashPassword, mailer, withMedia, publicBase, notify, csvCell, shortName });
   const nearby = mountNearby(api, { db, wrap, requireAuth, requireRole, HttpError, str, tx, notify, publicUser, getUser, getProfile, blockedBetween, closedApart,
-    conversationFor, mustBeReady, mustBeVerified, agencySpace, shortName, photosOf, publicBase, communityManagerOf: community.managerOf });
+    conversationFor, mustBeReady, mustBeVerified, agencySpace, shortName, photosOf, publicBase, communityManagerOf: community.managerOf, logCommunity: community.logActivity });
   // Hourly: ask people who checked in at a meetup that ended to rate it.
   app.sendRatingRequests = () => nearby.askForRatings();
   api.get('/admin/waitlist', requireRole('admin'), wrap(() => ({

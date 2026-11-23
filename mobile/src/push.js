@@ -50,5 +50,5 @@ export function screenForLink(link) {
   if (page === 'messages' && id) return `/chat/${id}`;
   if (page === 'placements' && id) return `/placement/${id}`;
   if (page === 'meetups' && id) return `/meetup/${id}`;
-  return { likes: '/likes', requests: '/likes', matches: '/matches', messages: '/matches', placements: '/placements', profile: '/profile', 'family-pass': '/family-pass', discover: '/discover', account: '/account', nearby: '/nearby' }[page] ?? null;
+  return { likes: '/likes', requests: '/likes', matches: '/matches', messages: '/matches', placements: '/placements', profile: '/profile', 'family-pass': '/family-pass', community: '/community', discover: '/discover', account: '/account', nearby: '/nearby' }[page] ?? null;
 }
