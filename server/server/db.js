@@ -783,7 +783,7 @@ CREATE TABLE IF NOT EXISTS nearby_hellos (
 -- or listed by the admin from elsewhere, linking out (external). Times are ISO 8601 in UTC.
 CREATE TABLE IF NOT EXISTS meetups (
   id INTEGER PRIMARY KEY,
-  source TEXT NOT NULL DEFAULT 'member',          -- member | agency | external
+  source TEXT NOT NULL DEFAULT 'member',          -- member | agency | external | community (a Community Manager's)
   host_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
   agency_id INTEGER REFERENCES ambassadors(id) ON DELETE CASCADE,
   audience TEXT NOT NULL,                         -- aupair | family | both
@@ -806,6 +806,8 @@ CREATE TABLE IF NOT EXISTS meetups (
   status TEXT NOT NULL DEFAULT 'open',            -- open | cancelled | hidden (by the admin, or by reports)
   demo INTEGER NOT NULL DEFAULT 0,
   created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  checkin_code TEXT,                              -- shown by the host as a QR code; people there check in with it
+  rating_asked_at TEXT,                           -- when the people who checked in were asked to rate it
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS meetups_city ON meetups(country, city_key, starts_at);
@@ -814,6 +816,73 @@ CREATE TABLE IF NOT EXISTS meetup_attendees (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   PRIMARY KEY (meetup_id, user_id)
+);
+-- Checking in at a meetup: the person scans the QR code the host shows there (or types its code), so attendance is
+-- counted from people who were really there, not from RSVPs. newcomer: their first check-in in that city.
+CREATE TABLE IF NOT EXISTS meetup_checkins (
+  meetup_id INTEGER NOT NULL REFERENCES meetups(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  newcomer INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (meetup_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS meetup_checkins_user ON meetup_checkins(user_id, created_at);
+-- A quick 1-5 star rating after a meetup, only from people who checked in. The host sees the average and comments, not who wrote them.
+CREATE TABLE IF NOT EXISTS meetup_ratings (
+  meetup_id INTEGER NOT NULL REFERENCES meetups(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  stars INTEGER NOT NULL CHECK (stars BETWEEN 1 AND 5),
+  comment TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (meetup_id, user_id)
+);
+
+-- Community Managers (community.js): paid people, not au pairs, who run one city's community of au pairs and host
+-- families by hosting meetups. Pay is in minor units (öre, cents) of their own currency: a monthly retainer once they
+-- hold the minimum number of events, a fee per successful event up to a cap, a bonus per newcomer at a paid event, and a
+-- bonus per family who checks in at their event and then buys a Family Pass.
+CREATE TABLE IF NOT EXISTS community_managers (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  city TEXT NOT NULL,
+  city_key TEXT NOT NULL,
+  country TEXT NOT NULL,
+  currency TEXT NOT NULL DEFAULT 'SEK',
+  retainer INTEGER NOT NULL DEFAULT 400000,
+  trial_retainer INTEGER NOT NULL DEFAULT 300000, -- paid instead of the retainer for months that start on or before trial_until
+  trial_until TEXT,                               -- YYYY-MM-DD, or null for no trial
+  event_fee INTEGER NOT NULL DEFAULT 100000,
+  newcomer_fee INTEGER NOT NULL DEFAULT 10000,
+  family_pass_fee INTEGER NOT NULL DEFAULT 25000,
+  min_events INTEGER NOT NULL DEFAULT 2,          -- events held in a month to earn the retainer
+  first_month_min INTEGER NOT NULL DEFAULT 1,     -- the same in their first month, while they build a following
+  target_events INTEGER NOT NULL DEFAULT 4,
+  max_paid_events INTEGER NOT NULL DEFAULT 6,     -- successful events paid in a month
+  started_on TEXT NOT NULL,                       -- YYYY-MM-DD
+  active INTEGER NOT NULL DEFAULT 1,
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+-- What makes a Community Manager's event successful. One row, edited by the admin.
+CREATE TABLE IF NOT EXISTS community_rules (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  min_checkins INTEGER NOT NULL DEFAULT 5,
+  min_newcomers INTEGER NOT NULL DEFAULT 2,
+  min_rating REAL NOT NULL DEFAULT 4,
+  min_ratings INTEGER NOT NULL DEFAULT 3,         -- an average needs at least this many ratings to count
+  rating_days INTEGER NOT NULL DEFAULT 3,         -- ratings close this many days after the start, and the event is scored
+  pass_days INTEGER NOT NULL DEFAULT 60           -- a family's Family Pass counts if bought within this many days of checking in
+);
+INSERT OR IGNORE INTO community_rules (id) VALUES (1);
+-- A month's pay marked as paid, with the breakdown as it was then.
+CREATE TABLE IF NOT EXISTS community_payouts (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  month TEXT NOT NULL,                            -- YYYY-MM
+  currency TEXT NOT NULL,
+  amount INTEGER NOT NULL,
+  breakdown TEXT NOT NULL,
+  paid_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (user_id, month)
 );
 -- The meetup's group chat, for the host and the people going ("I'm by the fountain, red jacket").
 CREATE TABLE IF NOT EXISTS meetup_messages (
@@ -982,6 +1051,12 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
   }
   // Reports can be about a meetup.
   if (!db.prepare('PRAGMA table_info(reports)').all().some((c) => c.name === 'meetup_id')) db.exec('ALTER TABLE reports ADD COLUMN meetup_id INTEGER REFERENCES meetups(id) ON DELETE SET NULL');
+  // Meetups got check-ins and ratings.
+  if (!db.prepare('PRAGMA table_info(meetups)').all().some((c) => c.name === 'checkin_code')) {
+    db.exec('ALTER TABLE meetups ADD COLUMN checkin_code TEXT; ALTER TABLE meetups ADD COLUMN rating_asked_at TEXT');
+  }
+  // Job applications for roles in several cities say which one.
+  if (!db.prepare('PRAGMA table_info(job_applications)').all().some((c) => c.name === 'location')) db.exec('ALTER TABLE job_applications ADD COLUMN location TEXT');
   return db;
 }
 

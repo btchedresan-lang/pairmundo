@@ -36,6 +36,7 @@ setInterval(() => {
   try { app.sendSearchNudges(); } catch (e) { console.error('Search nudges failed:', e.message); }
   try { app.sendNewMemberAlerts(); } catch (e) { console.error('New member alerts failed:', e.message); }
   try { app.sendProfileNudges(); } catch (e) { console.error('Profile nudges failed:', e.message); }
+  try { app.sendRatingRequests(); } catch (e) { console.error('Rating requests failed:', e.message); }
   try { app.sendIdNudges(); } catch (e) { console.error('ID nudges failed:', e.message); }
   app.sendFlyerPayouts().catch((e) => console.error('Flyer payouts failed:', e.message));
 }, 60 * 60 * 1000).unref();

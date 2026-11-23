@@ -11,6 +11,11 @@
 //   "Let families near me find me".
 // - Meetups are in public places, the exact spot is shown only to people going, members need a confirmed email and a
 //   profile to join and an ID check to host, and three reports hide a meetup until the admin looks at it.
+// - At a meetup, people check in by scanning the QR code the host shows (or typing its code), and those who checked in
+//   can rate it for a few days after. Community Managers (community.js) are paid on these check-ins and ratings.
+
+import { randomInt } from 'node:crypto';
+import QRCode from 'qrcode';
 
 const GRID = 0.02; // degrees, about 2.2 km north-south
 const ACTIVE_DAYS = 30;
@@ -18,6 +23,19 @@ const MAX_HOSTED = 3; // upcoming meetups a member can host at once
 const HELLOS_PER_DAY = 20;
 const REPORTS_TO_HIDE = 3;
 export const MEETUP_KINDS = ['coffee', 'walk', 'picnic', 'playdate', 'sport', 'language', 'culture', 'other'];
+// Check-in codes leave out letters and digits that look alike (0/O, 1/I/L).
+const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+export const newCheckinCode = () => Array.from({ length: 6 }, () => CODE_CHARS[randomInt(CODE_CHARS.length)]).join('');
+const CHECKIN_BEFORE_MS = 30 * 60e3; // check-in opens 30 minutes before the start
+const CHECKIN_AFTER_MS = 60 * 60e3;  // and closes an hour after the end (or 4 hours after the start, without an end)
+/** When check-in at a meetup opens and closes, in ms. */
+export const checkinWindow = (m) => {
+  const start = Date.parse(m.starts_at);
+  const end = m.ends_at ? Date.parse(m.ends_at) : start + 3 * 3600e3;
+  return { opens: start - CHECKIN_BEFORE_MS, closes: end + CHECKIN_AFTER_MS };
+};
+/** When ratings close: rating_days after the start. */
+export const ratingCloses = (m, days) => Date.parse(m.starts_at) + days * 86400e3;
 const minPeople = () => Math.max(1, Number(process.env.NEARBY_MIN_PEOPLE) || 5);
 // Hosting a member meetup needs an ID check, unless NEARBY_HOST_ID=off.
 const hostNeedsId = () => process.env.NEARBY_HOST_ID !== 'off';
@@ -52,7 +70,8 @@ const PRIVATE_PLACE = /\b(my|our) (home|place|flat|apartment|house|room)\b|\bat 
 
 export function mountNearby(api, deps) {
   const { db, wrap, requireAuth, requireRole, HttpError, str, tx, notify, publicUser, getUser, getProfile, blockedBetween, closedApart,
-    conversationFor, mustBeReady, mustBeVerified, agencySpace, shortName, photosOf } = deps;
+    conversationFor, mustBeReady, mustBeVerified, agencySpace, shortName, photosOf, publicBase, communityManagerOf } = deps;
+  const ratingDays = () => db.prepare('SELECT rating_days FROM community_rules WHERE id = 1').get()?.rating_days ?? 3;
   const bad = (m, code) => new HttpError(400, m, code);
   const notFound = () => new HttpError(404, 'Not found.');
   const now = () => new Date().toISOString();
@@ -133,15 +152,36 @@ export function mountNearby(api, deps) {
     const host = m.host_id ? getUser(m.host_id) : null;
     const agency = m.agency_id ? db.prepare('SELECT name FROM ambassadors WHERE id = ?').get(m.agency_id) : null;
     const insider = going || runs || m.source === 'external';
+    const community = m.source === 'community';
     const v = {
-      id: m.id, source: m.source, official: m.source === 'agency', external: m.source === 'external', kind: m.kind, title: m.title, about: m.about,
+      id: m.id, source: m.source, official: m.source === 'agency', external: m.source === 'external', community, kind: m.kind, title: m.title, about: m.about,
       city: m.city, country: m.country, area: m.area, starts_at: m.starts_at, ends_at: m.ends_at, started: m.starts_at < now(), audience: m.audience, agency_only: !!m.agency_only,
       max_people: m.max_people, going: goingCount(m), status: m.status, i_am_going: going, i_host: !!runs && u.role !== 'admin',
-      host: host ? publicUser(host, u) : null, agency: agency?.name ?? null, organizer: m.organizer, external_url: m.external_url,
+      // A Community Manager isn't a member with a profile: they show by first name, as PairMundo's host for the city.
+      host: host && !community ? publicUser(host, u) : null, community_host: community && host ? shortName(host.name) : null,
+      agency: agency?.name ?? null, organizer: m.organizer, external_url: m.external_url,
       // The exact spot is for people going; everyone else sees the neighbourhood, and a map pin rounded to the grid.
       place: insider ? m.place : null,
       point: m.lat == null ? null : insider ? { lat: m.lat, lng: m.lng, exact: true } : { lat: toGrid(m.lat, 90), lng: toGrid(m.lng, 180), exact: false },
     };
+    if (m.source !== 'external') {
+      const t = Date.now(), w = checkinWindow(m);
+      const mine = db.prepare('SELECT newcomer FROM meetup_checkins WHERE meetup_id = ? AND user_id = ?').get(m.id, u.id);
+      v.checked_in = !!mine;
+      v.check_in_open = m.status === 'open' && t >= w.opens && t <= w.closes && !runs;
+      if (mine) {
+        v.my_rating = db.prepare('SELECT stars FROM meetup_ratings WHERE meetup_id = ? AND user_id = ?').get(m.id, u.id)?.stars ?? null;
+        v.can_rate = m.status !== 'cancelled' && t >= Date.parse(m.starts_at) && t <= ratingCloses(m, ratingDays());
+      }
+      // The host shows the code as a QR code at the meetup; scanning it opens the check-in page.
+      if (runs && full) {
+        const code = codeOf(m);
+        const c = db.prepare('SELECT COUNT(*) n, COALESCE(SUM(newcomer), 0) newcomers FROM meetup_checkins WHERE meetup_id = ?').get(m.id);
+        const r = db.prepare('SELECT COUNT(*) n, AVG(stars) avg FROM meetup_ratings WHERE meetup_id = ?').get(m.id);
+        v.checkin = { code, url: `${publicBase()}/#/checkin/${m.id}/${code}`, qr: `/api/meetups/${m.id}/qr.svg`, opens_at: new Date(w.opens).toISOString(), closes_at: new Date(w.closes).toISOString(),
+          count: c.n, newcomers: c.newcomers, ratings: r.n, rating: r.avg == null ? null : Math.round(r.avg * 10) / 10 };
+      }
+    }
     if (full && (going || runs)) {
       v.attendees = db.prepare('SELECT u.* FROM meetup_attendees a JOIN users u ON u.id = a.user_id WHERE a.meetup_id = ? ORDER BY a.created_at')
         .all(m.id).filter((x) => x.id === u.id || !blockedBetween(x.id, u.id)).map((x) => publicUser(x, u));
@@ -258,7 +298,15 @@ export function mountNearby(api, deps) {
     return { title, kind, place, about: str(b.about, 1000) || null, area: str(b.area, 80) || null, starts_at: start.toISOString(), ends_at: end, max_people: n,
       lat: lat != null && lng != null ? lat : null, lng: lat != null && lng != null ? lng : null };
   };
+  /** A meetup's check-in code, made the first time it's needed for meetups from before check-ins. */
+  const codeOf = (m) => {
+    if (m.checkin_code) return m.checkin_code;
+    m.checkin_code = newCheckinCode();
+    db.prepare('UPDATE meetups SET checkin_code = ? WHERE id = ?').run(m.checkin_code, m.id);
+    return m.checkin_code;
+  };
   const insertMeetup = (m) => {
+    if (m.source !== 'external') m.checkin_code = newCheckinCode();
     const cols = Object.keys(m);
     const id = Number(db.prepare(`INSERT INTO meetups (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`).run(...cols.map((k) => m[k])).lastInsertRowid);
     return getMeetup(id);
@@ -292,6 +340,12 @@ export function mountNearby(api, deps) {
       const audience = ['aupair', 'family', 'both'].includes(b.audience) ? b.audience : 'aupair';
       m = { source: 'agency', host_id: me.id, agency_id: a.id, audience, agency_only: b.agency_only === false ? 0 : 1,
         ...readMeetup(b, { maxPeople: 300, minLeadMs: 0 }), ...cityOf(b), demo: a.demo ? 1 : 0 };
+    } else if (me.role === 'ambassador' && communityManagerOf?.(me)) {
+      // A Community Manager hosts in their own city, for au pairs, families or both.
+      const cm = communityManagerOf(me);
+      if (b.public_place !== true) throw bad('Confirm the meetup is in a public place.', 'public_place');
+      const audience = ['aupair', 'family', 'both'].includes(b.audience) ? b.audience : 'both';
+      m = { source: 'community', host_id: me.id, audience, ...readMeetup(b, { maxPeople: 300, minLeadMs: 3600e3 }), city: cm.city, city_key: cm.city_key, country: cm.country };
     } else if (me.role === 'admin') {
       // A meetup from elsewhere (an expat group, a library language café), linking out to where people sign up.
       const url = str(b.external_url, 500);
@@ -304,6 +358,14 @@ export function mountNearby(api, deps) {
     m.created_by = me.id;
     if (me.demo) m.demo = 1;
     const saved = insertMeetup(m);
+    if (saved.source === 'community') {
+      // Everyone on Nearby in the city it's for hears about it: that's how a community grows.
+      const roles = saved.audience === 'both' ? ['aupair', 'family'] : [saved.audience];
+      for (const u of db.prepare(`SELECT u.id FROM nearby_settings n JOIN users u ON u.id = n.user_id WHERE n.country = ? AND n.city_key = ?
+          AND u.role IN (${roles.map(() => '?').join(',')}) AND u.suspended = 0 AND u.demo = ?`).all(saved.country, saved.city_key, ...roles, saved.demo ? 1 : 0)) {
+        notify(u.id, 'nearby', 'New PairMundo meetup in {city}: {title}', { city: saved.city, title: saved.title }, `#/meetups/${saved.id}`);
+      }
+    }
     if (saved.source === 'agency') {
       // The agency's own people in that city hear about it.
       const a = myAgency(me);
@@ -381,6 +443,63 @@ export function mountNearby(api, deps) {
     res.status(201);
     return { id, body, mine: true, created_at: db.prepare('SELECT created_at FROM meetup_messages WHERE id = ?').get(id).created_at };
   }));
+
+  // ---------- check-in and ratings ----------
+  // People check in at the meetup itself, with the code in the host's QR code. You don't need to have said you're
+  // going (or for there to be space left): you're there.
+  api.post('/meetups/:id/checkin', member, wrap((req) => {
+    const me = req.user, m = getMeetup(req.params.id);
+    if (!m || m.source === 'external' || m.status === 'hidden' || !!m.demo !== !!me.demo) throw notFound();
+    if (m.host_id && blockedBetween(m.host_id, me.id)) throw notFound();
+    const code = String(req.body?.code ?? '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!m.checkin_code || code !== m.checkin_code) throw bad('That check-in code is not right. Scan the QR code the host shows at the meetup.', 'bad_code');
+    mustBeReady(me);
+    if (m.status === 'cancelled') throw bad('This meetup was cancelled.');
+    if (m.host_id === me.id) throw bad("Hosts don't check in to their own meetup.");
+    if (m.audience !== 'both' && m.audience !== me.role) throw bad(m.audience === 'aupair' ? 'This meetup is for au pairs.' : 'This meetup is for host families.');
+    if (m.agency_only && agencySpace(me)?.id !== m.agency_id) throw notFound();
+    const w = checkinWindow(m), t = Date.now();
+    if (t < w.opens) throw bad('Check-in opens 30 minutes before the meetup starts.', 'too_early');
+    if (t > w.closes) throw bad('Check-in for this meetup has closed.', 'closed');
+    if (!db.prepare('SELECT 1 FROM meetup_checkins WHERE meetup_id = ? AND user_id = ?').get(m.id, me.id)) {
+      // New to the city's community: their first check-in at any meetup there.
+      const seen = db.prepare(`SELECT 1 FROM meetup_checkins c JOIN meetups x ON x.id = c.meetup_id WHERE c.user_id = ? AND x.country = ? AND x.city_key = ?`).get(me.id, m.country, m.city_key);
+      tx(db, () => {
+        db.prepare('INSERT OR IGNORE INTO meetup_attendees (meetup_id, user_id) VALUES (?,?)').run(m.id, me.id);
+        db.prepare('INSERT INTO meetup_checkins (meetup_id, user_id, newcomer) VALUES (?,?,?)').run(m.id, me.id, seen ? 0 : 1);
+      });
+    }
+    return { meetup: meetupView(getMeetup(m.id), me, true) };
+  }));
+  api.post('/meetups/:id/rating', member, wrap((req) => {
+    const me = req.user, m = getMeetup(req.params.id);
+    if (!m || !db.prepare('SELECT 1 FROM meetup_checkins WHERE meetup_id = ? AND user_id = ?').get(m.id, me.id)) throw new HttpError(403, 'Only people who checked in at the meetup can rate it.');
+    const stars = Number(req.body?.stars);
+    if (!Number.isInteger(stars) || stars < 1 || stars > 5) throw bad('Pick 1 to 5 stars.');
+    if (Date.now() < Date.parse(m.starts_at)) throw bad('You can rate the meetup once it has started.');
+    if (Date.now() > ratingCloses(m, ratingDays())) throw bad('Ratings for this meetup have closed.');
+    db.prepare(`INSERT INTO meetup_ratings (meetup_id, user_id, stars, comment) VALUES (?,?,?,?)
+      ON CONFLICT(meetup_id, user_id) DO UPDATE SET stars = excluded.stars, comment = excluded.comment, created_at = datetime('now')`).run(m.id, me.id, stars, str(req.body?.comment, 500) || null);
+    return { meetup: meetupView(m, me, true) };
+  }));
+  // The QR code the host shows: it opens the check-in page with the code filled in.
+  api.get('/meetups/:id/qr.svg', requireAuth, wrap(async (req, res) => {
+    const m = getMeetup(req.params.id);
+    if (!m || m.source === 'external' || !runsIt(m, req.user)) throw notFound();
+    const svg = await QRCode.toString(`${publicBase()}/#/checkin/${m.id}/${codeOf(m)}`, { type: 'svg', margin: 2, errorCorrectionLevel: 'M', color: { dark: '#1d1b3a', light: '#ffffff' } });
+    res.set({ 'Content-Type': 'image/svg+xml', 'Cache-Control': 'private, no-store' }).send(svg);
+  }));
+  /** Asks everyone who checked in at a meetup that ended to rate it, once. Run hourly. */
+  const askForRatings = () => {
+    const since = new Date(Date.now() - 2 * 86400e3).toISOString();
+    for (const m of db.prepare("SELECT * FROM meetups WHERE rating_asked_at IS NULL AND status = 'open' AND source != 'external' AND starts_at >= ?").all(since)) {
+      if (Date.now() < checkinWindow(m).closes - CHECKIN_AFTER_MS) continue; // not over yet
+      db.prepare("UPDATE meetups SET rating_asked_at = datetime('now') WHERE id = ?").run(m.id);
+      for (const c of db.prepare('SELECT user_id FROM meetup_checkins WHERE meetup_id = ?').all(m.id)) {
+        notify(c.user_id, 'nearby', 'How was {title}? Rate it in a tap.', { title: m.title }, `#/meetups/${m.id}`);
+      }
+    }
+  };
 
   // Reporting a meetup goes to the admin's reports. Enough reports from different people hide it until the admin looks.
   api.post('/meetups/:id/report', requireAuth, wrap((req, res) => {
@@ -471,5 +590,5 @@ export function mountNearby(api, deps) {
       return n && isNear(area, n) ? { distance: distanceBand(area, n), city: n.city } : null;
     };
   };
-  return { nearFamily };
+  return { nearFamily, askForRatings };
 }

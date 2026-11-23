@@ -1239,5 +1239,16 @@
   "au pairs": "au pairs",
   "Pins are meetups. Bubbles show how many families are in each part of town, never where anyone is. A meetup pin is approximate until you join.": "Los pines son quedadas. Las burbujas muestran cuántas familias hay en cada zona, nunca dónde está nadie. El pin de una quedada es aproximado hasta que te unes.",
   "Pins are meetups. Bubbles show how many au pairs are in each part of town, never where anyone is. A meetup pin is approximate until you join.": "Los pines son quedadas. Las burbujas muestran cuántas au pairs hay en cada zona, nunca dónde está nadie. El pin de una quedada es aproximado hasta que te unes.",
-  "Bubbles appear once enough people in {city} are on Nearby.": "Las burbujas aparecen cuando suficientes personas en {city} usan Cerca."
+  "Bubbles appear once enough people in {city} are on Nearby.": "Las burbujas aparecen cuando suficientes personas en {city} usan Cerca.",
+  "PairMundo community": "Comunidad PairMundo",
+  "Hosted by {name}, PairMundo Community Manager for {city}": "Organiza {name}, Community Manager de PairMundo en {city}",
+  "You're checked in. Enjoy the meetup!": "Ya te registraste. ¡Disfruta del encuentro!",
+  "Check-in code": "Código de registro",
+  "Check in": "Registrarme",
+  "Type the code under the QR code the host shows.": "Escribe el código que aparece debajo del QR que muestra quien organiza.",
+  "Your rating": "Tu valoración",
+  "How was it?": "¿Qué tal estuvo?",
+  "Anything to tell the host? (optional, they see it without your name)": "¿Algo que decirle a quien organiza? (opcional, lo verá sin tu nombre)",
+  "Send rating": "Enviar valoración",
+  "Thanks for rating!": "¡Gracias por tu valoración!"
 }

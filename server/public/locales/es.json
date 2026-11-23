@@ -1436,5 +1436,21 @@
   "PairMundo is on the App Store and Google Play. Download it and start swiping.": "PairMundo ya está en App Store y Google Play. Descárgala y empieza a deslizar.",
   "{soon}. Leave your email and we'll tell you the day it arrives.": "{soon}. Déjanos tu email y te avisaremos el día que llegue.",
   "Show password": "Mostrar contraseña",
-  "Hide password": "Ocultar contraseña"
+  "Hide password": "Ocultar contraseña",
+  "Checking in at meetups is for au pairs and host families.": "El registro en los encuentros es para au pairs y familias anfitrionas.",
+  "PairMundo community": "Comunidad PairMundo",
+  "Hosted by {name}, PairMundo Community Manager for {city}": "Organiza {name}, Community Manager de PairMundo en {city}",
+  "You're checked in. Enjoy the meetup!": "Ya te registraste. ¡Disfruta del encuentro!",
+  "Check-in code": "Código de registro",
+  "Check in": "Registrarme",
+  "Scan the QR code the host shows, or type the code under it.": "Escanea el código QR que muestra quien organiza, o escribe el código que aparece debajo.",
+  "Your rating": "Tu valoración",
+  "How was it?": "¿Qué tal estuvo?",
+  "Anything to tell the host? (optional, they see it without your name)": "¿Algo que decirle a quien organiza? (opcional, lo verá sin tu nombre)",
+  "Send rating": "Enviar valoración",
+  "Find more meetups in the Nearby tab of the PairMundo app.": "Encuentra más encuentros en la pestaña Cerca de la app PairMundo.",
+  "Thanks for rating!": "¡Gracias por tu valoración!",
+  "Your community": "Tu comunidad",
+  "This meetup is no longer available.": "Esta quedada ya no está disponible.",
+  "Official": "Oficial"
 }

@@ -12,6 +12,7 @@ import { createMailer, withMedia, agencyFamilyInviteEmail, agencyUpdateEmail, ag
 import { mountPipeline } from './pipeline.js';
 import { mountHiring } from './hiring.js';
 import { mountNearby } from './nearby.js';
+import { mountCommunity } from './community.js';
 import { countryName, pickLang, t as translate } from './i18n.js';
 import { createCheckout, createIdentity, verifyWebhook } from './identity.js';
 import { createRevenueCat, storeName, webhookAuthorized } from './revenuecat.js';
@@ -914,6 +915,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       pass: passView(u),
       rating: ratingSummary(u.id),
       ambassador: db.prepare('SELECT code, kind FROM ambassadors WHERE user_id = ? AND active = 1').get(u.id) ?? null,
+      // A Community Manager's city, for their page.
+      ...(u.role === 'ambassador' ? { community: (({ city, country } = {}) => (city ? { city, country } : null))(community.managerOf(u) ?? {}) } : {}),
       // Whether agencies can find partner agencies and show memberships (AGENCY_NETWORK=on).
       ...(['agency', 'admin'].includes(u.role) ? { agency_network: agencyNetworkOn() } : {}),
       // Whether they joined with a referral or agency code (an au pair without one can still add their agency's).
@@ -2978,8 +2981,11 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   const csvCell = (v) => { if (v == null) return ''; let s = String(v); if (/^[=+\-@]/.test(s)) s = `'${s}`; return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
   const { addTeamMember } = mountPipeline(api, { db, wrap, requireRole, HttpError, str, isDate, normEmail, csvCell, mailer, publicBase, hashPassword, notify, teamInviteEmail });
   mountHiring(api, { db, wrap, requireRole, rateLimit, HttpError, str, normEmail, mailer, publicBase, notify, video, addTeamMember });
+  const community = mountCommunity(api, { db, wrap, requireAuth, requireRole, HttpError, str, normEmail, hashPassword, mailer, withMedia, publicBase, notify, csvCell, shortName });
   const nearby = mountNearby(api, { db, wrap, requireAuth, requireRole, HttpError, str, tx, notify, publicUser, getUser, getProfile, blockedBetween, closedApart,
-    conversationFor, mustBeReady, mustBeVerified, agencySpace, shortName, photosOf });
+    conversationFor, mustBeReady, mustBeVerified, agencySpace, shortName, photosOf, publicBase, communityManagerOf: community.managerOf });
+  // Hourly: ask people who checked in at a meetup that ended to rate it.
+  app.sendRatingRequests = () => nearby.askForRatings();
   api.get('/admin/waitlist', requireRole('admin'), wrap(() => ({
     total: db.prepare('SELECT COUNT(*) n FROM waitlist').get().n,
     by_role: db.prepare('SELECT role, COUNT(*) n FROM waitlist GROUP BY role ORDER BY n DESC').all(),
