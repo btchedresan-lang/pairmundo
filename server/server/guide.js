@@ -82,14 +82,14 @@ const TEXT = {
     'Conheçam-se cara a cara antes de decidir. Toque em 📹 Videochamada no chat para ligar de graça.',
     'Träffas ansikte mot ansikte innan ni bestämmer er. Tryck på 📹 Videosamtal i chatten för ett gratis samtal.'],
   call_c: ['Open my chats', 'Abrir mis chats', 'Ouvrir mes chats', 'Chats öffnen', 'Abrir meus chats', 'Öppna mina chattar'],
-  placement_t: ['Agree your placement', 'Acordad la estancia', 'Convenez du placement', 'Vereinbart den Aufenthalt', 'Combinem a estadia', 'Kom överens om placeringen'],
+  placement_t: ['Agree your placement', 'Acordad la estancia', 'Convenez du placement', 'Vereinbart die Vermittlung', 'Combinem a estadia', 'Kom överens om placeringen'],
   placement_x: ["Found the one? Open their profile and tap 🧳 Propose placement. We check it against the country's au pair rules and give you both a checklist for the contract, visa, insurance and travel.",
     '¿Lo encontraste? Abre su perfil y pulsa 🧳 Proponer estancia. La comprobamos con las normas del país y os damos una lista para contrato, visado, seguro y viaje.',
     "C'est le bon ? Ouvrez son profil et touchez 🧳 Proposer un placement. Nous le vérifions selon les règles du pays et vous donnons une liste pour le contrat, le visa, l'assurance et le voyage.",
-    'Gefunden? Öffne das Profil und tippe auf 🧳 Aufenthalt vorschlagen. Wir prüfen ihn nach den Regeln des Landes und geben euch eine Checkliste für Vertrag, Visum, Versicherung und Reise.',
+    'Gefunden? Öffne das Profil und tippe auf 🧳 Vermittlung vorschlagen. Wir prüfen ihn nach den Regeln des Landes und geben euch eine Checkliste für Vertrag, Visum, Versicherung und Reise.',
     'Encontrou? Abra o perfil e toque em 🧳 Propor estadia. Conferimos com as regras do país e damos a vocês uma lista para contrato, visto, seguro e viagem.',
-    'Hittat rätt? Öppna profilen och tryck på 🧳 Föreslå placering. Vi kontrollerar den mot landets regler och ger er en checklista för avtal, visum, försäkring och resa.'],
-  placement_c: ['See placements', 'Ver estancias', 'Voir les placements', 'Aufenthalte ansehen', 'Ver estadias', 'Se placeringar'],
+    'Hittat rätt? Öppna profilen och tryck på 🧳 Föreslå vistelse. Vi kontrollerar den mot landets regler och ger er en checklista för avtal, visum, försäkring och resa.'],
+  placement_c: ['See placements', 'Ver estancias', 'Voir les placements', 'Vermittlungen ansehen', 'Ver estadias', 'Se placeringar'],
   // ---------- steps: agencies ----------
   code_t: ['Get your agency code', 'Recibe tu código de agencia', 'Recevez votre code agence', 'Erhalte deinen Agentur-Code', 'Receba seu código de agência', 'Få er byråkod'],
   code_x: ["We're setting up your agency code. It shows on Your agency once it's ready, usually within a day.",
@@ -128,11 +128,11 @@ const TEXT = {
     'Familien, die mit deinem Code beitreten, sehen zuerst deine Au-pairs, markiert mit „Vorbereitet & geprüft“ von deiner Agentur.',
     'As famílias que entram com seu código veem primeiro seus au pairs, marcados como "Preparado e aprovado" pela sua agência.',
     'Familjer som går med med er kod ser era au pairer först, märkta "Förberedd och godkänd" av er byrå.'],
-  ag_placement_t: ['Your first placement', 'Tu primera estancia', 'Votre premier placement', 'Dein erster Aufenthalt', 'Sua primeira estadia', 'Er första placering'],
+  ag_placement_t: ['Your first placement', 'Tu primera estancia', 'Votre premier placement', 'Deine erste Vermittlung', 'Sua primeira estadia', 'Er första placering'],
   ag_placement_x: ['When one of your au pairs or families agrees a placement, it counts here and on Your agency.',
     'Cuando uno de tus au pairs o familias acuerda una estancia, cuenta aquí y en Tu agencia.',
     "Quand un de vos au pairs ou familles convient d'un placement, il compte ici et dans Votre agence.",
-    'Wenn eines deiner Au-pairs oder eine deiner Familien einen Aufenthalt vereinbart, zählt er hier und unter Deine Agentur.',
+    'Wenn eines deiner Au-pairs oder eine deiner Familien eine Vermittlung vereinbart, zählt er hier und unter Deine Agentur.',
     'Quando um dos seus au pairs ou famílias combina uma estadia, ela conta aqui e em Sua agência.',
     'När en av era au pairer eller familjer kommer överens om en placering räknas den här och under Er byrå.'],
   // ---------- steps: Community Managers ----------
@@ -158,6 +158,101 @@ const TEXT = {
     'Wer eingecheckt hat, wird ein paar Tage lang um eine Bewertung gebeten. Ein Schnitt von 4 Sternen macht es zu einem erfolgreichen Event.',
     'Quem fez check-in é convidado a avaliar o evento por alguns dias. Uma média de 4 estrelas ajuda a torná-lo um evento de sucesso.',
     'De som checkat in ombeds betygsätta evenemanget några dagar efteråt. Ett snitt på 4 stjärnor hjälper till att göra det lyckat.'],
+  // ---------- a placement, step by step ----------
+  s_confirm: ['Confirm', 'Confirmar', 'Confirmer', 'Bestätigen', 'Confirmar', 'Bekräfta'],
+  s_agreement: ['Agreement', 'Acuerdo', 'Contrat', 'Vertrag', 'Acordo', 'Avtal'],
+  s_documents: ['Visa documents', 'Documentos del visado', 'Documents de visa', 'Visumunterlagen', 'Documentos do visto', 'Visumhandlingar'],
+  s_checklist: ['Before arrival', 'Antes de la llegada', "Avant l'arrivée", 'Vor der Ankunft', 'Antes da chegada', 'Före ankomst'],
+  s_start: ['Arrival', 'Llegada', 'Arrivée', 'Ankunft', 'Chegada', 'Ankomst'],
+  s_stay: ['The stay', 'La estancia', 'Le séjour', 'Der Aufenthalt', 'A estadia', 'Vistelsen'],
+  s_review: ['Review', 'Valoración', 'Avis', 'Bewertung', 'Avaliação', 'Omdöme'],
+  j_confirm_t: ['Confirm the placement', 'Confirma la estancia', 'Confirmez le placement', 'Bestätige die Vermittlung', 'Confirme a estadia', 'Bekräfta vistelsen'],
+  j_confirm_x: ['Check the dates, hours and pocket money with {name}. Once you have both confirmed, PairMundo writes your au pair agreement and your checklist.',
+    'Revisa con {name} las fechas, las horas y el dinero de bolsillo. Cuando ambos confirméis, PairMundo redacta vuestro acuerdo de au pair y vuestra lista.',
+    "Vérifiez avec {name} les dates, les heures et l'argent de poche. Une fois que vous avez tous deux confirmé, PairMundo rédige votre contrat au pair et votre liste.",
+    'Prüfe mit {name} Daten, Stunden und Taschengeld. Sobald ihr beide bestätigt habt, schreibt PairMundo euren Au-pair-Vertrag und eure Checkliste.',
+    'Confira com {name} as datas, as horas e a mesada. Quando os dois confirmarem, o PairMundo escreve o acordo de au pair e a lista de vocês.',
+    'Gå igenom datum, timmar och fickpengar med {name}. När ni båda har bekräftat skriver PairMundo ert au pair-avtal och er checklista.'],
+  j_confirm_c: ['Confirm placement', 'Confirmar estancia', 'Confirmer le placement', 'Vermittlung bestätigen', 'Confirmar estadia', 'Bekräfta vistelsen'],
+  j_wait_confirm_t: ['Waiting for {name} to confirm', 'Esperando a que {name} confirme', 'En attente de la confirmation de {name}', 'Warten auf die Bestätigung von {name}', 'Aguardando {name} confirmar', 'Väntar på att {name} bekräftar'],
+  j_wait_confirm_x: ["We've told {name}. When they confirm, you both get the au pair agreement to sign. A message in your chat can speed things up.",
+    'Se lo hemos dicho a {name}. Cuando confirme, recibiréis el acuerdo de au pair para firmar. Un mensaje en el chat puede agilizarlo.',
+    "Nous avons prévenu {name}. Dès sa confirmation, vous recevrez tous deux le contrat au pair à signer. Un message dans le chat peut accélérer les choses.",
+    'Wir haben {name} Bescheid gegeben. Nach der Bestätigung bekommt ihr beide den Au-pair-Vertrag zum Unterschreiben. Eine Nachricht im Chat kann helfen.',
+    'Avisamos {name}. Quando confirmar, vocês dois recebem o acordo de au pair para assinar. Uma mensagem no chat pode agilizar.',
+    'Vi har meddelat {name}. När hen bekräftar får ni båda au pair-avtalet att skriva under. Ett meddelande i chatten kan snabba på.'],
+  j_sign_t: ['Read and sign the au pair agreement', 'Lee y firma el acuerdo de au pair', 'Lisez et signez le contrat au pair', 'Lies und unterschreibe den Au-pair-Vertrag', 'Leia e assine o acordo de au pair', 'Läs och skriv under au pair-avtalet'],
+  j_sign_x: ['PairMundo wrote it from your placement and the country rules. Agree the days off, paid holiday and notice period together, then both sign.',
+    'PairMundo lo redactó a partir de vuestra estancia y las normas del país. Acordad días libres, vacaciones pagadas y preaviso, y luego firmad ambos.',
+    'PairMundo l\'a rédigé à partir de votre placement et des règles du pays. Convenez des jours de repos, congés payés et préavis, puis signez tous les deux.',
+    'PairMundo hat ihn aus eurer Vermittlung und den Regeln des Landes erstellt. Vereinbart freie Tage, bezahlten Urlaub und Kündigungsfrist, dann unterschreibt beide.',
+    'O PairMundo escreveu a partir da estadia e das regras do país. Combinem folgas, férias pagas e aviso prévio, e depois os dois assinam.',
+    'PairMundo har skrivit det utifrån er placering och landets regler. Kom överens om lediga dagar, betald semester och uppsägningstid, och skriv sedan under båda två.'],
+  j_sign_c: ['Open the agreement', 'Abrir el acuerdo', 'Ouvrir le contrat', 'Vertrag öffnen', 'Abrir o acordo', 'Öppna avtalet'],
+  j_wait_sign_t: ['Waiting for {name} to sign', 'Esperando a que {name} firme', 'En attente de la signature de {name}', 'Warten auf die Unterschrift von {name}', 'Aguardando {name} assinar', 'Väntar på att {name} skriver under'],
+  j_wait_sign_x: ["You've signed. We've asked {name} to read the agreement and sign it too. Meanwhile, you can start on your checklist.",
+    'Ya has firmado. Hemos pedido a {name} que lo lea y firme. Mientras tanto, puedes empezar con tu lista.',
+    'Vous avez signé. Nous avons demandé à {name} de lire le contrat et de le signer. En attendant, vous pouvez commencer votre liste.',
+    'Du hast unterschrieben. Wir haben {name} gebeten, den Vertrag zu lesen und auch zu unterschreiben. Bis dahin kannst du mit deiner Checkliste anfangen.',
+    'Você já assinou. Pedimos a {name} que leia e assine também. Enquanto isso, você pode começar sua lista.',
+    'Du har skrivit under. Vi har bett {name} att läsa avtalet och skriva under. Under tiden kan du börja på din checklista.'],
+  j_docs_t: ['Get the visa documents ready', 'Prepara los documentos del visado', 'Préparez les documents de visa', 'Bereite die Visumunterlagen vor', 'Prepare os documentos do visto', 'Gör i ordning visumhandlingarna'],
+  j_docs_x: ["Tick off what you hand in for {name}'s visa. PairMundo writes the invitation letter for you.",
+    'Marca lo que entregas para el visado de {name}. PairMundo redacta la carta de invitación por ti.',
+    'Cochez ce que vous remettez pour le visa de {name}. PairMundo rédige la lettre d\'invitation pour vous.',
+    'Hake ab, was du für das Visum von {name} einreichst. PairMundo schreibt das Einladungsschreiben für dich.',
+    'Marque o que você entrega para o visto de {name}. O PairMundo escreve a carta-convite para você.',
+    'Bocka av det du lämnar in för visumet till {name}. PairMundo skriver inbjudningsbrevet åt dig.'],
+  j_docs_ap_t: ['Your host family prepares the visa documents', 'Tu familia prepara los documentos del visado', "Votre famille d'accueil prépare les documents de visa", 'Deine Gastfamilie bereitet die Visumunterlagen vor', 'Sua família anfitriã prepara os documentos do visto', 'Din värdfamilj förbereder visumhandlingarna'],
+  j_docs_ap_x: ['Open them to see the visa steps for you, and what to bring to your appointment.',
+    'Ábrelos para ver los pasos del visado para ti y qué llevar a tu cita.',
+    'Ouvrez-les pour voir les étapes du visa pour vous et ce qu\'il faut apporter au rendez-vous.',
+    'Öffne sie, um deine Visumschritte zu sehen und was du zum Termin mitbringst.',
+    'Abra para ver os passos do visto para você e o que levar ao agendamento.',
+    'Öppna dem för att se dina visumsteg och vad du ska ta med till ditt besök.'],
+  j_docs_c: ['Open the visa documents', 'Abrir los documentos del visado', 'Ouvrir les documents de visa', 'Visumunterlagen öffnen', 'Abrir os documentos do visto', 'Öppna visumhandlingarna'],
+  j_list_t: ['Work through your checklist', 'Completa tu lista', 'Avancez dans votre liste', 'Arbeite deine Checkliste ab', 'Complete sua lista', 'Gå igenom din checklista'],
+  j_list_x: ['{n} things left for you before arrival, like the visa, insurance and travel. Tick them off as you go.',
+    'Te quedan {n} cosas antes de la llegada, como el visado, el seguro y el viaje. Márcalas cuando las hagas.',
+    'Il vous reste {n} choses avant l\'arrivée, comme le visa, l\'assurance et le voyage. Cochez-les au fur et à mesure.',
+    'Noch {n} Dinge vor der Ankunft, etwa Visum, Versicherung und Reise. Hake sie ab, sobald sie erledigt sind.',
+    'Faltam {n} coisas para você antes da chegada, como visto, seguro e viagem. Marque conforme for fazendo.',
+    '{n} saker kvar för dig före ankomsten, som visum, försäkring och resa. Bocka av dem allt eftersom.'],
+  j_list_c: ['See the checklist', 'Ver la lista', 'Voir la liste', 'Checkliste ansehen', 'Ver a lista', 'Se checklistan'],
+  j_ready_t: ['All set for {date}', 'Todo listo para el {date}', 'Tout est prêt pour le {date}', 'Alles bereit für den {date}', 'Tudo pronto para {date}', 'Allt klart till {date}'],
+  j_ready_x: ['Everything before arrival is done. On the day the stay starts, mark it as started here.',
+    'Todo lo previo a la llegada está hecho. El día que empiece la estancia, márcala aquí como iniciada.',
+    "Tout ce qu'il fallait faire avant l'arrivée est fait. Le jour où le séjour commence, marquez-le ici comme commencé.",
+    'Alles vor der Ankunft ist erledigt. Am ersten Tag des Aufenthalts markierst du ihn hier als begonnen.',
+    'Tudo antes da chegada está feito. No dia em que a estadia começar, marque-a aqui como iniciada.',
+    'Allt före ankomsten är klart. Den dag vistelsen börjar markerar du den som påbörjad här.'],
+  j_start_t: ['Mark the stay as started', 'Marca la estancia como iniciada', 'Marquez le séjour comme commencé', 'Markiere den Aufenthalt als begonnen', 'Marque a estadia como iniciada', 'Markera vistelsen som påbörjad'],
+  j_start_x: ['Has the au pair arrived? Mark the stay as started. Your checklist then moves on to the check-ins during the stay.',
+    '¿Ha llegado el au pair? Marca la estancia como iniciada. Tu lista pasa a los seguimientos durante la estancia.',
+    "L'au pair est arrivé ? Marquez le séjour comme commencé. Votre liste passe ensuite aux points d'étape pendant le séjour.",
+    'Ist das Au-pair angekommen? Markiere den Aufenthalt als begonnen. Deine Checkliste geht dann mit den Check-ins während des Aufenthalts weiter.',
+    'O au pair chegou? Marque a estadia como iniciada. Sua lista passa para os acompanhamentos durante a estadia.',
+    'Har au pairen kommit? Markera vistelsen som påbörjad. Checklistan fortsätter sedan med avstämningarna under vistelsen.'],
+  j_start_c: ['Mark as started', 'Marcar como iniciada', 'Marquer comme commencé', 'Als begonnen markieren', 'Marcar como iniciada', 'Markera som påbörjad'],
+  j_stay_t: ['Enjoy the stay', 'Disfruta la estancia', 'Profitez du séjour', 'Genießt den Aufenthalt', 'Aproveitem a estadia', 'Njut av vistelsen'],
+  j_stay_x: ['Keep up the check-ins on your checklist. When the stay ends on {date}, mark it as completed and review each other.',
+    'Mantén los seguimientos de tu lista. Cuando la estancia termine el {date}, márcala como completada y valoraos mutuamente.',
+    "Suivez les points d'étape de votre liste. Quand le séjour se termine le {date}, marquez-le comme terminé et laissez-vous un avis.",
+    'Bleib bei den Check-ins auf deiner Checkliste. Wenn der Aufenthalt am {date} endet, markiere ihn als abgeschlossen und bewertet euch gegenseitig.',
+    'Mantenha os acompanhamentos da lista. Quando a estadia terminar em {date}, marque como concluída e avaliem um ao outro.',
+    'Fortsätt med avstämningarna på checklistan. När vistelsen slutar {date}, markera den som avslutad och lämna omdömen om varandra.'],
+  j_end_c: ['Mark as completed', 'Marcar como completada', 'Marquer comme terminé', 'Als abgeschlossen markieren', 'Marcar como concluída', 'Markera som avslutad'],
+  j_review_t: ['Review {name}', 'Valora a {name}', 'Laissez un avis sur {name}', 'Bewerte {name}', 'Avalie {name}', 'Lämna omdöme om {name}'],
+  j_review_x: ['Your review stays hidden until {name} reviews you too, or 14 days after the end. It helps the next au pairs and families.',
+    'Tu valoración queda oculta hasta que {name} te valore, o 14 días después del final. Ayuda a los próximos au pairs y familias.',
+    "Votre avis reste masqué jusqu'à ce que {name} vous en laisse un, ou 14 jours après la fin. Il aide les prochains au pairs et familles.",
+    'Deine Bewertung bleibt verborgen, bis {name} dich auch bewertet, oder 14 Tage nach dem Ende. Sie hilft den nächsten Au-pairs und Familien.',
+    'Sua avaliação fica oculta até {name} avaliar você também, ou 14 dias após o fim. Ela ajuda os próximos au pairs e famílias.',
+    'Ditt omdöme är dolt tills {name} lämnar ett om dig, eller 14 dagar efter slutet. Det hjälper nästa au pairer och familjer.'],
+  j_review_c: ['Write my review', 'Escribir mi valoración', 'Écrire mon avis', 'Bewertung schreiben', 'Escrever minha avaliação', 'Skriv mitt omdöme'],
+  j_done_t: ['All done 🎉', 'Todo hecho 🎉', 'Tout est fait 🎉', 'Alles erledigt 🎉', 'Tudo feito 🎉', 'Allt klart 🎉'],
+  j_done_x: ['Thanks for reviewing. We hope it was a great year!', 'Gracias por tu valoración. ¡Esperamos que haya sido un gran año!', 'Merci pour votre avis. Nous espérons que ce fut une belle année !', 'Danke für deine Bewertung. Wir hoffen, es war ein tolles Jahr!', 'Obrigado pela avaliação. Esperamos que tenha sido um ótimo ano!', 'Tack för ditt omdöme. Vi hoppas att det var ett fint år!'],
+  place_next_title: ['Your placement: {step}', 'Tu estancia: {step}', 'Votre placement : {step}', 'Deine Vermittlung: {step}', 'Sua estadia: {step}', 'Din placering: {step}'],
   // ---------- the next-step card in the app ----------
   next_title: ['Next step: {step}', 'Siguiente paso: {step}', 'Prochaine étape : {step}', 'Nächster Schritt: {step}', 'Próximo passo: {step}', 'Nästa steg: {step}'],
   progress: ['{done} of {total} done', '{done} de {total} hechos', '{done} sur {total} faits', '{done} von {total} erledigt', '{done} de {total} feitos', '{done} av {total} klara'],
@@ -203,11 +298,11 @@ const TEXT = {
     'Conheçam-se no chat e depois cara a cara com uma videochamada grátis, direto do chat.',
     'Lär känna varandra i chatten och träffas sedan ansikte mot ansikte med ett gratis videosamtal direkt från chatten.'],
   t_chat_pass: ['Chatting with au pairs needs the Family Pass.', 'Para chatear con au pairs necesitas el Family Pass.', 'Discuter avec les au pairs nécessite le Family Pass.', 'Zum Chatten mit Au-pairs brauchst du den Family Pass.', 'Para conversar com au pairs você precisa do Family Pass.', 'För att chatta med au pairer behöver du Family Pass.'],
-  t_place_t: ['4. Agree your placement', '4. Acordad la estancia', '4. Convenez du placement', '4. Vereinbart den Aufenthalt', '4. Combinem a estadia', '4. Kom överens om placeringen'],
+  t_place_t: ['4. Agree your placement', '4. Acordad la estancia', '4. Convenez du placement', '4. Vereinbart die Vermittlung', '4. Combinem a estadia', '4. Kom överens om placeringen'],
   t_place_x: ["Propose a placement from their profile. We check it against the country's au pair rules and give you both a checklist for the contract, visa, insurance and travel.",
     'Propón una estancia desde su perfil. La comprobamos con las normas del país y os damos una lista para contrato, visado, seguro y viaje.',
     "Proposez un placement depuis son profil. Nous le vérifions selon les règles du pays et vous donnons une liste pour le contrat, le visa, l'assurance et le voyage.",
-    'Schlag einen Aufenthalt über das Profil vor. Wir prüfen ihn nach den Regeln des Landes und geben euch eine Checkliste für Vertrag, Visum, Versicherung und Reise.',
+    'Schlag über das Profil eine Vermittlung vor. Wir prüfen ihn nach den Regeln des Landes und geben euch eine Checkliste für Vertrag, Visum, Versicherung und Reise.',
     'Proponha uma estadia pelo perfil. Conferimos com as regras do país e damos a vocês uma lista para contrato, visto, seguro e viagem.',
     'Föreslå en placering från profilen. Vi kontrollerar den mot landets regler och ger er en checklista för avtal, visum, försäkring och resa.'],
   t_agency_t: ['Welcome, {name}', 'Bienvenidos, {name}', 'Bienvenue, {name}', 'Willkommen, {name}', 'Bem-vindos, {name}', 'Välkommen, {name}'],
@@ -267,10 +362,69 @@ export function gt(lang, key, vars = {}) {
 }
 export const GUIDE_TEXT = TEXT;
 
+/**
+ * Where a placement is, step by step, for one of its two people, and what they do next.
+ * p: the placement row; view: { side: 'aupair'|'family', other: name, agreement, documents, tasks, my_review, lang }.
+ * Returns { stages: [{ key, label, done }], next: { key, title, text, cta, link, action, waiting } } or null when cancelled.
+ * action is what the button does on the placement page: confirm | active | completed | checklist | review.
+ */
+export function placementJourney(p, { side, other, agreement, documents, tasks = [], my_review: myReview, lang = 'en', today = new Date().toISOString().slice(0, 10) }) {
+  if (!p || p.status === 'cancelled') return null;
+  const T = (k, vars) => gt(lang, k, vars);
+  const daysTo = (d) => Math.round((Date.parse(`${d}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) / 86400e3);
+  const name = String(other || '').trim();
+  const confirmed = p.status !== 'proposed';
+  const mineConfirmed = side === 'aupair' ? p.aupair_confirmed : p.family_confirmed;
+  const signed = { mine: !!agreement?.[`${side}_signed_at`], theirs: !!agreement?.[`${side === 'aupair' ? 'family' : 'aupair'}_signed_at`] };
+  const hasDocs = !!documents && documents.total > 0;
+  const docsDone = hasDocs && documents.done >= documents.total;
+  const before = tasks.filter((t) => (t.owner === side || t.owner === 'both') && (!t.due_date || t.due_date <= p.start_date));
+  const left = before.filter((t) => !t.done).length;
+  const started = ['active', 'completed'].includes(p.status);
+  const stages = [
+    { key: 'confirm', done: confirmed },
+    { key: 'agreement', done: signed.mine && signed.theirs },
+    ...(hasDocs ? [{ key: 'documents', done: docsDone }] : []),
+    { key: 'checklist', done: started || left === 0 },
+    { key: 'start', done: started },
+    { key: 'stay', done: p.status === 'completed' },
+    { key: 'review', done: !!myReview },
+  ].map((s) => ({ ...s, label: T(`s_${s.key}`) }));
+  const fmt = (d) => { try { return new Intl.DateTimeFormat(lang, { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${d}T12:00:00Z`)); } catch { return d; } };
+  const step = (key, t, x, extra = {}) => ({ key, title: T(t, { name, date: extra.date && fmt(extra.date) }), text: T(x, { name, n: left, date: extra.date && fmt(extra.date) }),
+    cta: extra.cta ? T(extra.cta) : null, link: extra.link ?? null, action: extra.action ?? null, waiting: !!extra.waiting });
+  const place = `#/placements/${p.id}`;
+  let next;
+  if (!confirmed) {
+    next = mineConfirmed ? step('confirm', 'j_wait_confirm_t', 'j_wait_confirm_x', { waiting: true })
+      : step('confirm', 'j_confirm_t', 'j_confirm_x', { cta: 'j_confirm_c', link: place, action: 'confirm' });
+  } else if (!signed.mine && p.status !== 'completed') {
+    next = step('agreement', 'j_sign_t', 'j_sign_x', { cta: 'j_sign_c', link: `${place}/agreement` });
+  } else if (!signed.theirs && !started) {
+    next = step('agreement', 'j_wait_sign_t', 'j_wait_sign_x', left ? { cta: 'j_list_c', link: place, action: 'checklist', waiting: true } : { waiting: true });
+  } else if (hasDocs && !docsDone && !started) {
+    next = side === 'family' ? step('documents', 'j_docs_t', 'j_docs_x', { cta: 'j_docs_c', link: `${place}/documents` })
+      : left ? step('checklist', 'j_list_t', 'j_list_x', { cta: 'j_list_c', link: place, action: 'checklist' })
+        : step('documents', 'j_docs_ap_t', 'j_docs_ap_x', { cta: 'j_docs_c', link: `${place}/documents` });
+  } else if (!started) {
+    if (daysTo(p.start_date) <= 3) next = step('start', 'j_start_t', 'j_start_x', { cta: 'j_start_c', link: place, action: 'active' });
+    else if (left) next = step('checklist', 'j_list_t', 'j_list_x', { cta: 'j_list_c', link: place, action: 'checklist' });
+    else next = step('start', 'j_ready_t', 'j_ready_x', { date: p.start_date, waiting: true });
+  } else if (p.status === 'active') {
+    next = daysTo(p.end_date) <= 7 ? step('stay', 'j_stay_t', 'j_stay_x', { date: p.end_date, cta: 'j_end_c', link: place, action: 'completed' })
+      : step('stay', 'j_stay_t', 'j_stay_x', { date: p.end_date });
+  } else if (!myReview) {
+    next = step('review', 'j_review_t', 'j_review_x', { cta: 'j_review_c', link: place, action: 'review' });
+  } else {
+    next = step('done', 'j_done_t', 'j_done_x');
+  }
+  return { stages, next };
+}
+
 const SNOOZE_STEP_DAYS = 3; // a closed next-step card stays away this long
 const SNOOZE_ALL_HOURS = 20; // and no other next-step card shows until the next day
 
-export function mountGuide(api, { db, wrap, requireAuth, profileGaps, passView, identityOn, community, pickLang }) {
+export function mountGuide(api, { db, wrap, requireAuth, profileGaps, passView, identityOn, community, pickLang, journeyFor }) {
   const one = (sql, ...p) => !!db.prepare(sql).get(...p);
   const state = (userId) => {
     const s = db.prepare('SELECT * FROM guide_state WHERE user_id = ?').get(userId);
@@ -385,6 +539,19 @@ export function mountGuide(api, { db, wrap, requireAuth, profileGaps, passView, 
       const kind = kindOf(u);
       if (!['aupair', 'family'].includes(kind)) return null;
       const lang = u.lang || 'en';
+      // Someone with a placement under way gets its next step: confirming, the agreement, documents, arrival, review.
+      const open = db.prepare(`SELECT p.* FROM placements p WHERE (p.aupair_id = ? OR p.family_id = ?) AND (p.status IN ('proposed', 'confirmed', 'active')
+          OR (p.status = 'completed' AND NOT EXISTS (SELECT 1 FROM reviews r WHERE r.placement_id = p.id AND r.reviewer_id = ?)))
+        ORDER BY CASE p.status WHEN 'active' THEN 0 WHEN 'confirmed' THEN 1 WHEN 'proposed' THEN 2 ELSE 3 END, p.start_date LIMIT 1`).get(u.id, u.id, u.id);
+      const j = open && journeyFor?.(open, u, lang);
+      if (j?.next && !j.next.waiting && j.next.key !== 'done') {
+        const key = `p${open.id}_${j.next.key}`;
+        const { snooze } = state(u.id);
+        if (!(snooze[key] && Date.parse(snooze[key]) > Date.now())) {
+          return { id: `step-${key}`, title: gt(lang, 'place_next_title', { step: j.next.title }), text: j.next.text,
+            link: j.next.link || `#/placements/${open.id}`, created_at: null, guide: true };
+        }
+      }
       const g = guideFor(u, lang);
       if (g.hidden || g.complete) return null;
       if (g.steps.some((s) => ['email', 'profile'].includes(s.key) && !s.done)) return null;
@@ -398,7 +565,7 @@ export function mountGuide(api, { db, wrap, requireAuth, profileGaps, passView, 
     },
     /** Someone closed a next-step card: keep that step away for a few days, and any other for the rest of the day. */
     snooze(u, key) {
-      if (!/^[a-z_]{1,20}$/.test(key)) return;
+      if (!/^[a-z0-9_]{1,30}$/.test(key)) return;
       const now = Date.now();
       const { snooze } = state(u.id);
       save(u.id, { snooze: { ...snooze, [key]: new Date(now + SNOOZE_STEP_DAYS * 86400e3).toISOString(), _all: new Date(now + SNOOZE_ALL_HOURS * 3600e3).toISOString() } });

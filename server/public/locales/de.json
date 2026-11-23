@@ -767,7 +767,7 @@
   "Official site": "Offizielle Seite",
   "Open the agreement": "Vereinbarung öffnen",
   "Paid holiday: still to be agreed.": "Bezahlter Urlaub: noch zu vereinbaren.",
-  "PairMundo wrote it from your placement and the country rules. Read it, change what you need and sign it together.": "PairMundo hat sie aus eurem Aufenthalt und den Regeln des Landes erstellt. Lest sie, ändert, was nötig ist, und unterschreibt gemeinsam.",
+  "PairMundo wrote it from your placement and the country rules. Read it, change what you need and sign it together.": "PairMundo hat sie aus eurer Vermittlung und den Regeln des Landes erstellt. Lest sie, ändert, was nötig ist, und unterschreibt gemeinsam.",
   "Pocket money, room and costs": "Taschengeld, Zimmer und Kosten",
   "Print or save as PDF": "Drucken oder als PDF speichern",
   "Register at the Central Register of Foreign Nationals if you stay more than 3 months": "Melde dich beim Zentralen Ausländerregister an, wenn du länger als 3 Monate bleibst",
@@ -1300,6 +1300,11 @@
   "Improve my profile": "Profil verbessern",
   "A match happens when you and someone else both like each other. Like people on Discover, and check Likes for people who already liked you.": "Ein Match entsteht, wenn ihr euch gegenseitig liked. Like Profile unter Entdecken und schau unter Likes, wer dich schon mag.",
   "Ask about daily routines, hobbies and what they hope for from the year. When it feels right, start a free 📹 video call from the chat.": "Frag nach dem Alltag, Hobbys und was ihr euch von dem Jahr erhofft. Wenn es passt, starte einen kostenlosen 📹 Videoanruf aus dem Chat.",
-  "Found the one? In your chat, tap their name to open their profile, then 🧳 Propose placement. We check it against the country's au pair rules and give you both a checklist for the contract, visa, insurance and travel.": "Gefunden? Tippe im Chat auf den Namen, um das Profil zu öffnen, dann auf 🧳 Aufenthalt vorschlagen. Wir prüfen ihn nach den Regeln des Landes und geben euch eine Checkliste für Vertrag, Visum, Versicherung und Reise.",
-  "Say hi to {name}! Ask about daily routines, hobbies and what they hope for from the year. When it feels right, tap 📹 Video call above.": "Sag Hallo zu {name}! Frag nach dem Alltag, Hobbys und was ihr euch von dem Jahr erhofft. Wenn es passt, tippe oben auf 📹 Videoanruf."
+  "Found the one? In your chat, tap their name to open their profile, then 🧳 Propose placement. We check it against the country's au pair rules and give you both a checklist for the contract, visa, insurance and travel.": "Gefunden? Tippe im Chat auf den Namen, um das Profil zu öffnen, dann auf 🧳 Vermittlung vorschlagen. Wir prüfen ihn nach den Regeln des Landes und geben euch eine Checkliste für Vertrag, Visum, Versicherung und Reise.",
+  "Say hi to {name}! Ask about daily routines, hobbies and what they hope for from the year. When it feels right, tap 📹 Video call above.": "Sag Hallo zu {name}! Frag nach dem Alltag, Hobbys und was ihr euch von dem Jahr erhofft. Wenn es passt, tippe oben auf 📹 Videoanruf.",
+  "Step done! Here is what comes next.": "Schritt erledigt! So geht es weiter.",
+  "What happens next": "Wie es weitergeht",
+  "Later": "Später",
+  "OK": "OK",
+  "All documents ready": "Alle Unterlagen bereit"
 }

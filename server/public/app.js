@@ -2452,6 +2452,42 @@ views['new-placement'] = async ([otherId]) => {
   };
 };
 
+// A placement, step by step: where it is and what this person does next (server/guide.js placementJourney), and a
+// pop-up whenever that changes, so after each step people see the next one.
+function journeyButton(n) {
+  if (!n?.cta) return '';
+  return n.action ? `<button type="button" class="btn sm" data-jaction="${esc(n.action)}">${esc(n.cta)} →</button>` : `<a class="btn sm" href="${esc(n.link)}">${esc(n.cta)} →</a>`;
+}
+function journeyCard(j) {
+  if (!j) return '';
+  const cur = j.stages.find((s) => !s.done)?.key;
+  return `<div class="card guide-card journey-card"><ol class="journey">${j.stages.map((s) => `<li class="${s.done ? 'done' : s.key === cur ? 'next' : ''}"><span class="guide-dot">${s.done ? '✓' : ''}</span>${esc(s.label)}</li>`).join('')}</ol>
+    <div class="guide-next"><div class="muted small">${j.next.waiting ? '⏳ ' : ''}${tr('Next step')}</div><strong>${esc(j.next.title)}</strong>
+      <p class="small" style="margin:4px 0 8px">${esc(j.next.text)}</p>${journeyButton(j.next)}</div></div>`;
+}
+function journeyPopup(id, j, onAction) {
+  if (!j) return;
+  const key = `pm-journey-${id}`;
+  const done = j.stages.filter((s) => s.done).length;
+  const now = `${done}|${j.next.key}|${j.next.title}`;
+  let before = null;
+  try { before = localStorage.getItem(key); localStorage.setItem(key, now); } catch { return; }
+  if (before === now) return;
+  const progressed = before && Number(before.split('|')[0]) < done;
+  const el = document.createElement('div');
+  el.className = 'tour-overlay'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true');
+  el.innerHTML = `<div class="tour-box"><div class="tour-icon">${progressed ? '✓' : j.next.waiting ? '⏳' : '🧳'}</div>
+    <p class="muted small" style="margin:0 0 4px">${progressed ? tr('Step done! Here is what comes next.') : tr('What happens next')}</p>
+    <h2>${esc(j.next.title)}</h2><p>${esc(j.next.text)}</p>
+    <div class="tour-dots">${j.stages.map((s) => `<span class="${s.done ? 'on' : ''}"></span>`).join('')}</div>
+    <div class="row" style="justify-content:center">${j.next.cta ? journeyButton(j.next).replace('btn sm', 'btn') : ''}<button type="button" class="btn ghost" id="jLater">${j.next.cta ? tr('Later') : tr('OK')}</button></div></div>`;
+  const close = () => el.remove();
+  el.onclick = (e) => { if (e.target === el) close(); };
+  el.querySelector('#jLater').onclick = close;
+  el.querySelector('a.btn')?.addEventListener('click', close);
+  el.querySelector('[data-jaction]')?.addEventListener('click', (e) => { close(); onAction(e.currentTarget.dataset.jaction); });
+  document.body.appendChild(el);
+}
 async function placementDetail(id) {
   const p = await api(`/placements/${id}`);
   const isAp = me.user.id === p.aupair_id; const isAdmin = me.user.role === 'admin';
@@ -2461,6 +2497,7 @@ async function placementDetail(id) {
   const next = { proposed: [], confirmed: ['active'], active: ['completed'] }[p.status] || [];
   const markAs = { active: tr('Mark as active'), completed: tr('Mark as completed') };
   render(`<div class="spread"><h1>${tr('Placement: {aupair} with {family}', { aupair: esc(p.aupair.name), family: esc(p.family.name) })}</h1><span class="chip ${['confirmed', 'active'].includes(p.status) ? 'ok' : p.status === 'proposed' ? 'warn' : ''}">${statusLabel(p.status)}</span></div>
+  ${journeyCard(p.journey)}
   <div class="cols-2"><div>
     <div class="card"><table>
       <tr><th>${tr('Country')}</th><td>${cname(p.country)}${p.program ? ` · <a href="#/programs/${p.program.code}">${tr('program guide')}</a>` : ''}</td></tr>
@@ -2486,7 +2523,7 @@ async function placementDetail(id) {
       <a class="btn ${p.documents.done === p.documents.total ? 'ghost' : 'secondary'}" style="margin-top:10px" href="#/placements/${p.id}/documents">${tr('Open the visa documents')}</a></div>` : ''}
     <div class="card"><h2>${tr('Program check')}</h2>${complianceBox(p.compliance)}</div>
   </div><div>
-    <div class="card"><h2>${tr('Checklist')}</h2><div class="muted small">${tr('{done} of {total} done', { done: p.tasks.filter((t) => t.done).length, total: p.tasks.length })}</div>
+    <div class="card" id="checklist"><h2>${tr('Checklist')}</h2><div class="muted small">${tr('{done} of {total} done', { done: p.tasks.filter((t) => t.done).length, total: p.tasks.length })}</div>
       ${p.tasks.map((t) => `<label class="task ${t.done ? 'done' : ''}"><input type="checkbox" data-task="${t.id}" ${t.done ? 'checked' : ''} ${isAdmin ? 'disabled' : ''}>
         <span class="t" style="flex:1">${esc(tr(t.title))}${t.link ? ` <a class="small" href="${esc(t.link)}" target="_blank" rel="noopener">${tr('Official site')} ↗</a>` : ''}
           ${(t.offers || []).map((o) => o.referral && !isAdmin ? referButton(o, p.id)
@@ -2504,8 +2541,21 @@ async function placementDetail(id) {
     : p.my_review ? `<div class="card"><h2>${tr('Your review')}</h2>${stars(p.my_review.score ?? p.my_review.overall)}${ratingBreakdown({ count: 1, criteria: p.my_review.criteria })}<p style="white-space:pre-wrap">${esc(p.my_review.comment)}</p></div>` : ''}
   </div></div>`);
   const reload = () => placementDetail(id);
+  const doConfirm = async () => { await api(`/placements/${id}/confirm`, { method: 'POST' }); toast(tr('Confirmed')); reload(); };
   const c = document.getElementById('confirm');
-  if (c) c.onclick = async () => { await api(`/placements/${id}/confirm`, { method: 'POST' }); toast(tr('Confirmed')); reload(); };
+  if (c) c.onclick = doConfirm;
+  // The next-step card's button does the step itself where it can.
+  const jumpTo = (el) => { el?.scrollIntoView({ behavior: 'smooth', block: 'start' }); el?.classList.add('flash'); setTimeout(() => el?.classList.remove('flash'), 1600); };
+  const journeyAction = async (action) => {
+    try {
+      if (action === 'confirm') return doConfirm();
+      if (action === 'checklist') return jumpTo(document.getElementById('checklist'));
+      if (action === 'review') return jumpTo(document.getElementById('review'));
+      if (action === 'active' || action === 'completed') { await api(`/placements/${id}/status`, { method: 'POST', body: { status: action } }); return reload(); }
+    } catch (e) { toast(e.message); }
+  };
+  document.querySelectorAll('[data-jaction]').forEach((b) => { b.onclick = () => { document.querySelector('.tour-overlay')?.remove(); journeyAction(b.dataset.jaction); }; });
+  journeyPopup(id, p.journey, journeyAction);
   document.querySelectorAll('[data-status]').forEach((b) => { b.onclick = async () => {
     if (b.dataset.status === 'cancelled' && !confirm(tr('Cancel this placement?'))) return;
     try { await api(`/placements/${id}/status`, { method: 'POST', body: { status: b.dataset.status } }); reload(); } catch (e) { toast(e.message); }
@@ -2597,7 +2647,10 @@ async function documentsPage(id) {
   document.getElementById('print').onclick = () => window.print();
   bindReferrals();
   document.querySelectorAll('[data-doc]').forEach((cb) => { cb.onchange = async () => {
-    try { await api(`/placements/${id}/documents`, { method: 'PUT', body: { doc: cb.dataset.doc, done: cb.checked } }); cb.closest('.task').classList.toggle('done', cb.checked); }
+    try {
+      const r = await api(`/placements/${id}/documents`, { method: 'PUT', body: { doc: cb.dataset.doc, done: cb.checked } }); cb.closest('.task').classList.toggle('done', cb.checked);
+      if (cb.checked && r.documents.every((x) => x.done)) { toast(tr('All documents ready')); setTimeout(() => go(`#/placements/${id}`), 900); }
+    }
     catch (e) { toast(e.message); cb.checked = !cb.checked; }
   }; });
   const af = document.getElementById('addr');
@@ -2645,7 +2698,7 @@ async function agreementPage(id) {
   const sf = document.getElementById('sign');
   if (sf) sf.onsubmit = async (e) => {
     e.preventDefault();
-    try { await api(`/placements/${id}/agreement/sign`, { method: 'POST', body: { name: sf.name.value } }); toast(tr('Signed')); agreementPage(id); }
+    try { await api(`/placements/${id}/agreement/sign`, { method: 'POST', body: { name: sf.name.value } }); toast(tr('Signed')); go(`#/placements/${id}`); }
     catch (err) { document.getElementById('sign-err').innerHTML = `<div class="alert error">${esc(err.message)}</div>`; }
   };
   const tf = document.getElementById('terms');

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { openDb } from '../server/db.js';
 import { createApp } from '../server/app.js';
 import { hashPassword } from '../server/auth.js';
-import { GUIDE_TEXT } from '../server/guide.js';
+import { GUIDE_TEXT, placementJourney } from '../server/guide.js';
 
 let server; let base; let db;
 before(async () => {
@@ -94,14 +94,17 @@ test('guide: an au pair and a family move through their steps, and the app gets 
   db.prepare('UPDATE users SET id_verified = 1 WHERE id = ?').run(ap);
   g = (await call(apT, 'GET', '/guide')).body.guide;
   assert.equal(g.complete, true);
-  assert.equal((await call(apT, 'GET', '/news')).body.news, null);
+  // With a placement under way, the app card moves on to the placement's own next step.
+  assert.match((await call(apT, 'GET', '/news')).body.news.title, /Your placement: Confirm the placement/);
 
   // The walkthrough is shown once; the card can be hidden and brought back.
   await call(apT, 'POST', '/guide/tour-seen');
   assert.equal((await call(apT, 'GET', '/guide')).body.guide.tour_seen, true);
   await call(famT, 'PUT', '/guide/hidden', { hidden: true });
   assert.equal((await call(famT, 'GET', '/guide')).body.guide.hidden, true);
-  assert.equal((await call(famT, 'GET', '/news')).body.news, null, 'a hidden guide sends no card either');
+  assert.match((await call(famT, 'GET', '/news')).body.news.id, /^step-p\d+_confirm$/, 'a placement step still shows when the getting-started card is hidden');
+  db.prepare("UPDATE placements SET status = 'cancelled' WHERE family_id = ?").run(fam);
+  assert.equal((await call(famT, 'GET', '/news')).body.news, null, 'a hidden guide sends no getting-started card');
   await call(famT, 'PUT', '/guide/hidden', { hidden: false });
   assert.equal((await call(famT, 'GET', '/news')).body.news.id, 'step-id');
 
@@ -150,4 +153,56 @@ test('guide: agencies and Community Managers get their own steps; admins get non
 
   user('plain@test.io', 'ambassador', 'Just An Ambassador', 'SE');
   assert.equal((await call(await login('plain@test.io'), 'GET', '/guide')).body.guide, null);
+});
+
+test('guide: a placement walks each side through confirm, agreement, documents, checklist, arrival, stay and review', () => {
+  const base = { id: 7, status: 'proposed', aupair_confirmed: 0, family_confirmed: 1, start_date: '2027-02-01', end_date: '2027-12-01' };
+  const tasks = [{ owner: 'both', due_date: '2027-01-10', done: 0 }, { owner: 'family', due_date: '2027-01-20', done: 0 }, { owner: 'both', due_date: '2027-03-01', done: 0 }];
+  const j = (p, o) => placementJourney({ ...base, ...p }, { other: 'Anna S.', tasks, today: '2026-12-01', ...o });
+  // Proposed by the family: the au pair confirms, the family waits.
+  assert.deepEqual([j({}, { side: 'aupair' }).next.key, j({}, { side: 'aupair' }).next.action], ['confirm', 'confirm']);
+  assert.equal(j({}, { side: 'family' }).next.waiting, true);
+  assert.match(j({}, { side: 'family' }).next.title, /Waiting for Anna S\. to confirm/);
+  // Confirmed: sign the agreement, then the family does the visa documents while the au pair works on the checklist.
+  const confirmed = { status: 'confirmed', aupair_confirmed: 1 };
+  const docs = { done: 1, total: 4 };
+  assert.equal(j(confirmed, { side: 'family', agreement: {}, documents: docs }).next.link, '#/placements/7/agreement');
+  const signed = { aupair_signed_at: 'x', family_signed_at: 'y' };
+  assert.equal(j(confirmed, { side: 'family', agreement: signed, documents: docs }).next.key, 'documents');
+  assert.equal(j(confirmed, { side: 'aupair', agreement: signed, documents: docs }).next.action, 'checklist');
+  assert.match(j(confirmed, { side: 'aupair', agreement: signed, documents: docs }).next.text, /^1 things left/);
+  assert.equal(j(confirmed, { side: 'aupair', agreement: { aupair_signed_at: 'x' }, documents: docs }).next.waiting, true);
+  // Close to the start date: mark it started. Then the stay, then the review.
+  const allDocs = { done: 4, total: 4 };
+  assert.equal(j(confirmed, { side: 'family', agreement: signed, documents: allDocs, today: '2027-01-30' }).next.action, 'active');
+  assert.equal(j({ status: 'active' }, { side: 'family', agreement: signed, documents: allDocs, today: '2027-11-28' }).next.action, 'completed');
+  assert.equal(j({ status: 'completed' }, { side: 'aupair', agreement: signed, documents: allDocs }).next.action, 'review');
+  const done = j({ status: 'completed' }, { side: 'aupair', agreement: signed, documents: allDocs, my_review: {} });
+  assert.equal(done.next.key, 'done');
+  assert.ok(done.stages.every((s) => s.done));
+  assert.equal(j({ status: 'cancelled' }, { side: 'aupair' }), null);
+  // In the person's language.
+  assert.equal(j({}, { side: 'aupair', lang: 'sv' }).next.title, 'Bekräfta vistelsen');
+});
+
+test('guide: the placement page and the app card show the next placement step', async () => {
+  const ap = user('ap9@test.io', 'aupair', 'Lea Ma', 'FR');
+  const fam = user('fam9@test.io', 'family', 'Bo Berg', 'SE');
+  ready(ap, 'aupair_profiles'); ready(fam, 'family_profiles');
+  const pid = Number(db.prepare("INSERT INTO placements (aupair_id, family_id, country, start_date, end_date, weekly_hours, pocket_money, family_confirmed, created_by) VALUES (?, ?, 'SE', '2027-01-10', '2027-12-10', 25, 4000, 1, ?)")
+    .run(ap, fam, fam).lastInsertRowid);
+  const apT = await login('ap9@test.io');
+  const p = (await call(apT, 'GET', `/placements/${pid}`)).body;
+  assert.equal(p.journey.next.action, 'confirm');
+  const news = (await call(apT, 'GET', '/news')).body.news;
+  assert.equal(news.id, `step-p${pid}_confirm`);
+  assert.equal(news.link, `#/placements/${pid}`);
+  assert.match(news.title, /Your placement: Confirm the placement/);
+  await call(apT, 'POST', `/news/${news.id}/seen`);
+  assert.notEqual((await call(apT, 'GET', '/news')).body.news?.id, news.id, 'closing it snoozes that step');
+  const after = (await call(apT, 'POST', `/placements/${pid}/confirm`)).body;
+  assert.equal(after.status, 'confirmed');
+  assert.equal(after.journey.next.key, 'agreement');
+  // The family is waiting on nothing from the au pair now; it is their turn to sign too.
+  assert.equal((await call(await login('fam9@test.io'), 'GET', `/placements/${pid}`)).body.journey.next.key, 'agreement');
 });
