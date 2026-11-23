@@ -1239,5 +1239,16 @@
   "au pairs": "au pairer",
   "Pins are meetups. Bubbles show how many families are in each part of town, never where anyone is. A meetup pin is approximate until you join.": "Nålarna är träffar. Bubblorna visar hur många familjer som finns i varje del av stan, aldrig var någon är. En träffs nål är ungefärlig tills du anmäler dig.",
   "Pins are meetups. Bubbles show how many au pairs are in each part of town, never where anyone is. A meetup pin is approximate until you join.": "Nålarna är träffar. Bubblorna visar hur många au pairer som finns i varje del av stan, aldrig var någon är. En träffs nål är ungefärlig tills du anmäler dig.",
-  "Bubbles appear once enough people in {city} are on Nearby.": "Bubblorna syns när tillräckligt många i {city} använder I närheten."
+  "Bubbles appear once enough people in {city} are on Nearby.": "Bubblorna syns när tillräckligt många i {city} använder I närheten.",
+  "PairMundo community": "PairMundo-community",
+  "Hosted by {name}, PairMundo Community Manager for {city}": "Värd: {name}, PairMundos community manager i {city}",
+  "You're checked in. Enjoy the meetup!": "Du är incheckad. Ha en trevlig träff!",
+  "Check-in code": "Incheckningskod",
+  "Check in": "Checka in",
+  "Type the code under the QR code the host shows.": "Skriv koden under QR-koden som värden visar.",
+  "Your rating": "Ditt betyg",
+  "How was it?": "Hur var det?",
+  "Anything to tell the host? (optional, they see it without your name)": "Något du vill säga till värden? (valfritt, värden ser det utan ditt namn)",
+  "Send rating": "Skicka betyg",
+  "Thanks for rating!": "Tack för ditt betyg!"
 }

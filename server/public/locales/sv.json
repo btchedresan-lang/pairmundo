@@ -1383,5 +1383,21 @@
   "PairMundo is on the App Store and Google Play. Download it and start swiping.": "PairMundo finns på App Store och Google Play. Ladda ned appen och börja swipa.",
   "{soon}. Leave your email and we'll tell you the day it arrives.": "{soon}. Lämna din e-post så hör vi av oss samma dag som den kommer.",
   "Show password": "Visa lösenord",
-  "Hide password": "Dölj lösenord"
+  "Hide password": "Dölj lösenord",
+  "Checking in at meetups is for au pairs and host families.": "Incheckning på träffar är för au pairer och värdfamiljer.",
+  "PairMundo community": "PairMundo-community",
+  "Hosted by {name}, PairMundo Community Manager for {city}": "Värd: {name}, PairMundos community manager i {city}",
+  "You're checked in. Enjoy the meetup!": "Du är incheckad. Ha en trevlig träff!",
+  "Check-in code": "Incheckningskod",
+  "Check in": "Checka in",
+  "Scan the QR code the host shows, or type the code under it.": "Skanna QR-koden som värden visar, eller skriv koden under den.",
+  "Your rating": "Ditt betyg",
+  "How was it?": "Hur var det?",
+  "Anything to tell the host? (optional, they see it without your name)": "Något du vill säga till värden? (valfritt, värden ser det utan ditt namn)",
+  "Send rating": "Skicka betyg",
+  "Find more meetups in the Nearby tab of the PairMundo app.": "Hitta fler träffar under fliken I närheten i PairMundo-appen.",
+  "Thanks for rating!": "Tack för ditt betyg!",
+  "Your community": "Din community",
+  "This meetup is no longer available.": "Den här träffen finns inte längre.",
+  "Official": "Officiell"
 }

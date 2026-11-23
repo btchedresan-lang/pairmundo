@@ -201,8 +201,12 @@ function renderNav() {
       link('#/guides', tr('Guides')), link('#/account', tr('Account')), `<a href="#/logout">${tr('Sign out')}</a>`].join('');
     return;
   }
+  if (me.user.role === 'ambassador' && me.community && !me.ambassador) {
+    $nav.innerHTML = [link('#/community', tr('Your community')), link('#/notifications', '🔔', c.notifications), link('#/account', tr('Account')), `<a href="#/logout">${tr('Sign out')}</a>`].join('');
+    return;
+  }
   if (me.user.role === 'ambassador') {
-    $nav.innerHTML = [link('#/ambassador', me.ambassador?.kind === 'distributor' ? tr('Your pay') : tr('Your code')), link('#/account', tr('Account')), `<a href="#/logout">${tr('Sign out')}</a>`].join('');
+    $nav.innerHTML = [me.community ? link('#/community', tr('Your community')) : '', link('#/ambassador', me.ambassador?.kind === 'distributor' ? tr('Your pay') : tr('Your code')), link('#/account', tr('Account')), `<a href="#/logout">${tr('Sign out')}</a>`].join('');
     return;
   }
   $nav.innerHTML = [
@@ -221,7 +225,7 @@ const views = {};
 
 views.home = async () => {
   if (!me) return landing();
-  return go({ admin: '#/admin', agency: '#/agency', ambassador: '#/ambassador', partner_manager: '#/pipeline' }[me.user.role] || '#/discover');
+  return go({ admin: '#/admin', agency: '#/agency', ambassador: me.community && !me.ambassador ? '#/community' : '#/ambassador', partner_manager: '#/pipeline' }[me.user.role] || '#/discover');
 };
 
 // ---------- photos ----------
@@ -871,25 +875,26 @@ views.agency = async () => {
 // lists meetups from elsewhere (an expat group, a library language café) that link out.
 const MEETUP_KINDS = { coffee: '☕ Coffee', walk: '🚶 Walk', picnic: '🧺 Picnic', playdate: '🛝 Playdate', sport: '⚽ Sport', language: '🗣️ Language exchange', culture: '🎨 Museum or culture', other: '✨ Something else' };
 const meetupWhen = (iso) => new Date(iso).toLocaleString(LANG, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-function meetupFormHtml({ external = false } = {}) {
+function meetupFormHtml({ external = false, community = null } = {}) {
   return `<form class="meetupForm"><div class="form-grid">
     <div class="field"><label>${tr('Title')}</label><input name="title" required maxlength="80" placeholder="${tr('For example: Welcome picnic for new au pairs')}"></div>
     <div class="field"><label>${tr('Kind')}</label><select name="kind">${Object.entries(MEETUP_KINDS).map(([k, v]) => `<option value="${k}">${tr(v)}</option>`).join('')}</select></div>
-    <div class="field"><label>${tr('City')}</label><input name="city" required maxlength="80"></div>
-    <div class="field"><label>${tr('Country')}</label><select name="country" required>${options(COUNTRIES, me.user.country || '', tr('Choose a country'))}</select></div>
+    ${community ? `<input type="hidden" name="city" value="${esc(community.city)}"><input type="hidden" name="country" value="${esc(community.country)}">`
+    : `<div class="field"><label>${tr('City')}</label><input name="city" required maxlength="80"></div>
+    <div class="field"><label>${tr('Country')}</label><select name="country" required>${options(COUNTRIES, me.user.country || '', tr('Choose a country'))}</select></div>`}
     <div class="field"><label>${tr('Public place')}</label><input name="place" required maxlength="120" placeholder="${tr('For example: Pildammsparken, by the big pond')}"></div>
     <div class="field"><label>${tr('Neighbourhood (optional)')}</label><input name="area" maxlength="80"></div>
     <div class="field"><label>${tr('Map pin (optional)')}</label><input name="pin" maxlength="60" placeholder="59.3326, 18.0649">
       <div class="muted small">${tr('Right-click the place in Google Maps or OpenStreetMap and copy its coordinates. Without them the meetup shows in the list only.')}</div></div>
     <div class="field"><label>${tr('Starts')}</label><input name="starts_at" type="datetime-local" required></div>
     <div class="field"><label>${tr('Ends (optional)')}</label><input name="ends_at" type="datetime-local"></div>
-    <div class="field"><label>${tr('For')}</label><select name="audience"><option value="aupair">${tr('Au pairs')}</option><option value="family">${tr('Host families')}</option><option value="both" ${external ? 'selected' : ''}>${tr('Au pairs and families')}</option></select></div>
+    <div class="field"><label>${tr('For')}</label><select name="audience"><option value="aupair">${tr('Au pairs')}</option><option value="family">${tr('Host families')}</option><option value="both" ${external || community ? 'selected' : ''}>${tr('Au pairs and families')}</option></select></div>
     ${external ? `<div class="field"><label>Organiser</label><input name="organizer" required maxlength="80"></div>
       <div class="field"><label>Sign-up link (https)</label><input name="external_url" type="url" required maxlength="500"></div>`
     : `<div class="field"><label>${tr('Places (optional)')}</label><input name="max_people" type="number" min="2" max="300"></div>`}
     </div>
     <div class="field"><label>${tr('About (optional)')}</label><textarea name="about" rows="2" maxlength="1000"></textarea></div>
-    ${external ? '' : `<label class="small"><input type="checkbox" name="agency_only" checked style="width:auto"> ${tr('Only for au pairs and families in our agency')}</label><br>
+    ${external ? '' : `${community ? '' : `<label class="small"><input type="checkbox" name="agency_only" checked style="width:auto"> ${tr('Only for au pairs and families in our agency')}</label><br>`}
       <label class="small"><input type="checkbox" name="public_place" required style="width:auto"> ${tr("It is in a public place, not at anyone's home.")}</label>`}
     <div class="meetupErr"></div><button class="btn sm">${external ? 'Add listing' : tr('Host meetup')}</button></form>`;
 }
@@ -898,7 +903,7 @@ function readMeetupForm(f) {
   const pin = /^\s*(-?\d+(?:\.\d+)?)\s*[,; ]\s*(-?\d+(?:\.\d+)?)\s*$/.exec(f.pin.value);
   return { title: f.title.value, kind: f.kind.value, city: f.city.value, country: f.country.value, place: f.place.value, area: f.area.value, about: f.about.value,
     starts_at: iso(f.starts_at.value), ends_at: iso(f.ends_at.value), audience: f.audience.value, ...(pin ? { lat: Number(pin[1]), lng: Number(pin[2]) } : {}),
-    ...(f.external_url ? { external_url: f.external_url.value, organizer: f.organizer.value } : { max_people: f.max_people.value || null, agency_only: f.agency_only.checked, public_place: f.public_place.checked }) };
+    ...(f.external_url ? { external_url: f.external_url.value, organizer: f.organizer.value } : { max_people: f.max_people.value || null, agency_only: !!f.agency_only?.checked, public_place: f.public_place.checked }) };
 }
 function meetupRow(m, { admin = false } = {}) {
   const status = m.status === 'open' ? '' : `<span class="chip ${m.status === 'hidden' ? 'warn' : ''}">${esc(m.status)}</span>`;
@@ -934,6 +939,176 @@ function wireMeetupForm(box, done) {
     catch (err) { form.querySelector('.meetupErr').innerHTML = `<div class="alert error">${esc(err.message)}</div>`; }
   };
 }
+// ---------- Community Managers ----------
+// Paid hosts who run one city's community (community.js). Their page: what they host, each event's QR code, how each
+// event scored, and their pay this month. Staff pages are in English.
+const cmMoney = (n, cur) => `${(n / 100).toLocaleString('en-GB', { maximumFractionDigits: 2 })} ${cur}`;
+const CM_STATUS = { upcoming: ['Upcoming', ''], scoring: ['Ratings open', ''], success: ['✓ Successful', 'ok'], not_met: ['Not successful', 'warn'], cancelled: ['Cancelled', 'warn'], hidden: ['Under review', 'warn'] };
+const cmStatusChip = (e) => { const [label, cls] = CM_STATUS[e.status] || [e.status, '']; return `<span class="chip ${cls}">${label}</span>`; };
+const AUDIENCE = { aupair: 'Au pairs', family: 'Host families', both: 'Au pairs and families' };
+/** One month's pay, line by line. */
+function cmMonthCard(s, title) {
+  const l = s.lines, cur = s.currency;
+  const need = l.retainer.required;
+  return `<div class="card"><div class="spread"><h3 style="margin:0">${esc(title)}</h3>${s.paid ? `<span class="chip ok">Paid ${fmtDate(s.paid.paid_at)}</span>` : s.final ? '<span class="chip">Final</span>' : '<span class="chip">In progress</span>'}</div>
+    <p class="small">${l.retainer.held} event${l.retainer.held === 1 ? '' : 's'} held · ${l.events.successful} successful · target ${s.target} a month${s.first_month ? ' · first month' : ''}</p>
+    <table><tr><td>Monthly retainer${l.retainer.trial ? ' (trial)' : ''}<div class="muted small">${l.retainer.earned ? `✓ ${need} or more events held` : `Hold ${need} event${need === 1 ? '' : 's'} with at least one check-in to earn it (${l.retainer.held} so far)`}</div></td><td style="text-align:right">${cmMoney(l.retainer.amount, cur)}</td></tr>
+      <tr><td>Successful events<div class="muted small">${l.events.paid} × ${cmMoney(l.events.rate, cur)}${l.events.successful > l.events.cap ? ` (paid up to ${l.events.cap})` : ''}</div></td><td style="text-align:right">${cmMoney(l.events.amount, cur)}</td></tr>
+      <tr><td>Newcomers at successful events<div class="muted small">${l.newcomers.count} × ${cmMoney(l.newcomers.rate, cur)}</div></td><td style="text-align:right">${cmMoney(l.newcomers.amount, cur)}</td></tr>
+      <tr><td>Families who bought a Family Pass<div class="muted small">${l.family_passes.count} × ${cmMoney(l.family_passes.rate, cur)}</div></td><td style="text-align:right">${cmMoney(l.family_passes.amount, cur)}</td></tr>
+      <tr><td><strong>Total</strong></td><td style="text-align:right"><strong>${cmMoney(s.total, cur)}</strong></td></tr></table></div>`;
+}
+views.community = async ([sub, id]) => {
+  const d = await api('/community/me');
+  if (sub === 'qr') {
+    const e = d.events.find((x) => String(x.id) === String(id));
+    if (!e) return render('<div class="empty">That event is not yours, or it is too old.</div>');
+    return render(`<div class="card" style="max-width:520px;margin:24px auto;text-align:center">
+      <p class="muted" style="margin:0">PairMundo meetup · ${esc(d.manager.city)}</p><h1 style="margin:6px 0">${esc(e.title)}</h1><p class="small">${meetupWhen(e.starts_at)} · ${esc(e.place || '')}</p>
+      <img src="${esc(e.qr)}" alt="Check-in QR code" style="width:100%;max-width:380px;aspect-ratio:1;image-rendering:pixelated">
+      <h2 style="margin:6px 0">Scan to check in</h2><p>Open your phone camera and point it at the code. Or open the meetup in the PairMundo app and type <strong style="font-size:1.4em;letter-spacing:3px">${esc(e.checkin_code)}</strong></p>
+      <p class="muted small">Check-in opens 30 minutes before the start. New here? Sign up free at pairmundo.com, then scan again.</p>
+      <div class="row" style="justify-content:center"><button class="btn ghost sm" onclick="window.print()">Print</button><a class="btn ghost sm" href="#/community">Back</a></div></div>`);
+  }
+  const r = d.rules, cm = d.manager;
+  const people = Object.fromEntries(d.community.map((x) => [x.role, x.n]));
+  render(`<h1>Your community: ${esc(cm.city)} ${flag(cm.country)}</h1>
+    <p class="muted">${people.aupair || 0} au pairs and ${people.family || 0} host families in ${esc(cm.city)} are on Nearby. Everyone there hears about your meetups when you post them.</p>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">${cmMonthCard(d.this_month, 'This month')}${cmMonthCard(d.last_month, 'Last month')}</div>
+    <div class="card"><h3>How an event counts as successful</h3><ul class="small">
+      <li>At least <strong>${r.min_checkins}</strong> people check in by scanning your QR code at the meetup.</li>
+      <li>At least <strong>${r.min_newcomers}</strong> of them are new to the ${esc(cm.city)} community (their first check-in there).</li>
+      <li>It averages <strong>${r.min_rating}</strong> stars or more, from at least ${r.min_ratings} ratings. People who checked in can rate it for ${r.rating_days} days, and then it is scored.</li>
+      <li>A host family who checks in at your event and buys their first Family Pass within ${r.pass_days} days earns you a bonus.</li></ul>
+      <p class="muted small">Always meet in a public place, like a café, a park or a library. Show the QR code at the door, and remind people to rate the meetup afterwards.</p></div>
+    <div class="card"><h2>Your events</h2>
+      ${d.events.length ? `<div class="table-wrap"><table><tr><th>Event</th><th>When</th><th>Checked in</th><th>Rating</th><th>Status</th><th></th></tr>
+      ${d.events.map((e) => `<tr><td><strong>${esc(e.title)}</strong><div class="muted small">${esc(AUDIENCE[e.audience] || '')} · ${esc(e.place || '')} · ${e.going}${e.max_people ? ` / ${e.max_people}` : ''} going</div>
+          ${e.comments.length ? `<details class="small"><summary>${e.comments.length} comment${e.comments.length === 1 ? '' : 's'}</summary>${e.comments.map((c) => `<p>${'★'.repeat(c.stars)} ${esc(c.comment)}</p>`).join('')}</details>` : ''}</td>
+        <td>${meetupWhen(e.starts_at)}</td><td>${e.checkins}<div class="muted small">${e.newcomers} new</div></td><td>${e.rating == null ? '—' : `${e.rating} ★`}<div class="muted small">${e.ratings} rating${e.ratings === 1 ? '' : 's'}</div></td>
+        <td>${cmStatusChip(e)}${e.misses.length && e.status !== 'upcoming' ? `<div class="muted small">${e.misses.map(esc).join(', ')}</div>` : ''}${e.status === 'scoring' ? `<div class="muted small">Scored ${fmtDate(e.scored_at)}</div>` : ''}</td>
+        <td>${['upcoming', 'scoring'].includes(e.status) ? `<a class="btn sm" href="#/community/qr/${e.id}">QR code</a>` : ''}${e.status === 'upcoming' ? ` <button class="btn ghost sm" data-cancel="${e.id}">Cancel</button>` : ''}</td></tr>`).join('')}</table></div>`
+      : '<p class="muted">No events yet. Host your first one below: a coffee or a picnic is a great start.</p>'}</div>
+    <div class="card" id="cmHost"><h2>Host a meetup in ${esc(cm.city)}</h2><p class="muted small">Pick who it's for: au pairs, host families (playdates, "first time hosting" coffees, visa and contract Q&As) or both.</p>${meetupFormHtml({ community: cm })}</div>
+    ${d.payouts.length ? `<div class="card"><h3>Paid</h3><table>${d.payouts.map((p) => `<tr><td>${esc(p.month)}</td><td>${cmMoney(p.amount, p.currency)}</td><td class="muted small">${fmtDate(p.paid_at)}</td></tr>`).join('')}</table></div>` : ''}`);
+  wireMeetupForm(document.getElementById('cmHost'), () => views.community([]));
+  document.querySelectorAll('[data-cancel]').forEach((b) => { b.onclick = async () => {
+    if (!confirm('Cancel this meetup? Everyone going gets a notification.')) return;
+    try { await api(`/meetups/${b.dataset.cancel}/cancel`, { method: 'POST' }); views.community([]); } catch (e) { toast(e.message); }
+  }; });
+};
+
+// A meetup on the website, for members: mostly reached by scanning the host's QR code (#/checkin/<id>/<code>), which
+// checks them in, or from a "rate it" notification. Meetups are found and joined in the app.
+views.checkin = ([id, code]) => meetupPage(id, code);
+views.meetups = ([id]) => meetupPage(id, null);
+async function meetupPage(id, code) {
+  if (!['aupair', 'family'].includes(me.user.role)) return render(`<div class="card" style="max-width:520px;margin:24px auto"><p>${tr('Checking in at meetups is for au pairs and host families.')}</p></div>`);
+  let m = null, err = null;
+  if (code) { try { ({ meetup: m } = await api(`/meetups/${encodeURIComponent(id)}/checkin`, { method: 'POST', body: { code } })); } catch (e) { err = e; } }
+  if (!m) { try { ({ meetup: m } = await api(`/meetups/${encodeURIComponent(id)}`)); } catch (e) { err = err || e; } }
+  if (!m) return render(`<div class="card" style="max-width:520px;margin:24px auto"><div class="alert error">${esc(err?.message || tr('This meetup is no longer available.'))}</div></div>`);
+  const stars = (n) => [1, 2, 3, 4, 5].map((i) => `<button type="button" class="btn ${i <= n ? '' : 'ghost'} sm" data-star="${i}" aria-label="${i}">★</button>`).join(' ');
+  render(`<div class="card" style="max-width:560px;margin:24px auto">
+    ${m.community ? `<span class="chip">🌍 ${tr('PairMundo community')}</span>` : m.official ? `<span class="chip">✔ ${tr('Official')} · ${esc(m.agency)}</span>` : ''}
+    <h1>${esc(m.title)}</h1><p class="muted">${meetupWhen(m.starts_at)} · ${esc(m.place || m.area || m.city)}</p>
+    ${m.community_host ? `<p class="small">${tr('Hosted by {name}, PairMundo Community Manager for {city}', { name: esc(m.community_host), city: esc(m.city) })}</p>` : ''}
+    ${err && !m.checked_in ? `<div class="alert error">${esc(err.message)}</div>` : ''}
+    ${m.checked_in ? `<div class="alert ok">✓ ${tr("You're checked in. Enjoy the meetup!")}</div>`
+    : m.check_in_open ? `<form id="ciForm" class="row"><input name="code" maxlength="8" placeholder="${tr('Check-in code')}" style="width:auto;text-transform:uppercase" required><button class="btn sm">${tr('Check in')}</button></form>
+      <p class="muted small">${tr('Scan the QR code the host shows, or type the code under it.')}</p>` : ''}
+    ${m.can_rate ? `<form id="rateForm"><h3>${m.my_rating ? tr('Your rating') : tr('How was it?')}</h3><div id="stars">${stars(m.my_rating || 0)}</div>
+      <div class="field"><label>${tr('Anything to tell the host? (optional, they see it without your name)')}</label><textarea name="comment" rows="2" maxlength="500"></textarea></div>
+      <button class="btn sm" ${m.my_rating ? '' : 'disabled'} id="rateSend">${tr('Send rating')}</button><div id="err"></div></form>` : ''}
+    <p class="muted small">${tr('Find more meetups in the Nearby tab of the PairMundo app.')}</p></div>`);
+  const ci = document.getElementById('ciForm');
+  if (ci) ci.onsubmit = (e) => { e.preventDefault(); go(`#/checkin/${m.id}/${encodeURIComponent(ci.code.value.trim().toUpperCase())}`); };
+  const rf = document.getElementById('rateForm');
+  if (rf) {
+    let pick = m.my_rating || 0;
+    rf.querySelectorAll('[data-star]').forEach((b) => { b.onclick = () => {
+      pick = Number(b.dataset.star);
+      rf.querySelectorAll('[data-star]').forEach((x) => x.classList.toggle('ghost', Number(x.dataset.star) > pick));
+      document.getElementById('rateSend').disabled = false;
+    }; });
+    rf.onsubmit = async (e) => {
+      e.preventDefault();
+      try { await api(`/meetups/${m.id}/rating`, { method: 'POST', body: { stars: pick, comment: rf.comment.value } }); toast(tr('Thanks for rating!')); go(`#/meetups/${m.id}`); }
+      catch (x) { errBox(x); }
+    };
+  }
+}
+
+async function adminCommunity(head, qs) {
+  const month = qs.get('month') || new Date().toISOString().slice(0, 7);
+  const d = await api(`/admin/community?month=${encodeURIComponent(month)}`);
+  const r = d.rules;
+  const major = (n) => (n / 100).toString();
+  const curOpts = (cur) => d.currencies.map((c) => `<option ${c === cur ? 'selected' : ''}>${c}</option>`).join('');
+  const payFields = (m = {}) => `<div class="form-grid">
+      <div class="field"><label>Currency</label><select name="currency">${curOpts(m.currency || 'SEK')}</select></div>
+      <div class="field"><label>Monthly retainer</label><input name="retainer" value="${major(m.retainer ?? 400000)}"></div>
+      <div class="field"><label>Retainer during the trial</label><input name="trial_retainer" value="${major(m.trial_retainer ?? 300000)}"></div>
+      <div class="field"><label>Trial ends (last day, empty for none)</label><input name="trial_until" type="date" value="${esc(m.trial_until ?? '')}"></div>
+      <div class="field"><label>Per successful event</label><input name="event_fee" value="${major(m.event_fee ?? 100000)}"></div>
+      <div class="field"><label>Per newcomer at a successful event</label><input name="newcomer_fee" value="${major(m.newcomer_fee ?? 10000)}"></div>
+      <div class="field"><label>Per family who buys a Family Pass</label><input name="family_pass_fee" value="${major(m.family_pass_fee ?? 25000)}"></div>
+      <div class="field"><label>Events needed for the retainer</label><input name="min_events" type="number" min="0" max="31" value="${m.min_events ?? 2}"></div>
+      <div class="field"><label>… in their first month</label><input name="first_month_min" type="number" min="0" max="31" value="${m.first_month_min ?? 1}"></div>
+      <div class="field"><label>Target events a month</label><input name="target_events" type="number" min="0" max="31" value="${m.target_events ?? 4}"></div>
+      <div class="field"><label>Successful events paid a month (cap)</label><input name="max_paid_events" type="number" min="0" max="31" value="${m.max_paid_events ?? 6}"></div>
+    </div>`;
+  const prefill = qs.get('new') ? { name: qs.get('name') || '', email: qs.get('email') || '', city: qs.get('city') || '', country: qs.get('country') || '' } : null;
+  const trialEnd = (() => { const t = new Date(); t.setUTCMonth(t.getUTCMonth() + 3); t.setUTCDate(0); return t.toISOString().slice(0, 10); })();
+  render(`${head}<div class="card"><div class="spread"><h2 style="margin:0">Community Managers</h2>
+      <form id="cmMonth" class="row"><input type="month" name="month" value="${esc(d.month)}" style="width:auto"><button class="btn ghost sm">Show</button>
+        <a class="btn ghost sm" href="/api/admin/community.csv?month=${esc(d.month)}">Payout sheet (CSV)</a></form></div>
+    <p class="muted small">Paid hosts who run one city's community each, for au pairs and host families. Pay for a month is final once the month is over and every event in it is scored (${r.rating_days} days after it starts). Pay them, then mark the month paid.</p>
+    ${d.managers.length ? `<div class="table-wrap"><table><tr><th>Manager</th><th>Held</th><th>Successful</th><th>Newcomers</th><th>Family passes</th><th>Total</th><th></th></tr>
+      ${d.managers.map((m) => { const s = m.summary, l = s.lines; return `<tr><td><strong>${esc(m.name)}</strong> ${m.active ? '' : '<span class="chip warn">Paused</span>'}<div class="muted small">${esc(m.city)} ${flag(m.country)} · ${esc(m.email)}</div></td>
+        <td>${l.retainer.held} / ${l.retainer.required}${l.retainer.earned ? ' ✓' : ''}</td><td>${l.events.successful}${l.events.successful > l.events.cap ? ` (${l.events.cap} paid)` : ''}</td><td>${l.newcomers.count}</td><td>${l.family_passes.count}</td>
+        <td><strong>${cmMoney(s.total, s.currency)}</strong>${l.retainer.trial ? '<div class="muted small">trial</div>' : ''}</td>
+        <td>${s.paid ? `<span class="chip ok">Paid</span>` : s.final ? `<button class="btn sm" data-paid="${m.user_id}">Mark paid</button>` : '<span class="muted small">In progress</span>'}
+          <details><summary class="small">Edit</summary><form class="cmEdit" data-id="${m.user_id}">
+            <div class="form-grid"><div class="field"><label>City</label><input name="city" value="${esc(m.city)}"></div><div class="field"><label>Country</label><select name="country">${options(COUNTRIES, m.country, '—')}</select></div>
+            <div class="field"><label>Started</label><input name="started_on" type="date" value="${esc(m.started_on)}"></div></div>
+            ${payFields(m)}<div class="field"><label>Notes</label><textarea name="notes" rows="2">${esc(m.notes || '')}</textarea></div>
+            <label class="small"><input type="checkbox" name="active" ${m.active ? 'checked' : ''} style="width:auto"> Active (pausing stops their hosting)</label><br><button class="btn sm">Save</button></form></details></td></tr>`; }).join('')}</table></div>`
+    : '<div class="empty">No Community Managers yet. Add the first one below, or hire one from the Community Manager job in Careers.</div>'}</div>
+    <form class="card" id="cmNew" ${prefill ? '' : ''}><h2>Add a Community Manager</h2>
+      <p class="muted small">They get their own login (never an au pair or family account; use another email if they have one) and an email to set their password. Amounts are in the currency you pick. Pay for the 3-month trial ends on the date below.</p>
+      <div class="form-grid"><div class="field"><label>Name</label><input name="name" required value="${esc(prefill?.name || '')}"></div><div class="field"><label>Email</label><input name="email" type="email" required value="${esc(prefill?.email || '')}"></div>
+        <div class="field"><label>City</label><input name="city" required value="${esc(prefill?.city || '')}"></div><div class="field"><label>Country</label><select name="country" required>${options(COUNTRIES, prefill?.country || '', '—')}</select></div>
+        <div class="field"><label>Starts</label><input name="started_on" type="date" value="${new Date().toISOString().slice(0, 10)}"></div></div>
+      ${payFields({ trial_until: trialEnd })}<button class="btn sm">Add and send the invite</button><div id="err"></div></form>
+    <form class="card" id="cmRules"><h2>What makes an event successful</h2><div class="form-grid">
+      <div class="field"><label>Check-ins at least</label><input name="min_checkins" type="number" min="1" value="${r.min_checkins}"></div>
+      <div class="field"><label>Newcomers at least</label><input name="min_newcomers" type="number" min="0" value="${r.min_newcomers}"></div>
+      <div class="field"><label>Average rating at least</label><input name="min_rating" type="number" min="1" max="5" step="0.1" value="${r.min_rating}"></div>
+      <div class="field"><label>From at least this many ratings</label><input name="min_ratings" type="number" min="1" value="${r.min_ratings}"></div>
+      <div class="field"><label>Days to rate before scoring</label><input name="rating_days" type="number" min="1" max="14" value="${r.rating_days}"></div>
+      <div class="field"><label>Days for a family's Family Pass to count</label><input name="pass_days" type="number" min="1" max="365" value="${r.pass_days}"></div></div>
+      <p class="muted small">Changes apply to every event not paid yet.</p><button class="btn sm">Save rules</button></form>`);
+  document.getElementById('cmMonth').onsubmit = (e) => { e.preventDefault(); go(`#/admin/community?month=${e.target.month.value}`); };
+  document.getElementById('cmNew').onsubmit = async (e) => {
+    e.preventDefault();
+    try { await api('/admin/community/managers', { method: 'POST', body: formData(e.target) }); toast('Added. Invite sent.'); go('#/admin/community'); } catch (x) { errBox(x); }
+  };
+  document.getElementById('cmRules').onsubmit = async (e) => {
+    e.preventDefault();
+    try { await api('/admin/community/rules', { method: 'PUT', body: formData(e.target) }); toast('Rules saved'); route(); } catch (x) { toast(x.message); }
+  };
+  document.querySelectorAll('.cmEdit').forEach((f) => { f.onsubmit = async (e) => {
+    e.preventDefault();
+    try { await api(`/admin/community/managers/${f.dataset.id}`, { method: 'PUT', body: { ...formData(f), active: f.active.checked } }); toast('Saved'); route(); } catch (x) { toast(x.message); }
+  }; });
+  document.querySelectorAll('[data-paid]').forEach((b) => { b.onclick = async () => {
+    if (!confirm(`Mark ${d.month} as paid?`)) return;
+    try { await api(`/admin/community/managers/${b.dataset.paid}/paid`, { method: 'POST', body: { month: d.month } }); toast('Marked as paid'); route(); } catch (x) { toast(x.message); }
+  }; });
+  if (prefill) document.getElementById('cmNew').scrollIntoView();
+}
+
 async function adminMeetups(head) {
   const d = await api('/admin/meetups');
   render(`${head}<div class="card"><h2>Meetups</h2>
@@ -2363,7 +2538,7 @@ async function adminLaunchEmail() {
 }
 views.admin = async ([tab = 'overview', id], qs) => {
   if (me.user.role !== 'admin') return go('#/');
-  const tabs = { overview: 'Overview', users: 'Users & verification', reports: 'Reports', programs: 'Program rules', placements: 'Placements', waitlist: 'Waitlist', ambassadors: 'Ambassadors', messages: 'Message users', meetups: 'Meetups', certificates: 'Certificates', partners: 'Partners', referrals: 'Referrals', ...(me.agency_network ? { affiliations: 'Affiliations' } : {}) };
+  const tabs = { overview: 'Overview', users: 'Users & verification', reports: 'Reports', programs: 'Program rules', placements: 'Placements', waitlist: 'Waitlist', ambassadors: 'Ambassadors', messages: 'Message users', meetups: 'Meetups', community: 'Community', certificates: 'Certificates', partners: 'Partners', referrals: 'Referrals', ...(me.agency_network ? { affiliations: 'Affiliations' } : {}) };
   const head = `<h1>Program administration</h1><div class="row" style="margin-bottom:16px">${Object.entries(tabs).map(([k, v]) =>
     `<a class="btn ${k === tab ? '' : 'ghost'} sm" href="#/admin/${k}">${v}</a>`).join('')}</div>`;
   if (tab === 'overview') {
@@ -2382,6 +2557,7 @@ views.admin = async ([tab = 'overview', id], qs) => {
   }
   if (tab === 'messages') return adminMessages(head, qs);
   if (tab === 'meetups') return adminMeetups(head);
+  if (tab === 'community') return adminCommunity(head, qs);
   if (tab === 'users') {
     const { users } = await api('/admin/users');
     render(`${head}<div class="card table-wrap"><table><tr><th>Member</th><th>Role</th><th>Rating</th><th>ID</th><th>References</th><th>Background</th><th>Suspended</th><th>Family Pass</th></tr>
@@ -3114,7 +3290,7 @@ views.careers = async () => {
   const { jobs } = await api('/jobs');
   render(`<div style="max-width:760px;margin:24px auto"><h1>Careers at PairMundo</h1>
     <p class="muted">We're a small, remote team helping au pairs and host families find each other safely, all over the world.</p>
-    ${jobs.map((j) => `<a class="card" style="display:block;text-decoration:none;color:inherit" href="#/jobs/${esc(j.slug)}"><h2>${esc(j.title)}</h2><p class="muted small">${esc(j.meta)}</p><p>${esc(j.role)}</p>${j.region ? `<p class="small">📍 For people living in ${esc(j.region)}</p>` : ''}<span class="btn sm">${j.apply === 'signup' ? 'See the role and sign up' : 'See the role and apply'}</span></a>`).join('')
+    ${jobs.map((j) => `<a class="card" style="display:block;text-decoration:none;color:inherit" href="#/jobs/${esc(j.slug)}"><h2>${esc(j.title)}</h2><p class="muted small">${esc(j.meta)}</p><p>${esc(j.role)}</p>${j.locations ? `<p class="small">📍 ${j.locations.map((l) => `${esc(l.city)} ${flag(l.country)}`).join(' · ')}</p>` : j.region ? `<p class="small">📍 For people living in ${esc(j.region)}</p>` : ''}<span class="btn sm">${j.apply === 'signup' ? 'See the role and sign up' : 'See the role and apply'}</span></a>`).join('')
       || '<div class="card"><p>No open roles right now. Check back soon.</p></div>'}</div>`);
 };
 
@@ -3124,10 +3300,13 @@ views.jobs = async ([slug], qs) => {
   const j = await api(`/jobs/${encodeURIComponent(slug)}`);
   const list = (items) => `<ul>${items.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>`;
   // Each role is for one of our markets: the country is fixed, and the server refuses anyone living elsewhere.
-  const countryField = j.country ? `<input value="${esc(cname(j.country))}" disabled><input type="hidden" name="country" value="${esc(j.country)}">`
+  // A role in several cities: pick yours.
+  const countryField = j.locations ? `<select name="location" required><option value="">—</option>${j.locations.map((l) => `<option value="${esc(`${l.city}, ${l.country}`)}">${esc(l.city)}, ${esc(cname(l.country))}</option>`).join('')}</select>`
+    : j.country ? `<input value="${esc(cname(j.country))}" disabled><input type="hidden" name="country" value="${esc(j.country)}">`
     : `<select name="country" required>${options(COUNTRIES, '', '—')}</select>`;
   render(`<p style="max-width:760px;margin:16px auto 0"><a href="#/careers">← All jobs</a></p><div class="card" style="max-width:760px;margin:12px auto 24px"><h1>${esc(j.title)}</h1><p class="muted">${esc(j.meta)}</p>
-    ${j.region ? `<div class="alert">📍 This role is only open to people living in ${esc(j.region)}.</div>` : ''}
+    ${j.locations ? `<div class="alert">📍 Open in ${esc(j.locations.map((l) => l.city).join(', ').replace(/, ([^,]*)$/, ' and $1'))}. You need to live in the city you apply for.</div>`
+      : j.region ? `<div class="alert">📍 This role is only open to people living in ${esc(j.region)}.</div>` : ''}
     <p>${esc(j.about)}</p><p>${esc(j.role)}</p>
     <h3>What you'll do</h3>${list(j.tasks)}<h3>What we're looking for</h3>${list(j.needs)}<h3>Pay</h3>${list(j.pay_public || [])}</div>
     ${!j.open ? '<div class="card" style="max-width:760px;margin:0 auto"><p>This role is closed to new applications.</p></div>'
@@ -3135,7 +3314,7 @@ views.jobs = async ([slug], qs) => {
     : j.apply === 'short' ? `<form class="card" id="apply" style="max-width:760px;margin:0 auto 24px"><h2>Apply</h2>
       <div class="form-grid"><div class="field"><label>Full name</label><input name="name" required autocomplete="name"></div>
         <div class="field"><label>Email</label><input name="email" type="email" required autocomplete="email"></div></div>
-      <div class="form-grid"><div class="field"><label>Country you live in</label>${countryField}</div>
+      <div class="form-grid"><div class="field"><label>${j.locations ? 'City you live in' : 'Country you live in'}</label>${countryField}</div>
         <div class="field"><label>Phone or WhatsApp</label><input name="phone" required autocomplete="tel"></div></div>
       ${(j.questions || []).map((q) => `<div class="field"><label>${esc(q.label)}</label><textarea name="${esc(q.key)}" rows="3" required></textarea></div>`).join('')}
       <p class="muted small">We use your application only to consider you for this role, and delete it if you ask us to.</p>
@@ -3197,7 +3376,7 @@ async function pipelineHiring(head, id, qs) {
     <div class="row" style="margin-bottom:12px"><a class="btn ${status ? 'ghost' : ''} sm" href="#/pipeline/hiring">All</a>${d.statuses.map((s) =>
       `<a class="btn ${s === status ? '' : 'ghost'} sm" href="#/pipeline/hiring?status=${s}">${APP_STATUS[s]} (${d.counts[s]})</a>`).join('')}</div>
     <div class="card table-wrap"><table><tr><th>Candidate</th><th>Status</th><th>Your score</th><th>First read</th><th>Applied</th></tr>
-      ${d.applicants.map((a) => `<tr><td><a href="#/pipeline/hiring/${a.id}"><strong>${esc(a.name)}</strong></a><div class="muted small">${[cname(a.country), `${a.years_b2b} yrs`, a.languages].filter(Boolean).map(esc).join(' · ')}</div></td>
+      ${d.applicants.map((a) => `<tr><td><a href="#/pipeline/hiring/${a.id}"><strong>${esc(a.name)}</strong></a><div class="muted small">${[a.location, cname(a.country), a.years_b2b != null && `${a.years_b2b} yrs`, a.languages].filter(Boolean).map(esc).join(' · ')}</div></td>
         <td>${APP_STATUS[a.status]}</td><td>${a.score_total ? `${a.score_total}/30` : '—'}</td>
         <td class="small">${a.prescore}${a.flags.length ? `<div class="muted">${a.flags.map(esc).join(', ')}</div>` : ''}</td><td class="small">${fmtDate(a.created_at)}</td></tr>`).join('')
       || '<tr><td colspan="5" class="muted">No applications yet.</td></tr>'}</table></div>`);
@@ -3210,7 +3389,7 @@ async function pipelineApplicant(head, id) {
   const full = a.apply === 'full';
   render(`${head}<p><a href="#/pipeline/hiring">← All candidates</a></p>
     <div class="spread"><h2>${esc(a.name)} <span class="chip">${APP_STATUS[a.status]}</span></h2><span class="muted small">${esc(a.job_title)} · applied ${fmtDate(a.created_at)}</span></div>
-    <div class="card"><p>${[esc(a.email), a.phone && esc(a.phone), cname(a.country), full && `${a.years_b2b} years of B2B outreach`, a.languages && esc(a.languages), full && (a.hours_ok ? '✓ Can work the hours' : '✗ Not sure about the hours')].filter(Boolean).join(' · ')}</p>
+    <div class="card"><p>${[esc(a.email), a.phone && esc(a.phone), a.location && `📍 ${esc(a.location)}`, cname(a.country), full && `${a.years_b2b} years of B2B outreach`, a.languages && esc(a.languages), full && (a.hours_ok ? '✓ Can work the hours' : '✗ Not sure about the hours')].filter(Boolean).join(' · ')}</p>
       ${full ? `<p>${a.linkedin ? `<a href="${esc(a.linkedin)}" target="_blank" rel="noopener">LinkedIn</a> · ` : ''}${a.video_url ? `<a href="${esc(a.video_url)}" target="_blank" rel="noopener">▶ Watch their video</a> · ` : 'No video · '}${a.has_cv ? '<a href="#" id="openCv">📄 Open CV</a>' : 'No CV'}</p>` : ''}
       ${a.flags.length ? `<div class="alert warning">First read: ${a.flags.map(esc).join(', ')}.</div>` : '<div class="alert ok">First read: nothing missing.</div>'}
       ${a.pay?.length ? `<details><summary class="small">Pay for the Philippines (private, adjust for their country)</summary><ul class="small">${a.pay.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></details>` : ''}</div>
@@ -3230,7 +3409,9 @@ async function pipelineApplicant(head, id) {
         <button class="btn ghost sm">${a.interview_at ? 'Move the interview' : 'Book the interview'}</button></form>
       ${a.interview_at ? `<p class="small">📅 ${fmtTime(a.interview_at)} · candidate's link: <code>${esc(a.interview_link)}</code></p><button class="btn sm" id="joinCall">📹 Join the interview</button>` : ''}
       <p class="muted small">Booking emails the candidate the time (in Central European Time and UTC) and their link. The call opens 15 minutes before.</p></div>
-    ${a.status !== 'hired' && a.hire === 'distributor' ? `<form class="card" id="hireForm"><h3>Hire ${esc(a.name)}</h3><p class="muted small">Marks them hired and opens the flyer distributor form on Ambassadors, filled in with their details, to set their areas and rates and send their invite.</p><button class="btn sm">Hire</button></form>`
+    ${a.status !== 'hired' && a.hire === 'community' ? `<form class="card" id="hireForm"><h3>Hire ${esc(a.name)}</h3><p class="muted small">Marks them hired and opens the Community Managers form under Admin, Community, filled in with their details and city, to set their pay and send their invite.</p><button class="btn sm">Hire</button></form>`
+      : a.status === 'hired' && a.hire === 'community' ? '<div class="card"><p>✓ Hired. Set them up under Admin, Community.</p></div>'
+      : a.status !== 'hired' && a.hire === 'distributor' ? `<form class="card" id="hireForm"><h3>Hire ${esc(a.name)}</h3><p class="muted small">Marks them hired and opens the flyer distributor form on Ambassadors, filled in with their details, to set their areas and rates and send their invite.</p><button class="btn sm">Hire</button></form>`
       : a.status === 'hired' && a.hire === 'distributor' ? '<div class="card"><p>✓ Hired. Set them up as a flyer distributor under Admin, Ambassadors.</p></div>'
       : a.status !== 'hired' ? `<form class="card" id="hireForm"><h3>Hire ${esc(a.name)}</h3><p class="muted small">Creates their partner manager login at these rates and emails them how to set their password.</p>
       <div class="form-grid"><div class="field"><label>Work email</label><input name="email" type="email" value="${esc(a.email)}"></div><div class="field"><label>Base a month (US$)</label><input name="base" value="400"></div></div>
@@ -3270,7 +3451,7 @@ async function pipelineApplicant(head, id) {
     if (!confirm(`Hire ${a.name}?`)) return;
     try {
       const r = await api(`/pipeline/applicants/${a.id}/hire`, { method: 'POST', body: formData(e.target) });
-      if (r.next) { toast('Hired. Now set up their flyer distributor account.'); return go(r.next); }
+      if (r.next) { toast(a.hire === 'community' ? 'Hired. Now set up their Community Manager account.' : 'Hired. Now set up their flyer distributor account.'); return go(r.next); }
       toast('Hired. Invite sent.'); route();
     } catch (err) { toast(err.message); }
   };

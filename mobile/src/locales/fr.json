@@ -1239,5 +1239,16 @@
   "au pairs": "au pairs",
   "Pins are meetups. Bubbles show how many families are in each part of town, never where anyone is. A meetup pin is approximate until you join.": "Les épingles sont des rencontres. Les bulles montrent combien de familles se trouvent dans chaque quartier, jamais où est quelqu'un. L'épingle d'une rencontre est approximative tant que vous n'êtes pas inscrit.",
   "Pins are meetups. Bubbles show how many au pairs are in each part of town, never where anyone is. A meetup pin is approximate until you join.": "Les épingles sont des rencontres. Les bulles montrent combien d'au pairs se trouvent dans chaque quartier, jamais où est quelqu'un. L'épingle d'une rencontre est approximative tant que vous n'êtes pas inscrit.",
-  "Bubbles appear once enough people in {city} are on Nearby.": "Les bulles apparaissent quand assez de personnes à {city} utilisent À proximité."
+  "Bubbles appear once enough people in {city} are on Nearby.": "Les bulles apparaissent quand assez de personnes à {city} utilisent À proximité.",
+  "PairMundo community": "Communauté PairMundo",
+  "Hosted by {name}, PairMundo Community Manager for {city}": "Organisé par {name}, Community Manager PairMundo à {city}",
+  "You're checked in. Enjoy the meetup!": "Tu es enregistré·e. Profite bien de la rencontre !",
+  "Check-in code": "Code d'enregistrement",
+  "Check in": "M'enregistrer",
+  "Type the code under the QR code the host shows.": "Tape le code écrit sous le QR code que montre l'organisateur.",
+  "Your rating": "Ta note",
+  "How was it?": "C'était comment ?",
+  "Anything to tell the host? (optional, they see it without your name)": "Un mot pour l'organisateur ? (facultatif, il le voit sans ton nom)",
+  "Send rating": "Envoyer ma note",
+  "Thanks for rating!": "Merci pour ta note !"
 }

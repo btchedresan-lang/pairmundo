@@ -2828,7 +2828,7 @@ test('careers: the ambassador role links to sign-up, and flyer distributors appl
     campaign_answer: 'Täby and Danderyd, near where I live.', objection_answer: 'Weekends and Wednesday afternoons. I delivered newspapers for a year.' };
   assert.equal((await call(null, 'POST', '/jobs/flyer-distributor/apply', { ...form, phone: '' })).status, 400);
   assert.equal((await call(null, 'POST', '/jobs/flyer-distributor/apply', { ...form, country: 'ph' })).status, 400);
-  assert.deepEqual(jobs.map((j) => j.country), ['PH', 'CO', 'SE']);
+  assert.deepEqual(jobs.filter((j) => !j.locations).map((j) => j.country), ['PH', 'CO', 'SE']); // one market each; the Community Manager role lists cities instead
   r = await call(null, 'POST', '/jobs/flyer-distributor/apply', form);
   assert.equal(r.status, 201, JSON.stringify(r.body));
   const id = testDb.prepare("SELECT id FROM job_applications WHERE email = 'erik@flyer.test'").get().id;

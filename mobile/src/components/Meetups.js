@@ -30,6 +30,7 @@ export function MeetupCard({ m }) {
         <T small muted>{fmtTime(m.starts_at)} · {m.area || m.city}</T>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
           {m.official ? <Badge text={`✔ ${tr('Official')} · ${m.agency}`} color={C.ok} /> : null}
+          {m.community ? <Badge text={`🌍 ${tr('PairMundo community')}`} color={C.primary} /> : null}
           {m.external ? <Badge text={`↗ ${m.organizer || tr('External')}`} color="#3b5bdb" /> : null}
           {m.status === 'cancelled' ? <Badge text={tr('Cancelled')} color={C.nope} /> : null}
           {m.i_host ? <Badge text={tr('You host')} color={C.primary} /> : m.i_am_going ? <Badge text={tr("You're going")} color={C.primary} /> : null}

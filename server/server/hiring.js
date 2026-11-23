@@ -7,7 +7,8 @@ import { withMedia } from './mailer.js';
 /** Open roles, shown at pairmundo.com/#/careers and #/jobs/<slug>. Set open to false to stop new applications.
  *  apply: 'full' (default: CV, screening questions, test task, interview), 'short' (contact details and the job's own
  *  questions) or 'signup' (no application: the page links to signup_url). pay is private: never sent to the public page.
- *  Every role belongs to one of our markets: country is where applicants must live, region how the page names it. */
+ *  Every role belongs to one of our markets: country is where applicants must live, region how the page names it.
+ *  A role open in several cities lists them in locations instead, and applicants pick one. */
 export const JOBS = {
   'partnerships-onboarding-manager': {
     open: true,
@@ -77,6 +78,60 @@ export const JOBS = {
     pay_public: [
       'A reward for each au pair who completes a verified profile, each family who buys a Family Pass, and each stay that starts with someone you brought',
       'Your page shows the exact rewards and what you have earned. No targets, no fees, stop anytime',
+    ],
+    sign_off: 'Badji\nCo-founder & Partnerships, PairMundo',
+  },
+  // Community Managers run one city's community each. Hiring one opens the admin's Community Managers form, prefilled.
+  // The cities: Stockholm, our launch market, where the families are; and the biggest au pair sending cities in the
+  // countries our research ranks highest for au pairs (Brazil, Colombia, Mexico, South Africa, the Philippines), where
+  // our partner agencies recruit and future au pairs can meet, prepare and sign up together.
+  'community-manager': {
+    open: true,
+    apply: 'short',
+    hire: 'community',
+    locations: [
+      { city: 'Stockholm', country: 'SE' },
+      { city: 'Bogotá', country: 'CO' },
+      { city: 'São Paulo', country: 'BR' },
+      { city: 'Mexico City', country: 'MX' },
+      { city: 'Cape Town', country: 'ZA' },
+      { city: 'Manila', country: 'PH' },
+    ],
+    title: 'Community Manager',
+    meta: 'Stockholm, Bogotá, São Paulo, Mexico City, Cape Town or Manila · Part-time, evenings and weekends · Monthly retainer + pay per successful event',
+    about: 'PairMundo is an app where au pairs and host families find each other, with ID checks and two-way reviews. Being an au pair can be lonely, and hosting one for the first time is a big step. We want every au pair and host family to have a community in their city. We are a small, early-stage company.',
+    role: 'You run PairMundo\'s community in your city. You host friendly meetups in public places for au pairs, future au pairs and host families: coffees, picnics, language exchanges, playdates and info evenings. You welcome newcomers and keep people coming back. Ideally you were an au pair or a host family yourself.',
+    tasks: [
+      'Host 2 to 4 meetups a month in public places, from a weekly coffee to a monthly picnic or info evening',
+      'Run events for au pairs, for host families, or both: playdates, "first time hosting" coffees, visa and contract Q&As',
+      'Show your event\'s QR code at the door so people check in, and welcome the ones who are new',
+      'Promote your events in local au pair and expat groups, language schools and parents\' groups',
+      'Keep the city\'s community lively between events: answer questions, introduce people, share tips',
+      'Tell us what au pairs and families in your city need, so we can improve the app',
+    ],
+    needs: [
+      'You live in the city you apply for, and you are not a current au pair',
+      'Prior au pair experience, or experience as a host family, is a big plus',
+      'Warm, organised and reliable: people can count on your events happening',
+      'Good English, plus the local language (Swedish, Spanish, Portuguese, Filipino or Afrikaans/isiZulu are all welcome)',
+      'Active on social media and comfortable promoting events',
+      'Free on some evenings and weekends',
+    ],
+    pay_public: [
+      'A monthly retainer once you hold at least 2 events in the month (1 in your first month), plus pay for every successful event, up to 6 a month',
+      'An event is successful when at least 5 people check in with its QR code, at least 2 of them are new, and it averages 4 stars or more',
+      'A bonus for each newcomer at your successful events, and for each host family who checks in and then joins PairMundo with a Family Pass',
+      'Amounts are in your local currency and set for your city; we share them once you apply. Independent contractor, starting with a 3-month trial',
+    ],
+    // Private: shared with the applicant for their city. Stockholm's are the starting point; the other cities are
+    // set when we hire there, at local rates.
+    pay: [
+      'Stockholm: retainer 4,000 SEK a month (3,000 SEK during the 3-month trial), 1,000 SEK per successful event (up to 6 a month), 100 SEK per newcomer, 250 SEK per family who buys a Family Pass',
+      'Other cities: the same structure at local rates, set in Admin, Community when hiring',
+    ],
+    questions: [
+      { key: 'campaign_answer', label: 'Tell us about your au pair or host family experience, and any events or communities you have run.' },
+      { key: 'objection_answer', label: 'Describe the first three meetups you would host in your city: what, where, and how you would get people to come.' },
     ],
     sign_off: 'Badji\nCo-founder & Partnerships, PairMundo',
   },
@@ -169,7 +224,7 @@ export function mountHiring(api, { db, wrap, requireRole, rateLimit, HttpError, 
 
   // ---------- public ----------
   // The careers page: every open role.
-  api.get('/jobs', wrap(() => ({ jobs: Object.entries(JOBS).filter(([, j]) => j.open).map(([slug, j]) => ({ slug, title: j.title, meta: j.meta, role: j.role, apply: j.apply || 'full', country: j.country, region: j.region })) })));
+  api.get('/jobs', wrap(() => ({ jobs: Object.entries(JOBS).filter(([, j]) => j.open).map(([slug, j]) => ({ slug, title: j.title, meta: j.meta, role: j.role, apply: j.apply || 'full', country: j.country, region: j.region, locations: j.locations })) })));
   api.get('/jobs/:slug', wrap((req) => {
     const j = jobOf(req.params.slug);
     const { test: _test, pay: _pay, ...pub } = j;
@@ -186,7 +241,10 @@ export function mountHiring(api, { db, wrap, requireRole, rateLimit, HttpError, 
     if (!name) throw bad('Your name is required.');
     if (j.apply === 'signup') throw bad('This role has no application: sign up on the role\'s page instead.');
     const full = (j.apply || 'full') === 'full';
-    const country = str(b.country, 2)?.toUpperCase() || null;
+    // A role in several cities: the applicant picks one, and that sets their country.
+    const location = j.locations ? j.locations.find((l) => `${l.city}, ${l.country}` === String(b.location ?? '')) : null;
+    if (j.locations && !location) throw bad(`Pick the city you live in: ${j.locations.map((l) => l.city).join(', ')}.`);
+    const country = location ? location.country : str(b.country, 2)?.toUpperCase() || null;
     if (j.country && country !== j.country) throw bad(`This role is only open to people living in ${j.region}.`);
     const years = full ? Number(b.years_b2b) : null;
     if (full && (!Number.isFinite(years) || years < 0 || years > 50)) throw bad('Enter your years of B2B outreach experience as a number.');
@@ -205,8 +263,8 @@ export function mountHiring(api, { db, wrap, requireRole, rateLimit, HttpError, 
       cv = buf;
     }
     if (db.prepare('SELECT 1 FROM job_applications WHERE job = ? AND email = ?').get(req.params.slug, email)) throw new HttpError(409, "You've already applied with this email. We'll be in touch.");
-    const r = db.prepare(`INSERT INTO job_applications (job, name, email, country, phone, linkedin, years_b2b, hours_ok, languages, video_url, campaign_answer, objection_answer, cv_mime, cv_data, token)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(req.params.slug, name, email, country, str(b.phone, 60) || null,
+    const r = db.prepare(`INSERT INTO job_applications (job, name, email, country, location, phone, linkedin, years_b2b, hours_ok, languages, video_url, campaign_answer, objection_answer, cv_mime, cv_data, token)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(req.params.slug, name, email, country, location ? location.city : null, str(b.phone, 60) || null,
       str(b.linkedin, 300) || null, years, b.hours_ok && b.hours_ok !== 'false' ? 1 : 0, str(b.languages, 200) || null, video || null, campaign, objection,
       cv ? 'application/pdf' : null, cv, randomBytes(16).toString('hex'));
     send(email, `We received your application: ${j.title}`, [`Hello ${name},`, '',
@@ -334,6 +392,12 @@ export function mountHiring(api, { db, wrap, requireRole, rateLimit, HttpError, 
       db.prepare("UPDATE job_applications SET status = 'hired', updated_at = datetime('now') WHERE id = ?").run(a.id);
       const q = new URLSearchParams({ new: 'distributor', name: a.name, email: a.email, ...(a.country ? { country: a.country } : {}) });
       return { ...view(getApp(a.id), true), next: `#/admin/ambassadors?${q}` };
+    }
+    // A Community Manager is set up on the Community page: the same, with the city they applied for.
+    if (JOBS[a.job]?.hire === 'community') {
+      db.prepare("UPDATE job_applications SET status = 'hired', updated_at = datetime('now') WHERE id = ?").run(a.id);
+      const q = new URLSearchParams({ new: '1', name: a.name, email: a.email, ...(a.country ? { country: a.country } : {}), ...(a.location ? { city: a.location } : {}) });
+      return { ...view(getApp(a.id), true), next: `#/admin/community?${q}` };
     }
     const member = addTeamMember({ ...(req.body || {}), name: a.name, email: req.body?.email || a.email, country: a.country });
     db.prepare("UPDATE job_applications SET status = 'hired', user_id = ?, updated_at = datetime('now') WHERE id = ?").run(member.user_id, a.id);

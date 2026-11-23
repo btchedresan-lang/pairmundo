@@ -21,6 +21,9 @@ export default function Meetup() {
   const [reporting, setReporting] = useState(false);
   const [reason, setReason] = useState('');
   const [note, setNote] = useState(null);
+  const [code, setCode] = useState('');
+  const [stars, setStars] = useState(0);
+  const [comment, setComment] = useState('');
   const load = useCallback(() => api(`/meetups/${id}`).then((d) => { setM(d.meetup); setError(null); })
     .catch((e) => { setError(e.message); setM((x) => x || false); }), [id]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
@@ -44,6 +47,12 @@ export default function Meetup() {
     if (!(await confirmAsync(tr('Cancel this meetup?'), tr("Everyone going gets a notification that it's cancelled."), tr('Cancel meetup'), true))) return;
     act(() => api(`/meetups/${m.id}/cancel`, { method: 'POST' }));
   };
+  // At the meetup: the code under the host's QR code checks you in. Scanning the QR code with the camera does the same on the website.
+  const checkIn = () => act(async () => { await api(`/meetups/${m.id}/checkin`, { method: 'POST', body: { code } }); setCode(''); });
+  const rate = () => act(async () => {
+    await api(`/meetups/${m.id}/rating`, { method: 'POST', body: { stars: stars || m.my_rating, comment } });
+    setComment(''); setNote(tr('Thanks for rating!'));
+  });
   const report = () => act(async () => {
     await api(`/meetups/${m.id}/report`, { method: 'POST', body: { reason } });
     setReporting(false); setReason(''); setNote(tr('Thanks for telling us. Our team will look at it.'));
@@ -61,6 +70,7 @@ export default function Meetup() {
         </View>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
           {m.official ? <Badge text={`✔ ${tr('Official')} · ${m.agency}`} color={C.ok} /> : null}
+          {m.community ? <Badge text={`🌍 ${tr('PairMundo community')}`} color={C.primary} /> : null}
           {m.external ? <Badge text={`↗ ${tr('Organised by {name}', { name: m.organizer })}`} color="#3b5bdb" /> : null}
           {m.status === 'cancelled' ? <Badge text={tr('Cancelled')} color={C.nope} /> : null}
           {m.status === 'hidden' ? <Badge text={tr('Under review')} color={C.warn} /> : null}
@@ -70,6 +80,7 @@ export default function Meetup() {
         {!m.place ? <T small muted>{tr('The exact place shows once you join.')}</T> : null}
         {!m.external ? <Row icon="people-outline" text={m.max_people ? tr('{n} of {max} going', { n: m.going, max: m.max_people }) : trn(m.going, '1 going', '{n} going')} /> : null}
         {m.about ? <T>{m.about}</T> : null}
+        {m.community_host ? <Row icon="sparkles-outline" text={tr('Hosted by {name}, PairMundo Community Manager for {city}', { name: m.community_host, city: m.city })} /> : null}
         {m.host ? (
           <Pressable onPress={() => router.push(`/user/${m.host.id}`)} style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
             <Photo user={m.host} rounded style={{ width: 36, height: 36 }} />
@@ -82,6 +93,33 @@ export default function Meetup() {
         : m.i_host ? (m.status === 'open' && !past ? <Button kind="danger" icon="close-circle-outline" title={tr('Cancel meetup')} loading={busy} onPress={cancel} /> : null)
           : m.i_am_going ? <Button kind="secondary" icon="exit-outline" title={tr("I can't come")} loading={busy} onPress={leave} />
             : m.status === 'open' && !past ? <Button icon="checkmark-circle-outline" title={full ? tr('Full') : tr("I'm going")} disabled={full} loading={busy} onPress={join} /> : null}
+
+      {m.checked_in ? <Alert level="ok" text={`✓ ${tr("You're checked in. Enjoy the meetup!")}`} />
+        : m.check_in_open && !m.i_host ? (
+          <Card>
+            <T bold>{tr('Check in')}</T>
+            <T small muted>{tr('Type the code under the QR code the host shows.')}</T>
+            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-end' }}>
+              <Field style={{ flex: 1 }} value={code} onChangeText={(v) => setCode(v.toUpperCase())} placeholder={tr('Check-in code')} autoCapitalize="characters" maxLength={8} />
+              <Button small icon="qr-code-outline" title={tr('Check in')} disabled={code.trim().length < 4} loading={busy} onPress={checkIn} />
+            </View>
+          </Card>
+        ) : null}
+
+      {m.can_rate ? (
+        <Card>
+          <T bold>{m.my_rating ? tr('Your rating') : tr('How was it?')}</T>
+          <View style={{ flexDirection: 'row', gap: 6 }}>
+            {[1, 2, 3, 4, 5].map((i) => (
+              <Pressable key={i} onPress={() => setStars(i)} accessibilityLabel={`${i}`} hitSlop={6}>
+                <Ionicons name={i <= (stars || m.my_rating || 0) ? 'star' : 'star-outline'} size={32} color={C.warn} />
+              </Pressable>
+            ))}
+          </View>
+          <Field label={tr('Anything to tell the host? (optional, they see it without your name)')} value={comment} onChangeText={setComment} multiline maxLength={500} />
+          <Button small title={tr('Send rating')} disabled={!(stars || m.my_rating)} loading={busy} onPress={rate} />
+        </Card>
+      ) : null}
 
       {m.attendees ? (
         <Card>
