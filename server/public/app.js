@@ -213,6 +213,7 @@ function renderNav() {
     link('#/discover', tr('Discover'), 0, '🔥'),
     link('#/likes', tr('Likes'), c.requests, '💛'),
     link('#/matches', tr('Matches'), c.messages, '💬'),
+    link('#/nearby', tr('Nearby'), 0, '📍'),
     link('#/placements', tr('Placements'), 0, '🧳'),
     link('#/profile', tr('Profile'), 0, '👤'),
     `<a href="#/notifications" class="nav-bell ${route === 'notifications' ? 'active' : ''}">🔔${c.notifications ? `<span class="badge">${c.notifications}</span>` : ''}</a>`,
@@ -287,7 +288,7 @@ views.discover = async (_, query) => {
     ${isFamily && me.partner_agencies?.some((a) => !a.requested) ? `<a class="alert info nudge" href="#/account">🎓 ${me.partner_agencies.length === 1
     ? tr('Want an agency to help? {agency} works with PairMundo in {country}. See how →', { agency: esc(me.partner_agencies[0].name), country: esc(country(me.user.country)) })
     : tr('Want an agency to help? {n} agencies work with PairMundo in {country}. See how →', { n: me.partner_agencies.length, country: esc(country(me.user.country)) })}</a>` : ''}
-    <div class="disc-head"><button class="btn ghost sm" id="toggleFilters">⚙ ${tr('Filters')}${nFilters ? ` (${nFilters})` : ''}</button>
+    <div class="disc-head">${isFamily ? `<a class="btn ${q.near ? '' : 'ghost'} sm" href="#/discover${q.near ? '' : '?near=1'}">📍 ${tr('Near you')}</a>` : ''}<button class="btn ghost sm" id="toggleFilters">⚙ ${tr('Filters')}${nFilters ? ` (${nFilters})` : ''}</button>
       <a class="btn ghost sm" href="#/search${deckQuery ? `?${deckQuery}` : ''}">☰ ${tr('List view')}</a></div>
     <form class="card filters" id="filters" hidden>
       <div class="form-grid">
@@ -1013,6 +1014,14 @@ async function meetupPage(id, code) {
     ${m.community ? `<span class="chip">🌍 ${tr('PairMundo community')}</span>` : m.official ? `<span class="chip">✔ ${tr('Official')} · ${esc(m.agency)}</span>` : ''}
     <h1>${esc(m.title)}</h1><p class="muted">${meetupWhen(m.starts_at)} · ${esc(m.place || m.area || m.city)}</p>
     ${m.community_host ? `<p class="small">${tr('Hosted by {name}, PairMundo Community Manager for {city}', { name: esc(m.community_host), city: esc(m.city) })}</p>` : ''}
+    ${m.status === 'cancelled' ? `<div class="alert warning">${tr('This meetup was cancelled.')}</div>` : ''}
+    ${m.about ? `<p>${esc(m.about)}</p>` : ''}
+    <p class="small">${m.host ? `${tr('Host')}: <a href="#/u/${m.host.id}">${esc(m.host.name)}</a> · ` : ''}${tr('{n} going', { n: m.going })}${m.max_people ? ` / ${m.max_people}` : ''}
+      ${!m.place && !m.external ? `<br><span class="muted">${tr('The exact place shows once you join.')}</span>` : ''}</p>
+    ${m.attendees?.length ? `<p class="small muted">${m.attendees.map((a) => esc(a.name)).join(', ')}</p>` : ''}
+    ${m.external ? `<a class="btn sm" href="${esc(m.external_url)}" target="_blank" rel="noopener">↗ ${tr('Sign up with {org}', { org: esc(m.organizer || '') })}</a>`
+    : m.i_host ? `<button class="btn ghost sm" id="mtCancel">${tr('Cancel meetup')}</button>`
+    : m.status === 'open' && !m.started ? (m.i_am_going ? `<button class="btn ghost sm" id="mtLeave">${tr("I can't come")}</button>` : `<button class="btn sm" id="mtJoin">🙋 ${tr("I'm going")}</button>`) : ''}
     ${err && !m.checked_in ? `<div class="alert error">${esc(err.message)}</div>` : ''}
     ${m.checked_in ? `<div class="alert ok">✓ ${tr("You're checked in. Enjoy the meetup!")}</div>`
     : m.check_in_open ? `<form id="ciForm" class="row"><input name="code" maxlength="8" placeholder="${tr('Check-in code')}" style="width:auto;text-transform:uppercase" required><button class="btn sm">${tr('Check in')}</button></form>
@@ -1020,7 +1029,11 @@ async function meetupPage(id, code) {
     ${m.can_rate ? `<form id="rateForm"><h3>${m.my_rating ? tr('Your rating') : tr('How was it?')}</h3><div id="stars">${stars(m.my_rating || 0)}</div>
       <div class="field"><label>${tr('Anything to tell the host? (optional, they see it without your name)')}</label><textarea name="comment" rows="2" maxlength="500"></textarea></div>
       <button class="btn sm" ${m.my_rating ? '' : 'disabled'} id="rateSend">${tr('Send rating')}</button><div id="err"></div></form>` : ''}
-    <p class="muted small">${tr('Find more meetups in the Nearby tab of the PairMundo app.')}</p></div>`);
+    <p class="small"><a href="#/nearby">← ${tr('More meetups in Nearby')}</a></p></div>`);
+  const act = (elId, fn) => { const b = document.getElementById(elId); if (b) b.onclick = async () => { b.disabled = true; try { await fn(); meetupPage(m.id, null); } catch (e) { b.disabled = false; toast(e.message); if (e.data?.code === 'email_unverified') go('#/verify'); } }; };
+  act('mtJoin', () => api(`/meetups/${m.id}/join`, { method: 'POST' }));
+  act('mtLeave', () => api(`/meetups/${m.id}/join`, { method: 'DELETE' }));
+  act('mtCancel', async () => { if (!confirm(tr('Cancel this meetup? Everyone going gets a notification.'))) throw new Error(tr('Not cancelled')); await api(`/meetups/${m.id}/cancel`, { method: 'POST' }); });
   const ci = document.getElementById('ciForm');
   if (ci) ci.onsubmit = (e) => { e.preventDefault(); go(`#/checkin/${m.id}/${encodeURIComponent(ci.code.value.trim().toUpperCase())}`); };
   const rf = document.getElementById('rateForm');
@@ -1038,6 +1051,160 @@ async function meetupPage(id, code) {
     };
   }
 }
+
+// ---------- Nearby (members) ----------
+// Au pairs meet au pairs, families meet families, in their city, plus group meetups in public places (server/nearby.js).
+// Off until the person turns it on. The map shows meetups as pins and people only as counts per area.
+const nearbyDistance = (d, city) => (d ? tr('Under {km} km away', { km: d }) : tr('In {city}', { city: esc(city) }));
+function nearbyMeetupCard(m) {
+  return `<a class="card" href="#/meetups/${m.id}" style="display:block;text-decoration:none;color:inherit;margin:0 0 10px">
+    <div class="spread"><strong>${esc((MEETUP_KINDS[m.kind] || '✨').split(' ')[0])} ${esc(m.title)}</strong>
+      ${m.community ? `<span class="chip">🌍 ${tr('PairMundo community')}</span>` : m.official ? `<span class="chip ok">✔ ${esc(m.agency)}</span>` : m.external ? `<span class="chip">↗ ${esc(m.organizer || '')}</span>` : ''}</div>
+    <div class="muted small">${meetupWhen(m.starts_at)} · ${esc(m.place || m.area || m.city)}</div>
+    <div class="small">${m.i_host ? `⭐ ${tr('You host')}` : m.i_am_going ? `✓ ${tr("You're going")}` : ''} ${m.external ? '' : tr('{n} going', { n: m.going })}${m.max_people && !m.external ? ` / ${m.max_people}` : ''}</div></a>`;
+}
+function nearbySettingsForm(s, isFamily) {
+  return `<form class="card" id="nbForm"><h2>${s ? tr('Nearby settings') : tr('Turn on Nearby')}</h2><div class="form-grid">
+    <div class="field"><label>${tr('Your city')}</label><input name="city" required maxlength="80" value="${esc(s?.city ?? me.user.city ?? '')}" placeholder="${tr('For example: Stockholm')}"></div>
+    <div class="field"><label>${tr('Country')}</label><select name="country" required>${options(COUNTRIES, s?.country ?? me.user.country ?? '', tr('Choose a country'))}</select></div></div>
+    <button type="button" class="btn ghost sm" id="nbLocate">🧭 ${tr('Use my approximate location')}</button>
+    <p class="muted small">${tr('Optional. It only helps show a rough distance. We round it to about 2 km and never store your exact location.')}</p>
+    <label class="small"><input type="checkbox" name="visible" ${!s || s.visible ? 'checked' : ''} style="width:auto"> ${isFamily ? tr('Show me to families nearby') : tr('Show me to au pairs nearby')}</label><br>
+    ${isFamily ? '' : `<label class="small"><input type="checkbox" name="families_can_find" ${s?.families_can_find ? 'checked' : ''} style="width:auto"> ${tr('Let families near me find me')}</label>
+      <p class="muted small">${tr('Families looking for an au pair in your city can see your profile with "Find an au pair near you". Off unless you turn it on.')}</p>`}
+    <div id="nbErr"></div><div class="row"><button class="btn sm">📍 ${s ? tr('Save') : tr('Turn on Nearby')}</button>${s ? `<button type="button" class="btn danger sm" id="nbOff">${tr('Turn off Nearby')}</button>` : ''}</div></form>`;
+}
+function wireNearbySettings(reload) {
+  const f = document.getElementById('nbForm'); if (!f) return;
+  let point = null;
+  document.getElementById('nbLocate').onclick = (e) => {
+    if (!navigator.geolocation) return toast(tr('Your browser cannot share a location.'));
+    e.target.disabled = true;
+    navigator.geolocation.getCurrentPosition((p) => { point = { lat: p.coords.latitude, lng: p.coords.longitude }; e.target.textContent = `✓ ${tr('Approximate location added')}`; },
+      () => { e.target.disabled = false; toast(tr('Location was not shared. You can still type your city.')); }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 });
+  };
+  f.city.oninput = () => { point = null; };
+  f.onsubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await api('/me/nearby', { method: 'PUT', body: { city: f.city.value, country: f.country.value, visible: f.visible.checked, families_can_find: !!f.families_can_find?.checked, ...(point || {}) } });
+      toast(tr('Saved')); reload();
+    } catch (x) { if (x.data?.code === 'email_unverified') return go('#/verify'); document.getElementById('nbErr').innerHTML = `<div class="alert error">${esc(x.message)}</div>`; }
+  };
+  const off = document.getElementById('nbOff');
+  if (off) off.onclick = async () => {
+    if (!confirm(tr('Turn off Nearby? We forget your city and you disappear from Nearby. Meetups you joined stay.'))) return;
+    await api('/me/nearby', { method: 'DELETE' }).catch(() => {}); reload();
+  };
+}
+let leafletLoading = null;
+const loadLeaflet = () => leafletLoading || (leafletLoading = new Promise((res, rej) => {
+  if (window.L) return res(window.L);
+  const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = '/vendor/leaflet/leaflet.css'; document.head.appendChild(css);
+  const js = document.createElement('script'); js.src = '/vendor/leaflet/leaflet.js'; js.onload = () => res(window.L); js.onerror = () => { leafletLoading = null; rej(new Error(tr('The map could not load.'))); };
+  document.head.appendChild(js);
+}));
+async function nearbyMap(box, isFamily) {
+  box.innerHTML = `<div id="nbMap" style="height:440px;border-radius:16px;overflow:hidden;background:var(--line)"></div><p class="muted small" id="nbMapNote"></p>`;
+  try {
+    const [L, d] = await Promise.all([loadLeaflet(), api('/nearby/map')]);
+    const map = L.map('nbMap');
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 17, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' }).addTo(map);
+    const pts = [];
+    for (const a of d.areas) {
+      const size = Math.min(84, 44 + a.count * 3);
+      L.marker([a.lat, a.lng], { interactive: false, icon: L.divIcon({ className: '', iconSize: [size, size], html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:rgba(59,91,219,.18);border:2px solid rgba(59,91,219,.6);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#1e2a5a;font-weight:700;font-size:13px;line-height:1.1"><span>${a.count}</span><span style="font-weight:500;font-size:10px">${isFamily ? tr('families') : tr('au pairs')}</span></div>` }) }).addTo(map);
+      pts.push([a.lat, a.lng]);
+    }
+    for (const m of d.meetups) {
+      const color = m.official ? '#2f9e44' : '#3b5bdb';
+      L.marker([m.point.lat, m.point.lng], { icon: L.divIcon({ className: '', iconSize: [42, 42], html: `<div style="width:42px;height:42px;border-radius:21px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;box-shadow:0 2px 8px rgba(0,0,0,.25);border:3px ${m.point.exact ? 'solid' : 'dashed'} ${color}">${esc((MEETUP_KINDS[m.kind] || '✨').split(' ')[0])}</div>` }) })
+        .bindTooltip(esc(m.title), { direction: 'top', offset: [0, -20] }).on('click', () => go(`#/meetups/${m.id}`)).addTo(map);
+      pts.push([m.point.lat, m.point.lng]);
+    }
+    if (pts.length > 1) map.fitBounds(pts, { padding: [40, 40], maxZoom: 14 });
+    else if (pts.length || d.center) map.setView(pts[0] || [d.center.lat, d.center.lng], 13);
+    else map.setView([59.33, 18.07], 4);
+    document.getElementById('nbMapNote').textContent = `${isFamily
+      ? tr('Pins are meetups. Bubbles show how many families are in each part of town, never where anyone is. A meetup pin is approximate until you join.')
+      : tr('Pins are meetups. Bubbles show how many au pairs are in each part of town, never where anyone is. A meetup pin is approximate until you join.')}${d.city && !d.city.unlocked ? ` ${tr('Bubbles appear once enough people in {city} are on Nearby.', { city: d.city.name })}` : ''}`;
+  } catch (e) { box.innerHTML = `<div class="alert error">${esc(e.message)}</div>`; }
+}
+views.nearby = async (_, qs) => {
+  if (!['aupair', 'family'].includes(me.user.role)) return go('#/');
+  const isFamily = me.user.role === 'family';
+  const reload = () => views.nearby([], new URLSearchParams());
+  const d = await api('/nearby');
+  const intro = `<div class="card" style="text-align:center"><div style="font-size:44px">${isFamily ? '🏡' : '🌍'}</div>
+    <h1>${isFamily ? tr('Meet host families near you') : tr('Meet au pairs near you')}</h1>
+    <p class="muted">${isFamily ? tr('Find other host families in your city, join playdates and coffee meetups, and share tips about hosting.') : tr('New in town? Find other au pairs in your city, say hi, and join coffee, walks and language meetups.')}</p></div>`;
+  if (!d.settings) {
+    render(`<div style="max-width:720px;margin:0 auto">${intro}
+      <div class="card"><strong>${tr('Your privacy comes first')}</strong><ul class="small">
+        <li>${tr('Off until you turn it on. Turn it off any time and we forget your city.')}</li>
+        <li>${tr('Others see your city and a rough distance like "under 5 km", never where you live.')}</li>
+        <li>${isFamily ? tr('Families see families. Au pairs see au pairs.') : tr('Au pairs see au pairs. Families only find you if you say so.')}</li>
+        <li>${tr('Meetups are in public places. Block or report anyone, any time.')}</li></ul></div>
+      ${nearbySettingsForm(null, isFamily)}
+      ${d.my_meetups?.length ? `<h2>${tr('Your meetups')}</h2>${d.my_meetups.map(nearbyMeetupCard).join('')}` : ''}</div>`);
+    return wireNearbySettings(reload);
+  }
+  const s = d.settings, city = d.city, view = qs?.get('view') === 'map' ? 'map' : 'list';
+  const others = (d.my_meetups || []).filter((m) => !d.meetups?.some((x) => x.id === m.id));
+  const canHost = d.host_rule !== 'id';
+  render(`<div style="max-width:720px;margin:0 auto">
+    <div class="card spread"><div><strong>📍 ${flag(s.country)} ${esc(s.city)}</strong><div class="muted small">${s.visible ? (isFamily ? tr('Families nearby can see you') : tr('Au pairs nearby can see you')) : tr('Hidden: you browse meetups only')}${!isFamily && s.families_can_find ? ` · ${tr('Families can find you')}` : ''}</div></div>
+      <button class="btn ghost sm" id="nbEdit">⚙ ${tr('Settings')}</button></div>
+    <div id="nbSettings" hidden>${nearbySettingsForm(s, isFamily)}</div>
+    <div class="row" style="margin:6px 0 14px"><a class="btn ${view === 'list' ? '' : 'ghost'} sm" href="#/nearby">☰ ${tr('List')}</a><a class="btn ${view === 'map' ? '' : 'ghost'} sm" href="#/nearby?view=map">🗺 ${tr('Map')}</a></div>
+    <div id="nbBody"></div>
+    <div class="alert info small" style="margin-top:14px">${tr('Stay safe: meet in public places, tell someone where you are going, and never share your home address before you trust someone. Report anything that feels wrong.')}</div></div>`);
+  document.getElementById('nbEdit').onclick = () => { const b = document.getElementById('nbSettings'); b.hidden = !b.hidden; };
+  wireNearbySettings(reload);
+  const body = document.getElementById('nbBody');
+  if (view === 'map') return nearbyMap(body, isFamily);
+  body.innerHTML = `
+    ${d.hellos?.length ? `<h2>${tr('Said hi to you')}</h2>${d.hellos.map((h) => `<div class="card spread"><a href="#/u/${h.user.id}" class="row" style="gap:10px;color:inherit;text-decoration:none">
+        ${h.user.photo_url ? `<img src="${esc(h.user.photo_url)}" alt="" style="width:48px;height:48px;border-radius:50%;object-fit:cover">` : ''}<span><strong>${esc(h.user.name)}</strong>${h.message ? `<br><span class="muted small">“${esc(h.message)}”</span>` : ''}</span></a>
+        <span class="row"><button class="btn ghost sm" data-hello="${h.id}" data-ok="0">${tr('No thanks')}</button><button class="btn sm" data-hello="${h.id}" data-ok="1">👋 ${tr('Say hi back')}</button></span></div>`).join('')}` : ''}
+    <div class="spread"><h2>${tr('Meetups in {city}', { city: esc(s.city) })}</h2><button class="btn sm" id="nbHost">＋ ${tr('Host')}</button></div>
+    <div id="nbHostBox" hidden class="card">${canHost ? meetupFormHtml({ community: { city: s.city, country: s.country } }) : `<p>${tr('To keep meetups safe, hosts verify their ID first. Anyone can join a meetup.')}</p><a class="btn sm" href="#/account">${tr('Verify my ID')}</a>`}</div>
+    ${d.meetups?.length ? d.meetups.map(nearbyMeetupCard).join('') : `<div class="card" style="text-align:center"><div style="font-size:36px">☕</div><strong>${tr('Be the first to host a meetup in {city}', { city: esc(s.city) })}</strong>
+      <p class="muted small">${isFamily ? tr('A playdate in the park or a coffee is a great start. Pick a public place and a time.') : tr('A coffee, a walk or a language exchange is a great start. Pick a public place and a time.')}</p></div>`}
+    ${others.length ? `<h2>${tr('Your other meetups')}</h2>${others.map(nearbyMeetupCard).join('')}` : ''}
+    <h2>${isFamily ? tr('Families nearby') : tr('Au pairs nearby')}</h2>
+    ${!s.visible ? `<div class="alert info">${tr('You are hidden, so you see meetups only. Show yourself in Settings to see others nearby.')}</div>`
+    : !city.unlocked ? `<div class="card" style="text-align:center"><div style="font-size:36px">🌱</div><strong>${isFamily
+        ? tr('{n} more families in {city} and you can see each other', { n: city.needed, city: esc(s.city) }) : tr('{n} more au pairs in {city} and you can see each other', { n: city.needed, city: esc(s.city) })}</strong>
+        <p class="muted small">${tr('For your safety, a city shows its people once at least {n} are on Nearby. Invite friends to get there sooner.', { n: d.min_people })}</p>
+        <button class="btn ghost sm" id="nbInvite">✉️ ${isFamily ? tr('Invite a family you know') : tr('Invite an au pair friend')}</button></div>`
+    : d.people.length ? d.people.map((p) => `<div class="card spread"><a href="#/u/${p.user.id}" class="row" style="gap:10px;color:inherit;text-decoration:none">
+        ${p.user.photo_url ? `<img src="${esc(p.user.photo_url)}" alt="" style="width:56px;height:56px;border-radius:50%;object-fit:cover">` : ''}
+        <span><strong>${esc(p.user.name)}</strong><br><span class="muted small">${[p.nationality ? `${flag(p.nationality)} ${esc(country(p.nationality))}` : '', p.age ? tr('{n} years', { n: p.age }) : '', p.children ? tr('{n} children', { n: p.children }) : ''].filter(Boolean).join(' · ')}</span>
+        <br><span class="small" style="color:var(--primary)">${nearbyDistance(p.distance, s.city)}</span></span></a>
+        ${p.hello === 'sent' ? `<span class="muted small">${tr('Hi sent')}</span>` : `<button class="btn ${p.hello === 'connected' ? 'ghost' : ''} sm" data-hi="${p.user.id}" data-name="${esc(p.user.name.split(' ')[0])}">${p.hello === 'connected' ? `💬 ${tr('Chat')}` : p.hello === 'received' ? `👋 ${tr('Say hi back')}` : `👋 ${tr('Say hi')}`}</button>`}</div>`).join('')
+    : `<p class="muted">${tr('Nobody else to show right now. Check back soon.')}</p>`}`;
+  const hostBtn = document.getElementById('nbHost');
+  hostBtn.onclick = () => { const b = document.getElementById('nbHostBox'); b.hidden = !b.hidden; };
+  const hf = body.querySelector('.meetupForm');
+  if (hf) { const af = hf.audience?.closest('.field'); if (af) af.hidden = true; wireMeetupForm(body, reload); }
+  const inv = document.getElementById('nbInvite');
+  if (inv) inv.onclick = () => { const text = isFamily ? tr('Join me on PairMundo: host families in {city} meet up for playdates and coffee. {link}', { city: s.city, link: 'https://pairmundo.com' }) : tr('Join me on PairMundo: au pairs in {city} meet up for coffee, walks and language exchange. {link}', { city: s.city, link: 'https://pairmundo.com' });
+    if (navigator.share) navigator.share({ text }).catch(() => {}); else navigator.clipboard?.writeText(text).then(() => toast(tr('Invite copied. Paste it to a friend.'))); };
+  body.querySelectorAll('[data-hello]').forEach((b) => { b.onclick = async () => {
+    try { const r = await api(`/nearby/hellos/${b.dataset.hello}`, { method: 'POST', body: { accept: b.dataset.ok === '1' } }); if (r.conversation_id) go(`#/messages/${r.conversation_id}`); else reload(); } catch (e) { toast(e.message); }
+  }; });
+  body.querySelectorAll('[data-hi]').forEach((b) => { b.onclick = async () => {
+    b.disabled = true;
+    try {
+      const r = await api(`/nearby/people/${b.dataset.hi}/hello`, { method: 'POST', body: { message: tr('Hi {name}! I saw you on Nearby. Want to meet up for a coffee sometime?', { name: b.dataset.name }) } });
+      if (r.conversation_id) go(`#/messages/${r.conversation_id}`); else reload();
+    } catch (e) {
+      b.disabled = false;
+      if (e.data?.code === 'email_unverified') go('#/verify'); else if (e.data?.code === 'profile_incomplete') go('#/profile'); else toast(e.message);
+    }
+  }; });
+};
 
 async function adminCommunity(head, qs) {
   const month = qs.get('month') || new Date().toISOString().slice(0, 7);
@@ -3707,7 +3874,7 @@ async function route() {
   renderNav();
   if (!view) return render(`<div class="empty">${tr('Page not found.')} <a href="#/">${tr('Go home')}</a></div>`);
   if (!me && !PUBLIC.has(name || 'home')) return toLogin();
-  try { await view(args, new URLSearchParams(qs || '')); if (me && me.user.role !== 'admin' && ['discover', 'agency', 'ambassador', 'matches', 'likes', 'placements', 'profile'].includes(name)) showNews(); }
+  try { await view(args, new URLSearchParams(qs || '')); if (me && me.user.role !== 'admin' && ['discover', 'agency', 'ambassador', 'matches', 'likes', 'placements', 'profile', 'nearby'].includes(name)) showNews(); }
   catch (e) {
     if (e.status === 401) { me = null; return toLogin(); }
     render(`<div class="alert error">${esc(e.message)}</div>`);
