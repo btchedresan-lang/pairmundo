@@ -250,6 +250,14 @@ export const DICT = {
   "You can use them until {date}.": {
     es: "Puedes usarlos hasta el {date}.", fr: "Vous pouvez les utiliser jusqu'au {date}.",
     de: "Du kannst sie bis zum {date} einlösen.", pt: "Você pode usá-los até {date}." },
+  "New: Nearby. Meet other au pairs or host families in your city, and join coffee, walks and playdates.": {
+    es: "Nuevo: Cerca. Conoce a otras au pairs o familias anfitrionas en tu ciudad y únete a cafés, paseos y quedadas con niños.",
+    fr: "Nouveau : À proximité. Rencontrez d'autres au pairs ou familles d'accueil dans votre ville, et rejoignez cafés, balades et après-midi jeux.",
+    de: "Neu: In der Nähe. Triff andere Au-pairs oder Gastfamilien in deiner Stadt und komm zu Kaffee, Spaziergängen und Spieltreffen.",
+    pt: "Novidade: Por perto. Conheça outras au pairs ou famílias anfitriãs na sua cidade e participe de cafés, passeios e encontros com as crianças." },
+  "See you in the app,\nBadji\nCo-founder & Partnerships, {app}": {
+    es: "Nos vemos en la app,\nBadji\nCofundador y Alianzas, {app}", fr: "À bientôt dans l'application,\nBadji\nCofondateur et Partenariats, {app}",
+    de: "Bis gleich in der App,\nBadji\nMitgründer & Partnerschaften, {app}", pt: "Até já no app,\nBadji\nCofundador e Parcerias, {app}" },
   "See you in the app,\nThe {app} team": {
     es: "Nos vemos en la app,\nEl equipo de {app}", fr: "À bientôt dans l'application,\nL'équipe {app}",
     de: "Bis gleich in der App,\nDein {app}-Team", pt: "Até já no app,\nEquipe {app}" },

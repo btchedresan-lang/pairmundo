@@ -233,7 +233,8 @@ export const launchEmail = (lang, { kind, role, email, links, earlyDays = 0, use
       t(lang, 'Open Family Pass in the app and tap "Use my {days} free days now" whenever it suits you.', v),
       useBy ? t(lang, 'You can use them until {date}.', v) : ''].filter(Boolean).join(' '));
   }
-  parts.push(t(lang, 'See you in the app,\nThe {app} team', v));
+  parts.push(t(lang, 'New: Nearby. Meet other au pairs or host families in your city, and join coffee, walks and playdates.', v));
+  parts.push(t(lang, 'See you in the app,\nBadji\nCo-founder & Partnerships, {app}', v));
   parts.push(kind === 'account' ? t(lang, 'You got this email because you have a {app} account.', v)
     : t(lang, 'You got this email because you joined the {app} list. To leave the list, open this link: {link}', v));
   return { subject: t(lang, 'The {app} app is here', v), text: parts.join('\n\n') };
