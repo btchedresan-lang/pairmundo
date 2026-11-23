@@ -2494,6 +2494,16 @@ async function adminProfileInvites() {
   };
   try { show(await api('/admin/profile-invites')); } catch (e) { box.textContent = e.message; }
 }
+// Sends set up ahead of time: a list with a Cancel button for the ones still waiting.
+const localTime = (iso) => new Date(iso).toLocaleString(LANG, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+const scheduledTable = (rows, what) => (rows?.length ? `<div class="table-wrap"><table><tr><th>When (your time)</th><th>${what}</th><th>Status</th><th></th></tr>
+  ${rows.map((r) => `<tr><td class="small">${esc(localTime(r.run_at))}</td><td class="small">${esc(r.kind === 'message' ? `${r.payload.subject ? `${r.payload.subject}: ` : ''}${String(r.payload.text || '').slice(0, 90)}…` : `Launch email (up to ${r.payload.limit})`)}</td>
+    <td class="small">${esc(r.status)}${r.result ? `<br><span class="muted">${esc(r.result)}</span>` : ''}</td>
+    <td>${r.status === 'scheduled' ? `<button class="btn ghost sm schedCancel" data-id="${r.id}">Cancel</button>` : ''}</td></tr>`).join('')}</table></div>` : '');
+const wireCancel = (root, after) => root.querySelectorAll('.schedCancel').forEach((b) => { b.onclick = async () => {
+  if (!confirm('Cancel this scheduled send?')) return;
+  try { await api(`/admin/scheduled/${b.dataset.id}/cancel`, { method: 'POST' }); toast('Cancelled'); after(); } catch (e) { toast(e.message); }
+}; });
 // Launch day: email everyone that the apps are out. Nothing goes out until the admin presses Send.
 async function adminLaunchEmail() {
   const box = document.getElementById('launchEmail'); if (!box) return;
@@ -2513,6 +2523,10 @@ async function adminLaunchEmail() {
         <button class="btn sm" id="launchSend" ${l.remaining && !l.job.running && !l.too_early ? '' : 'disabled'}>Send launch email</button>
         <button class="btn ghost sm" id="launchTest">Email me the samples</button></div>
       <p class="muted small">Resend's free plan sends 100 emails a day, so send 100 a day until it's done, or upgrade the plan first.</p>
+      <div class="card" style="margin:10px 0;padding:12px"><strong class="small">⏰ Send it automatically</strong>
+        <p class="muted small">Pick a time on launch day and it goes out by itself, to everyone still waiting. If the mail service stops it (a daily limit), it carries on 24 hours later until everyone has it.</p>
+        <div class="row"><input id="launchAt" type="datetime-local" style="width:auto"><button class="btn sm" id="launchSchedule">Schedule launch email</button></div>
+        ${scheduledTable(l.scheduled, 'What')}</div>
       <details><summary class="small">Read what people get</summary>${l.samples.map((m) => `<h3 class="small">${esc(m.label)}</h3><p class="small"><strong>${esc(m.subject)}</strong></p><pre class="small" style="white-space:pre-wrap">${esc(m.text)}</pre>`).join('')}</details>`;
     const samples = l.samples;
     document.getElementById('launchSend').onclick = async (e) => {
@@ -2520,6 +2534,13 @@ async function adminLaunchEmail() {
       try { const r = await api('/admin/launch-email/send', { method: 'POST', body: { limit: Number(document.getElementById('launchLimit').value) } }); show({ ...r, samples }); watch(samples); }
       catch (err) { toast(err.message); e.target.disabled = false; }
     };
+    document.getElementById('launchSchedule').onclick = async () => {
+      const v = document.getElementById('launchAt').value;
+      if (!v) return toast('Pick a date and time first.');
+      try { const r = await api('/admin/launch-email/schedule', { method: 'POST', body: { at: new Date(v).toISOString(), limit: 5000 } }); toast(`Scheduled for ${localTime(r.run_at)}`); show({ ...r, samples }); }
+      catch (err) { toast(err.message); }
+    };
+    wireCancel(box, async () => show({ ...(await api('/admin/launch-email')), samples }));
     document.getElementById('launchTest').onclick = async () => {
       try { const r = await api('/admin/launch-email/test', { method: 'POST' }); toast(`Sent ${r.count} samples to ${r.to}`); } catch (err) { toast(err.message); }
     };
@@ -2781,9 +2802,12 @@ async function adminMessages(head, qs) {
         <label class="small">Picture at the top of the email</label>
         <div class="row" style="flex-wrap:wrap;gap:8px;margin:6px 0 10px">${d.images.map((im, i) => `<label style="cursor:pointer;text-align:center"><input type="radio" name="msgImage" value="${esc(im.file)}" ${i ? '' : 'checked'} style="width:auto;display:block;margin:0 auto 4px"><img src="${esc(im.url)}" alt="" style="width:120px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--line)"></label>`).join('')}</div>
       </div>
+      <div class="field" style="margin-top:10px"><label>⏰ Send later (optional, your time)</label><input id="msgAt" type="datetime-local" style="width:auto">
+        <p class="muted small">Leave empty to send now. With a time, it goes out by itself then, to whoever matches at that moment.</p></div>
       <div id="msgErr"></div>
       <div class="row" style="margin-top:10px"><button class="btn ghost sm" id="msgTest">Send me a test</button><button class="btn sm" id="msgSend">Send</button></div>
     </div>
+    ${d.scheduled?.length ? `<div class="card" id="msgScheduled"><h2>⏰ Scheduled</h2>${scheduledTable(d.scheduled, 'Message')}</div>` : ''}
     <div class="card"><h2>Sent messages</h2>${d.job.error ? `<div class="alert warning small">Emails stopped: ${esc(d.job.error)}. <button class="btn sm" id="msgResume">Email the rest</button></div>` : ''}
       ${d.history.length ? `<div class="table-wrap"><table><tr><th>Sent</th><th>To</th><th>Message</th><th>People</th><th>Closed the card</th><th>Emails</th></tr>
       ${d.history.map((h) => `<tr><td class="small">${fmtTime(h.created_at)}</td><td class="small">${esc(who(h.audience))}</td><td class="small">${h.subject ? `<strong>${esc(h.subject)}</strong><br>` : ''}${esc(h.text.slice(0, 140))}${h.text.length > 140 ? '…' : ''}</td>
@@ -2810,7 +2834,9 @@ async function adminMessages(head, qs) {
   $('msgEmail').onchange = () => { $('msgEmailBox').hidden = !$('msgEmail').checked; count(); };
   count();
   const body = () => ({ text: $('msgText').value, link: $('msgLink').value.trim(), email: $('msgEmail').checked, subject: $('msgSubject').value.trim(),
-    image: document.querySelector('input[name=msgImage]:checked')?.value, audience: audience() });
+    image: document.querySelector('input[name=msgImage]:checked')?.value, audience: audience(), send_at: $('msgAt').value ? new Date($('msgAt').value).toISOString() : undefined });
+  $('msgAt').oninput = () => { $('msgSend').textContent = $('msgAt').value ? 'Schedule' : 'Send'; };
+  if ($('msgScheduled')) wireCancel($('msgScheduled'), () => views.admin(['messages']));
   const fail = (e) => { $('msgErr').innerHTML = `<div class="alert error">${esc(e.message)}</div>`; };
   $('msgTest').onclick = async () => { $('msgErr').innerHTML = '';
     try { const r = await api('/admin/messages/test', { method: 'POST', body: body() }); toast(`Test sent to you (${r.to}) in the app and by email.`); refreshMe().then(renderNav); } catch (e) { fail(e); } };
@@ -2818,9 +2844,10 @@ async function adminMessages(head, qs) {
     $('msgErr').innerHTML = '';
     if (!reach?.count) return fail(new Error('Nobody matches who you picked.'));
     const b = body();
-    if (!confirm(`Send this message to ${reach.count} ${reach.count === 1 ? 'person' : 'people'} now${b.email ? `, and email ${reach.emailable}` : ''}? They are notified straight away, and this cannot be undone.`)) return;
+    if (b.send_at ? !confirm(`Schedule this message for ${localTime(b.send_at)}? It goes to whoever matches then (${reach.count} people right now). You can cancel it until then.`)
+      : !confirm(`Send this message to ${reach.count} ${reach.count === 1 ? 'person' : 'people'} now${b.email ? `, and email ${reach.emailable}` : ''}? They are notified straight away, and this cannot be undone.`)) return;
     $('msgSend').disabled = true;
-    try { const r = await api('/admin/messages', { method: 'POST', body: b }); toast(`Sent to ${r.sent}${r.emailing ? `. Emailing ${r.emailing} now` : ''}.`); if (location.hash === '#/admin/messages') views.admin(['messages']); else go('#/admin/messages'); }
+    try { const r = await api('/admin/messages', { method: 'POST', body: b }); toast(r.scheduled ? `Scheduled for ${localTime(r.run_at)}.` : `Sent to ${r.sent}${r.emailing ? `. Emailing ${r.emailing} now` : ''}.`); if (location.hash === '#/admin/messages') views.admin(['messages']); else go('#/admin/messages'); }
     catch (e) { $('msgSend').disabled = false; fail(e); }
   };
   if ($('msgResume')) $('msgResume').onclick = async () => { try { const r = await api('/admin/messages/resume', { method: 'POST' }); toast(`Emailing ${r.pending} more`); } catch (e) { toast(e.message); } };

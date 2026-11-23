@@ -3008,6 +3008,22 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   // That is everyone on the waitlist plus every confirmed account (not admins, not suspended), once per email.
   // Each press sends up to `limit` emails one after another (Resend's free plan allows 100 a day), stops at the first
   // failure, and the next press carries on with whoever hasn't had it yet.
+  // ---------- sends set up ahead of time ----------
+  const futureTime = (v) => {
+    const d = new Date(String(v || ''));
+    if (Number.isNaN(d.getTime())) throw bad('Pick a date and time.');
+    if (d.getTime() < Date.now() - 60000) throw bad('That time has already passed.');
+    if (d.getTime() > Date.now() + 60 * 86400000) throw bad('Pick a time within the next 60 days.');
+    return d;
+  };
+  const scheduledList = (kind) => db.prepare(`SELECT id, kind, payload, run_at, status, result, created_at FROM scheduled_sends
+      WHERE kind = ? AND (status = 'scheduled' OR created_at >= datetime('now', '-14 days')) ORDER BY run_at DESC LIMIT 20`).all(kind)
+    .map((r) => ({ ...r, payload: json.parse(r.payload, {}) }));
+  api.post('/admin/scheduled/:id/cancel', requireRole('admin'), wrap((req) => {
+    const n = db.prepare("UPDATE scheduled_sends SET status = 'cancelled' WHERE id = ? AND status = 'scheduled'").run(Number(req.params.id)).changes;
+    if (!n) throw bad('Nothing scheduled with that number (it may have gone out already).');
+    return { ok: true };
+  }));
   const storeLinks = () => [['iPhone (App Store)', process.env.APP_STORE_URL], ['Android (Google Play)', process.env.PLAY_STORE_URL || 'https://play.google.com/store/apps/details?id=com.pairmundo.app']]
     .filter(([, url]) => url);
   const launchRecipients = () => {
@@ -3052,6 +3068,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const left = all.filter((r) => !r.done);
     const count = (f) => all.filter(f).length;
     return { total: all.length, sent: all.length - left.length, remaining: left.length, launch_date: launchDate(), too_early: !!launchDate() && !launched(),
+      scheduled: scheduledList('launch_email'),
       store_links: storeLinks(), app_store_missing: !process.env.APP_STORE_URL,
       breakdown: { families_with_account: count((r) => r.kind === 'account' && r.role === 'family'), aupairs_with_account: count((r) => r.kind === 'account' && r.role === 'aupair'),
         waitlist_families: count((r) => r.kind === 'waitlist' && r.role === 'family'), waitlist_aupairs: count((r) => r.kind === 'waitlist' && r.role === 'aupair'),
@@ -3096,6 +3113,16 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   api.post('/admin/launch-email/test', requireRole('admin'), wrap(async (req) => {
     for (const s of launchSamples()) await mailer({ to: req.user.email, subject: `[Test: ${s.label}] ${s.subject}`, text: s.text, html: s.html });
     return { ok: true, to: req.user.email, count: launchSamples().length };
+  }));
+  // Launch email ahead of time: it starts by itself at the chosen time (from launch day on). If the mail service stops
+  // it (for example a daily limit), it carries on a day later, until everyone has it or after 14 tries.
+  api.post('/admin/launch-email/schedule', requireRole('admin'), wrap((req) => {
+    const at = futureTime(req.body?.at);
+    if (launchDate() && at.getTime() < Date.parse(`${launchDate()}T00:00:00Z`)) throw bad(`Pick a time on or after launch day (${launchDate()}).`);
+    const limit = Math.min(Math.max(Math.floor(Number(req.body?.limit)) || 5000, 1), 5000);
+    const id = Number(db.prepare("INSERT INTO scheduled_sends (kind, payload, run_at, created_by) VALUES ('launch_email', ?, ?, ?)")
+      .run(JSON.stringify({ limit, tries: 0 }), at.toISOString(), req.user.id).lastInsertRowid);
+    return { id, run_at: at.toISOString(), ...launchStatus() };
   }));
   api.post('/admin/launch-email/send', requireRole('admin'), wrap((req) => {
     if (launchDate() && !launched()) throw new HttpError(409, `It isn't launch day yet (LAUNCH_DATE is ${launchDate()}). The email says the apps are out, so it can only go out from then.`);
@@ -3747,7 +3774,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     sample: MESSAGE_SAMPLE, roles: MESSAGE_ROLES, images: MESSAGE_IMAGES.map((f) => ({ file: f, url: `/media/email/${f}` })),
     countries: db.prepare("SELECT country, COUNT(*) n FROM users WHERE role != 'admin' AND demo = 0 AND country IS NOT NULL GROUP BY country ORDER BY n DESC").all(),
     agencies: db.prepare("SELECT code, name FROM ambassadors WHERE kind = 'agency' AND active = 1 AND demo = 0 ORDER BY name").all(),
-    history: messageHistory(), job: { ...newsJob },
+    history: messageHistory(), job: { ...newsJob }, scheduled: scheduledList('message'),
   })));
   api.post('/admin/messages/preview', requireRole('admin'), wrap((req) => audienceSummary(messageAudience(req.body?.audience))));
   // Sends the message to the admin alone (in the app and by email), to check it before everyone gets it.
@@ -3762,10 +3789,21 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const audience = req.body?.audience || {};
     const { users } = messageAudience(audience);
     if (!users.length) throw bad('Nobody matches who you picked.');
+    if (req.body?.send_at) {
+      const at = futureTime(req.body.send_at);
+      const id = Number(db.prepare("INSERT INTO scheduled_sends (kind, payload, run_at, created_by) VALUES ('message', ?, ?, ?)")
+        .run(JSON.stringify({ ...m, audience }), at.toISOString(), req.user.id).lastInsertRowid);
+      return { scheduled: id, run_at: at.toISOString(), count: users.length };
+    }
+    return sendMessageNow(m, audience, req.user.id);
+  }));
+  const sendMessageNow = (m, audience, by) => {
+    const { users } = messageAudience(audience);
+    if (!users.length) return { id: null, sent: 0, emailing: 0, opted_out: 0 };
     const saved = { ...audience, people: typeof audience.people === 'string' ? `${users.length} named` : undefined };
     const id = tx(db, () => {
       const mid = Number(db.prepare('INSERT INTO admin_messages (subject, text, link, image, audience, email, sent, created_by) VALUES (?,?,?,?,?,?,?,?)')
-        .run(m.subject, m.text, m.link, m.image, JSON.stringify(saved), m.email ? 1 : 0, users.length, req.user.id).lastInsertRowid);
+        .run(m.subject, m.text, m.link, m.image, JSON.stringify(saved), m.email ? 1 : 0, users.length, by).lastInsertRowid);
       for (const u of users) {
         const status = !m.email ? null : u.news_emails === 0 ? 'opted_out' : u.email_verified ? 'pending' : 'skipped';
         db.prepare('INSERT INTO admin_message_recipients (message_id, user_id, email_status) VALUES (?,?,?)').run(mid, u.id, status);
@@ -3776,7 +3814,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (m.email) drainNews();
     const n = (s) => db.prepare('SELECT COUNT(*) n FROM admin_message_recipients WHERE message_id = ? AND email_status = ?').get(id, s).n;
     return { id, sent: users.length, emailing: n('pending'), opted_out: n('opted_out') };
-  }));
+  };
   // Carries on with emails that are still waiting, e.g. after the mail service's daily limit.
   api.post('/admin/messages/resume', requireRole('admin'), wrap(() => {
     drainNews();
@@ -3816,6 +3854,37 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     res.status(500).json({ error: 'Something went wrong.' });
   });
 
+  /** Sends whatever was scheduled for now or earlier. index.js calls it every minute. */
+  const runScheduled = async () => {
+    const due = db.prepare("SELECT * FROM scheduled_sends WHERE status = 'scheduled' AND run_at <= ? ORDER BY run_at, id").all(new Date().toISOString());
+    for (const job of due) {
+      // Claim it first, so two ticks never send the same thing twice.
+      if (!db.prepare("UPDATE scheduled_sends SET status = 'running' WHERE id = ? AND status = 'scheduled'").run(job.id).changes) continue;
+      const p = json.parse(job.payload, {});
+      const finish = (status, result) => db.prepare('UPDATE scheduled_sends SET status = ?, result = ? WHERE id = ?').run(status, result, job.id);
+      try {
+        if (job.kind === 'message') {
+          const r = sendMessageNow(p, p.audience || {}, job.created_by);
+          finish('done', `Sent to ${r.sent}${r.emailing ? `, emailing ${r.emailing}` : ''}`);
+        } else if (job.kind === 'launch_email') {
+          if (launchDate() && !launched()) { db.prepare("UPDATE scheduled_sends SET status = 'scheduled', run_at = ? WHERE id = ?").run(`${launchDate()}T00:00:00.000Z`, job.id); continue; }
+          if (launchJob.running) { db.prepare("UPDATE scheduled_sends SET status = 'scheduled', run_at = ? WHERE id = ?").run(new Date(Date.now() + 5 * 60000).toISOString(), job.id); continue; }
+          await runLaunchEmails(p.limit || 5000);
+          const left = launchStatus().remaining;
+          const tries = (p.tries || 0) + 1;
+          if (left && tries < 14) {
+            db.prepare('INSERT INTO scheduled_sends (kind, payload, run_at, created_by) VALUES (?,?,?,?)')
+              .run('launch_email', JSON.stringify({ ...p, tries }), new Date(Date.now() + 86400000).toISOString(), job.created_by);
+          }
+          finish(launchJob.error ? 'failed' : 'done', `${launchJob.sent} sent${launchJob.error ? `; ${launchJob.error}` : ''}${left ? `; ${left} left${tries < 14 ? ', carrying on in 24 hours' : ''}` : ''}`);
+        } else finish('failed', `Unknown kind ${job.kind}`);
+      } catch (e) {
+        console.error('Scheduled send failed:', e.message);
+        finish('failed', String(e.message).slice(0, 300));
+      }
+    }
+  };
+  app.runScheduled = runScheduled;
   return app;
 }
 
