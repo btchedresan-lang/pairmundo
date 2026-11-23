@@ -138,8 +138,9 @@ export function mountNearby(api, deps) {
       city: m.city, country: m.country, area: m.area, starts_at: m.starts_at, ends_at: m.ends_at, started: m.starts_at < now(), audience: m.audience, agency_only: !!m.agency_only,
       max_people: m.max_people, going: goingCount(m), status: m.status, i_am_going: going, i_host: !!runs && u.role !== 'admin',
       host: host ? publicUser(host, u) : null, agency: agency?.name ?? null, organizer: m.organizer, external_url: m.external_url,
-      // The exact spot is for people going; everyone else sees the neighbourhood.
+      // The exact spot is for people going; everyone else sees the neighbourhood, and a map pin rounded to the grid.
       place: insider ? m.place : null,
+      point: m.lat == null ? null : insider ? { lat: m.lat, lng: m.lng, exact: true } : { lat: toGrid(m.lat, 90), lng: toGrid(m.lng, 180), exact: false },
     };
     if (full && (going || runs)) {
       v.attendees = db.prepare('SELECT u.* FROM meetup_attendees a JOIN users u ON u.id = a.user_id WHERE a.meetup_id = ? ORDER BY a.created_at')
@@ -251,7 +252,11 @@ export function mountNearby(api, deps) {
     }
     const n = b.max_people == null || b.max_people === '' ? null : Math.round(Number(b.max_people));
     if (n != null && !(n >= 2 && n <= maxPeople)) throw bad(`Up to ${maxPeople} people can come.`);
-    return { title, kind, place, about: str(b.about, 1000) || null, area: str(b.area, 80) || null, starts_at: start.toISOString(), ends_at: end, max_people: n };
+    // Where the public place is, for the map (about 10 m is plenty).
+    const coord = (v, max) => { const x = Number(v); return v == null || v === '' || !Number.isFinite(x) || Math.abs(x) > max ? null : Number(x.toFixed(4)); };
+    const lat = coord(b.lat, 90), lng = coord(b.lng, 180);
+    return { title, kind, place, about: str(b.about, 1000) || null, area: str(b.area, 80) || null, starts_at: start.toISOString(), ends_at: end, max_people: n,
+      lat: lat != null && lng != null ? lat : null, lng: lat != null && lng != null ? lng : null };
   };
   const insertMeetup = (m) => {
     const cols = Object.keys(m);
@@ -387,6 +392,39 @@ export function mountNearby(api, deps) {
     if (reporters >= REPORTS_TO_HIDE && m.status === 'open') db.prepare("UPDATE meetups SET status = 'hidden' WHERE id = ?").run(m.id);
     res.status(201);
     return { ok: true };
+  }));
+
+  // ---------- the map ----------
+  // Never a pin per person: meetups as pins (rounded unless you're going), and people as counts per area of about
+  // 5 km, shown only where at least MAP_MIN_BUBBLE people are, so no bubble points at one person.
+  const MAP_CELL = 0.05;
+  const MAP_MIN_BUBBLE = 3;
+  api.get('/nearby/map', member, wrap((req) => {
+    const me = req.user;
+    const area = areaOf(me.id);
+    if (!area) return { settings: null };
+    const all = cityPeople(area, me.role, me.demo);
+    const unlocked = all.length >= minPeople();
+    const cells = new Map();
+    if (unlocked && area.visible) {
+      for (const u of all) {
+        if (!hasPoint(u) || (u.id !== me.id && !canMeet(me, u))) continue;
+        const key = `${Math.round(u.lat / MAP_CELL)}:${Math.round(u.lng / MAP_CELL)}`;
+        const c = cells.get(key) || { n: 0, lat: 0, lng: 0 };
+        c.n++; c.lat += u.lat; c.lng += u.lng;
+        cells.set(key, c);
+      }
+    }
+    const areas = [...cells.values()].filter((c) => c.n >= MAP_MIN_BUBBLE)
+      .map((c) => ({ lat: Number((c.lat / c.n).toFixed(2)), lng: Number((c.lng / c.n).toFixed(2)), count: c.n }));
+    const meetups = meetupsIn(area, me).filter((m) => m.point);
+    return {
+      settings: settingsView(area),
+      // Where to centre the map: your own rounded point, else the middle of what's on it.
+      center: hasPoint(area) ? { lat: area.lat, lng: area.lng } : null,
+      city: { name: area.city, country: area.country, unlocked, people: all.length, needed: Math.max(0, minPeople() - all.length) },
+      areas, meetups,
+    };
   }));
 
   // ---------- agencies ----------

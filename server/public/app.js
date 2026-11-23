@@ -879,6 +879,8 @@ function meetupFormHtml({ external = false } = {}) {
     <div class="field"><label>${tr('Country')}</label><select name="country" required>${options(COUNTRIES, me.user.country || '', tr('Choose a country'))}</select></div>
     <div class="field"><label>${tr('Public place')}</label><input name="place" required maxlength="120" placeholder="${tr('For example: Pildammsparken, by the big pond')}"></div>
     <div class="field"><label>${tr('Neighbourhood (optional)')}</label><input name="area" maxlength="80"></div>
+    <div class="field"><label>${tr('Map pin (optional)')}</label><input name="pin" maxlength="60" placeholder="59.3326, 18.0649">
+      <div class="muted small">${tr('Right-click the place in Google Maps or OpenStreetMap and copy its coordinates. Without them the meetup shows in the list only.')}</div></div>
     <div class="field"><label>${tr('Starts')}</label><input name="starts_at" type="datetime-local" required></div>
     <div class="field"><label>${tr('Ends (optional)')}</label><input name="ends_at" type="datetime-local"></div>
     <div class="field"><label>${tr('For')}</label><select name="audience"><option value="aupair">${tr('Au pairs')}</option><option value="family">${tr('Host families')}</option><option value="both" ${external ? 'selected' : ''}>${tr('Au pairs and families')}</option></select></div>
@@ -893,8 +895,9 @@ function meetupFormHtml({ external = false } = {}) {
 }
 function readMeetupForm(f) {
   const iso = (v) => (v ? new Date(v).toISOString() : null);
+  const pin = /^\s*(-?\d+(?:\.\d+)?)\s*[,; ]\s*(-?\d+(?:\.\d+)?)\s*$/.exec(f.pin.value);
   return { title: f.title.value, kind: f.kind.value, city: f.city.value, country: f.country.value, place: f.place.value, area: f.area.value, about: f.about.value,
-    starts_at: iso(f.starts_at.value), ends_at: iso(f.ends_at.value), audience: f.audience.value,
+    starts_at: iso(f.starts_at.value), ends_at: iso(f.ends_at.value), audience: f.audience.value, ...(pin ? { lat: Number(pin[1]), lng: Number(pin[2]) } : {}),
     ...(f.external_url ? { external_url: f.external_url.value, organizer: f.organizer.value } : { max_people: f.max_people.value || null, agency_only: f.agency_only.checked, public_place: f.public_place.checked }) };
 }
 function meetupRow(m, { admin = false } = {}) {

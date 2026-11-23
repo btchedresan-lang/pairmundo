@@ -1,7 +1,8 @@
 // Host a meetup in your Nearby city: what, when, and which public place.
 import { useState } from 'react';
-import { Switch, View } from 'react-native';
-import { router } from 'expo-router';
+import { Platform, Switch, View } from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
+import * as Location from 'expo-location';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import { tr } from '../i18n';
@@ -15,6 +16,7 @@ const SIZES = { 4: '4', 6: '6', 8: '8', 12: '12', 20: '20', 30: '30' };
 
 export default function NewMeetup() {
   const { me } = useAuth();
+  const { city } = useLocalSearchParams();
   const isFamily = me.user.role === 'family';
   const [f, setF] = useState({ kind: isFamily ? 'playdate' : 'coffee', title: '', place: '', area: '', about: '', date: null, time: '15:00', max_people: '8' });
   const [publicPlace, setPublicPlace] = useState(false);
@@ -28,8 +30,16 @@ export default function NewMeetup() {
     setBusy(true); setError(null);
     try {
       const starts = new Date(`${f.date}T${f.time}:00`);
+      // Find the public place for the map pin with the phone's own geocoder. No pin if it can't be found.
+      let pin = {};
+      if (Platform.OS !== 'web') {
+        try {
+          const [hit] = await Location.geocodeAsync([f.place, f.area, city].filter(Boolean).join(', '));
+          if (hit) pin = { lat: hit.latitude, lng: hit.longitude };
+        } catch { /* no pin */ }
+      }
       const { meetup } = await api('/meetups', { method: 'POST', body: { kind: f.kind, title: f.title, place: f.place, area: f.area, about: f.about,
-        starts_at: starts.toISOString(), max_people: Number(f.max_people), public_place: publicPlace } });
+        starts_at: starts.toISOString(), max_people: Number(f.max_people), public_place: publicPlace, ...pin } });
       router.replace(`/meetup/${meetup.id}`);
     } catch (e) {
       if (e.data?.code === 'email_unverified') router.push('/verify-email'); else setError(e.message);

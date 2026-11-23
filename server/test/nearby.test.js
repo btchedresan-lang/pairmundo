@@ -227,3 +227,27 @@ test('meetups: verified hosts, public places only, exact spot for people going, 
   assert.ok(!(await call(other.token, 'GET', '/nearby')).body.meetups.some((m) => m.id === off.body.meetup.id));
   assert.equal((await call(agency, 'GET', '/agency/meetups')).body.meetups.length, 1);
 });
+
+test('map: meetups as rounded pins unless going, people only as area counts of 3 or more', async () => {
+  const people = [];
+  for (const [i, lat] of [59.86, 59.86, 59.85, 59.62, 59.86].entries()) {
+    const m = await member(`map${i}@near.io`, 'aupair', `Map Person${i}`, { city: 'Västerås', extra: { id_verified: 1 } });
+    await call(m.token, 'PUT', '/me/nearby', { city: 'Västerås', country: 'SE', lat, lng: 16.55 });
+    people.push(m);
+  }
+  const made = await call(people[0].token, 'POST', '/meetups', { title: 'Lake walk', kind: 'walk', place: 'Mälarparken, by the pier', starts_at: inAnHour(), public_place: true, lat: 59.60123, lng: 16.53456 });
+  assert.equal(made.status, 201, JSON.stringify(made.body));
+  const map = (await call(people[1].token, 'GET', '/nearby/map')).body;
+  assert.equal(map.city.unlocked, true);
+  // Four people near 59.86 make a bubble; the one at 59.62 is alone and stays off the map.
+  assert.deepEqual(map.areas.map((a) => a.count), [4]);
+  assert.ok(!JSON.stringify(map).includes('59.62'));
+  const pin = map.meetups.find((m) => m.id === made.body.meetup.id).point;
+  assert.deepEqual(pin, { lat: 59.6, lng: 16.54, exact: false });
+  await call(people[1].token, 'POST', `/meetups/${made.body.meetup.id}/join`);
+  const going = (await call(people[1].token, 'GET', '/nearby/map')).body.meetups.find((m) => m.id === made.body.meetup.id).point;
+  assert.deepEqual(going, { lat: 59.6012, lng: 16.5346, exact: true });
+  // Off Nearby: no map.
+  const off = await member('mapoff@near.io', 'aupair', 'Map Off');
+  assert.equal((await call(off.token, 'GET', '/nearby/map')).body.settings, null);
+});

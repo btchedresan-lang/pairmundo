@@ -1,6 +1,6 @@
 // Nearby: au pairs meet other au pairs, and families other families, in their city, plus group meetups in public
 // places. Off until the person turns it on; only their city (and a rounded point, if they share it) is kept.
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Modal, Pressable, RefreshControl, ScrollView, Share, Switch, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,6 +12,7 @@ import { Alert, Button, Card, Field, Loading, Photo, T, useInsets } from '../../
 import { CountryPicker } from '../../components/pickers';
 import { confirmAsync } from '../../components/dialogs';
 import { approximateCity, MeetupCard } from '../../components/Meetups';
+import { NearbyMap } from '../../components/NearbyMap';
 import { brand, C, lift, useTheme } from '../../theme';
 
 const distanceText = (d, city) => (d ? tr('Under {km} km away', { km: d }) : tr('In {city}', { city }));
@@ -22,6 +23,7 @@ export default function Nearby() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [editing, setEditing] = useState(false);
+  const [view, setView] = useState('list');
   const isFamily = me.user.role === 'family';
   const load = useCallback(() => api('/nearby').then((d) => { setData(d); setError(null); }).catch((e) => { setError(e.message); setData((x) => x || {}); }), []);
   useFocusEffect(useCallback(() => { load(); }, [load]));
@@ -64,7 +66,7 @@ export default function Nearby() {
     if (data.host_rule === 'id') {
       confirmAsync(tr('Verify your ID to host'), tr('To keep meetups safe, hosts verify their ID first. Anyone can join a meetup.'), tr('Verify my ID'))
         .then((ok) => ok && router.push('/account')).catch(() => {});
-    } else router.push('/new-meetup');
+    } else router.push(`/new-meetup?city=${encodeURIComponent(s.city)}&country=${s.country}`);
   };
 
   return (
@@ -80,6 +82,18 @@ export default function Nearby() {
         </View>
         <T small style={{ color: C.primary, fontWeight: '700' }}>{tr('Settings')}</T>
       </Pressable>
+
+      <View style={{ flexDirection: 'row', backgroundColor: t.card, borderRadius: 999, padding: 4 }}>
+        {[['list', 'list-outline', tr('List')], ['map', 'map-outline', tr('Map')]].map(([k, icon, label]) => (
+          <Pressable key={k} onPress={() => setView(k)} accessibilityRole="button" accessibilityState={{ selected: view === k }}
+            style={{ flex: 1, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: 9, borderRadius: 999, backgroundColor: view === k ? C.primary : 'transparent' }}>
+            <Ionicons name={icon} size={17} color={view === k ? '#fff' : t.ink} />
+            <T bold style={{ color: view === k ? '#fff' : t.ink }}>{label}</T>
+          </Pressable>
+        ))}
+      </View>
+
+      {view === 'map' ? <MapPane isFamily={isFamily} onHost={hostMeetup} /> : <>
 
       {data.hellos?.length ? (
         <View style={{ gap: 10 }}>
@@ -118,6 +132,8 @@ export default function Nearby() {
           </Card>
         ) : data.people.length ? data.people.map((p) => <PersonRow key={p.user.id} p={p} city={s.city} onDone={load} />)
           : <T muted>{tr('Nobody else to show right now. Check back soon.')}</T>}
+
+      </>}
 
       <Alert level="info" text={tr('Stay safe: meet in public places, tell someone where you are going, and never share your home address before you trust someone. Report anything that feels wrong.')} />
 
@@ -268,4 +284,33 @@ function HelloCard({ hello, onDone }) {
 
 function MeetupList({ title, items }) {
   return <View style={{ gap: 10 }}><T h2>{title}</T>{items.map((m) => <MeetupCard key={m.id} m={m} />)}</View>;
+}
+
+/** The map: meetups as pins, and how many people are in each part of town as bubbles. Never a pin per person. */
+function MapPane({ isFamily, onHost }) {
+  const t = useTheme();
+  const [map, setMap] = useState(null);
+  const [error, setError] = useState(null);
+  const loadMap = useCallback(() => api('/nearby/map').then((d) => { setMap(d); setError(null); }).catch((e) => setError(e.message)), []);
+  useFocusEffect(useCallback(() => { loadMap(); }, [loadMap]));
+  const labels = useMemo(() => ({ people: isFamily ? tr('families') : tr('au pairs') }), [isFamily]);
+  if (error) return <Alert level="error" text={error} />;
+  if (!map) return <View style={{ height: 420, alignItems: 'center', justifyContent: 'center' }}><T muted>{tr('Loading…')}</T></View>;
+  const empty = !map.meetups.length && !map.areas.length;
+  return (
+    <View style={{ gap: 10 }}>
+      <NearbyMap meetups={map.meetups} areas={map.areas} center={map.center} labels={labels} onMeetup={(id) => router.push(`/meetup/${id}`)}
+        style={{ height: 440, backgroundColor: t.card }} />
+      {empty ? (
+        <Card style={{ alignItems: 'center' }}>
+          <T bold style={{ textAlign: 'center' }}>{tr('Be the first to host a meetup in {city}', { city: map.city.name })}</T>
+          <Button icon="add-circle-outline" title={tr('Host a meetup')} onPress={onHost} style={{ alignSelf: 'stretch' }} />
+        </Card>
+      ) : null}
+      <T small muted>{isFamily
+        ? tr('Pins are meetups. Bubbles show how many families are in each part of town, never where anyone is. A meetup pin is approximate until you join.')
+        : tr('Pins are meetups. Bubbles show how many au pairs are in each part of town, never where anyone is. A meetup pin is approximate until you join.')}</T>
+      {!map.city.unlocked ? <T small muted>{tr('Bubbles appear once enough people in {city} are on Nearby.', { city: map.city.name })}</T> : null}
+    </View>
+  );
 }

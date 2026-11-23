@@ -1232,5 +1232,12 @@
   "This meetup is organised elsewhere. Use its link to sign up.": "Den här träffen arrangeras någon annanstans. Använd länken för att anmäla dig.",
   "This meetup is no longer open.": "Den här träffen är inte längre öppen.",
   "This meetup is full.": "Den här träffen är full.",
-  "Join the meetup to see its chat.": "Anmäl dig till träffen för att se chatten."
+  "Join the meetup to see its chat.": "Anmäl dig till träffen för att se chatten.",
+  "List": "Lista",
+  "Map": "Karta",
+  "families": "familjer",
+  "au pairs": "au pairer",
+  "Pins are meetups. Bubbles show how many families are in each part of town, never where anyone is. A meetup pin is approximate until you join.": "Nålarna är träffar. Bubblorna visar hur många familjer som finns i varje del av stan, aldrig var någon är. En träffs nål är ungefärlig tills du anmäler dig.",
+  "Pins are meetups. Bubbles show how many au pairs are in each part of town, never where anyone is. A meetup pin is approximate until you join.": "Nålarna är träffar. Bubblorna visar hur många au pairer som finns i varje del av stan, aldrig var någon är. En träffs nål är ungefärlig tills du anmäler dig.",
+  "Bubbles appear once enough people in {city} are on Nearby.": "Bubblorna syns när tillräckligt många i {city} använder I närheten."
 }

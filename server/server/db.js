@@ -796,6 +796,8 @@ CREATE TABLE IF NOT EXISTS meetups (
   country TEXT NOT NULL,
   area TEXT,                                      -- neighbourhood, shown in the list
   place TEXT NOT NULL,                            -- the public place; only people going see it (external: everyone)
+  lat REAL,                                       -- the place on the map, found by the host's phone; others see it rounded to the grid
+  lng REAL,
   starts_at TEXT NOT NULL,
   ends_at TEXT,
   max_people INTEGER,

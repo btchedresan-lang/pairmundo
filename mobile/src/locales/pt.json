@@ -1232,5 +1232,12 @@
   "This meetup is organised elsewhere. Use its link to sign up.": "Este encontro é organizado em outro lugar. Use o link para se inscrever.",
   "This meetup is no longer open.": "Este encontro não está mais aberto.",
   "This meetup is full.": "Este encontro está lotado.",
-  "Join the meetup to see its chat.": "Entre no encontro para ver o chat."
+  "Join the meetup to see its chat.": "Entre no encontro para ver o chat.",
+  "List": "Lista",
+  "Map": "Mapa",
+  "families": "famílias",
+  "au pairs": "au pairs",
+  "Pins are meetups. Bubbles show how many families are in each part of town, never where anyone is. A meetup pin is approximate until you join.": "Os pinos são encontros. As bolhas mostram quantas famílias há em cada parte da cidade, nunca onde alguém está. O pino de um encontro é aproximado até você entrar.",
+  "Pins are meetups. Bubbles show how many au pairs are in each part of town, never where anyone is. A meetup pin is approximate until you join.": "Os pinos são encontros. As bolhas mostram quantas au pairs há em cada parte da cidade, nunca onde alguém está. O pino de um encontro é aproximado até você entrar.",
+  "Bubbles appear once enough people in {city} are on Nearby.": "As bolhas aparecem quando gente suficiente em {city} usa Por perto."
 }
