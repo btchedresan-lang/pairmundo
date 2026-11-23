@@ -291,6 +291,7 @@ views.discover = async (_, query) => {
     ${!me.user.email_verified ? `<a class="alert warning nudge" href="#/verify">📧 ${tr('Confirm your email to start liking. Click to enter your code.')}</a>` : ''}
     ${me.profile_missing?.length ? `<a class="alert warning nudge" href="#/profile">📸 ${isFamily ? tr('Add a photo and a few words so au pairs can see you. Profiles with photos get far more matches.') : tr('Add a photo and a few words so families can see you. Profiles with photos get far more matches.')}</a>`
     : completeness < 70 ? `<a class="alert info nudge" href="#/profile">${tr('Your profile is {n}% complete. Finish it to improve your matches →', { n: completeness })}</a>` : ''}
+    <div id="guideSlot"></div>
     ${isFamily && me.partner_agencies?.some((a) => !a.requested) ? `<a class="alert info nudge" href="#/account">🎓 ${me.partner_agencies.length === 1
     ? tr('Want an agency to help? {agency} works with PairMundo in {country}. See how →', { agency: esc(me.partner_agencies[0].name), country: esc(country(me.user.country)) })
     : tr('Want an agency to help? {n} agencies work with PairMundo in {country}. See how →', { n: me.partner_agencies.length, country: esc(country(me.user.country)) })}</a>` : ''}
@@ -473,7 +474,9 @@ views.likes = async () => {
   render(`<h1>${trn(likes.length, '{n} person likes you', '{n} people like you')}</h1>
     <p class="muted">${tr('Like them back to match and start chatting.')}</p>
     <div class="tiles">${likes.map((l) => tile(l, l.message ? `<em>“${esc(l.message.slice(0, 60))}${l.message.length > 60 ? '…' : ''}”</em>` : '')).join('')
-    || `<div class="empty" style="grid-column:1/-1">${tr('No new likes yet. Keep your profile fresh and keep swiping!')}<br><br><a class="btn" href="#/discover">${tr('Discover')}</a></div>`}</div>`);
+    || `<div class="empty" style="grid-column:1/-1"><div style="font-size:2.4rem">💛</div>${tr('No new likes yet. Keep your profile fresh and keep swiping!')}
+      <p class="small">💡 ${tr('Tip: profiles with 3 or more photos, a few words about you and the ID verified badge get the most likes.')}</p>
+      <div class="row" style="justify-content:center"><a class="btn" href="#/discover">${tr('Discover')}</a><a class="btn ghost" href="#/profile">${tr('Improve my profile')}</a></div></div>`}</div>`);
 };
 
 // ---------- matches ----------
@@ -483,12 +486,14 @@ views.matches = async () => {
   render(`<h1>${tr('Matches')}</h1>
     <div class="match-row">${conversations.map((c) => `<a href="#/messages/${c.id}" class="match-bubble">${photoOrPlaceholder(c.other, 'bubble-img')}
       ${c.unread ? '<span class="dot"></span>' : ''}<span>${esc(c.other.name.split(' ')[0] === 'The' ? c.other.name.split(' ')[1] : c.other.name.split(' ')[0])}</span></a>`).join('')
-      || `<div class="muted">${tr('No matches yet.')} <a href="#/discover">${tr('Start swiping')}</a></div>`}</div>
+      || `<div class="card empty" style="width:100%;margin:0"><div style="font-size:2.4rem">💞</div><strong>${tr('No matches yet.')}</strong>
+        <p class="small">${tr("A match happens when you and someone else both like each other. Like people on Discover, and check Likes for people who already liked you.")}</p>
+        <div class="row" style="justify-content:center"><a class="btn" href="#/discover">${tr('Start swiping')}</a><a class="btn ghost" href="#/likes">${tr('Likes')}</a></div></div>`}</div>
     <h2 style="margin-top:20px">${tr('Messages')}</h2>
     <div class="card" style="padding:0">${conversations.filter((c) => c.last_body).map((c) => `<a href="#/messages/${c.id}" class="convo">
       ${photoOrPlaceholder(c.other, 'avatar')}<div style="flex:1;min-width:0"><div class="spread"><strong>${esc(c.other.name)}</strong><span class="muted small">${c.last_at ? fmtTime(c.last_at) : ''}</span></div>
       <div class="${c.unread ? '' : 'muted'} small ellipsis">${c.unread ? '<strong>' : ''}${esc(c.last_body)}${c.unread ? '</strong>' : ''}</div></div>${c.unread ? `<span class="badge">${c.unread}</span>` : ''}</a>`).join('')
-      || `<div class="empty">${fresh.length ? tr('Say hi to your new matches above!') : tr('Your conversations will show up here.')}</div>`}</div>`);
+      || `<div class="empty">${fresh.length ? `${tr('Say hi to your new matches above!')}<p class="small">💡 ${tr('Ask about daily routines, hobbies and what they hope for from the year. When it feels right, start a free 📹 video call from the chat.')}</p>` : tr('Your conversations will show up here.')}</div>`}</div>`);
 };
 
 
@@ -750,11 +755,11 @@ views.agency = async () => {
   if (me.user.role !== 'agency') return go('#/');
   const amb = me.ambassador ? await api('/me/ambassador').catch(() => null) : null;
   if (!amb) {
-    return render(`<h1>${tr('Your agency')}</h1><div class="card"><h2>${tr('Thanks for joining, {name}', { name: esc(me.user.name) })}</h2>
+    return render(`<h1>${tr('Your agency')}</h1><div id="guideSlot"></div><div class="card"><h2>${tr('Thanks for joining, {name}', { name: esc(me.user.name) })}</h2>
       <p>${tr("We're setting up your agency code. Once it's ready, it shows here with a link to share with your au pairs, and you can follow how many join.")}</p>
       ${me.user.email_verified ? '' : `<p><a class="chip warn" href="#/verify">${tr('Not confirmed yet. Click to enter your code.')}</a></p>`}</div>`);
   }
-  render(`<h1>${tr('{agency} on PairMundo', { agency: esc(amb.name) })}</h1>
+  render(`<h1>${tr('{agency} on PairMundo', { agency: esc(amb.name) })}</h1><div id="guideSlot"></div>
     ${amb.race ? raceCard(amb) : ''}
     <div class="card"><h2>${tr('Your agency code')}: <code>${esc(amb.code)}</code></h2>
       <p>${tr('Your au pairs type this code when they create their free account, or use your link. Families then see "Prepared & approved by {agency}" on their profiles.', { agency: esc(amb.name) })}</p>
@@ -1067,7 +1072,7 @@ views.community = async ([sub, id]) => {
   const people = Object.fromEntries(d.community.map((x) => [x.role, x.n]));
   const upcoming = d.events.filter((e) => ['upcoming', 'scoring'].includes(e.status) || Date.parse(e.starts_at) > Date.now() - 30 * 86400e3);
   const EXP = { pending: ['Waiting', ''], approved: ['✓ Approved', 'ok'], rejected: ['Turned down', 'warn'] };
-  render(`<h1>Your community: ${esc(cm.city)} ${flag(cm.country)}</h1>
+  render(`<h1>Your community: ${esc(cm.city)} ${flag(cm.country)}</h1><div id="guideSlot"></div>
     <p class="muted">${people.aupair || 0} au pairs and ${people.family || 0} host families in ${esc(cm.city)} are on Nearby. Everyone there hears about your meetups when you post them.</p>
     <div class="card" style="background:var(--brand-soft)"><div class="spread"><div><h3 style="margin:0">🧰 Your Community Manager kit</h3>
       <p class="small" style="margin:4px 0 0">How to get started, 20 event ideas with templates, the venue checklist, how check-in works, the safety guide and caption templates.</p></div>
@@ -1862,7 +1867,7 @@ views.account = async () => {
     : me.user.agency ? `<div class="card"><h2>🎓 ${tr('Your agency')}</h2><p>${tr('Your profile is linked to {agency}. Families see it on your profile.', { agency: `<strong>${esc(me.user.agency)}</strong>` })}</p></div>`
     : !me.has_code ? `<div class="card"><h2>🎓 ${tr('Your agency')}</h2><p class="muted small">${tr('Did an au pair agency prepare you? Enter the code they gave you, and families will see the agency on your profile.')}</p>
       <form id="agency" class="row"><input name="code" required autocapitalize="characters" autocomplete="off" placeholder="${tr('Agency code')}" style="flex:1"><button class="btn sm">${tr('Add')}</button></form><div id="agencyErr"></div></div>` : '';
-  render(`<h1>${tr('Account and safety')}</h1>${ambCard}${agencyCard}
+  render(`<h1>${tr('Account and safety')}</h1>${['agency', 'ambassador'].includes(me.user.role) ? '<div id="guideFull"></div>' : ''}${ambCard}${agencyCard}
     <div class="card"><h2>${tr('Email')}</h2><p>${esc(me.user.email)} ${me.user.email_verified ? `<span class="chip ok">✓ ${tr('Confirmed')}</span>` : `<a class="chip warn" href="#/verify">${tr('Not confirmed yet. Click to enter your code.')}</a>`}</p></div>
     <div class="card"><h2>${tr('News from PairMundo')}</h2><label class="row small" style="gap:8px"><input type="checkbox" id="newsEmails" style="width:auto" ${me.user.news_emails ? 'checked' : ''}>
       ${tr('Email me news and offers from PairMundo')}</label><p class="muted small">${tr('You always get emails about your account, matches and messages.')}</p></div>
@@ -1873,6 +1878,7 @@ views.account = async () => {
       <form id="del"><div class="field"><label>${tr('Your password')}</label><input name="password" type="password" required autocomplete="current-password"></div>
       <div id="err"></div><button class="btn danger">${tr('Delete my account')}</button></form></div>`);
   if (ambCard) wireCopy(amb.link);
+  fillGuideFull();
   bindPartnerAgencies();
   document.getElementById('newsEmails').onchange = async (e) => {
     try { await api('/me', { method: 'PUT', body: { news_emails: e.target.checked } }); toast(tr('Saved')); } catch (err) { toast(err.message); }
@@ -2130,6 +2136,7 @@ views.profile = async () => {
   render(`<div class="spread"><h1>${tr('My profile')}</h1><span><a href="#/guides">🎬 ${tr('Profile guide')}</a> · <a href="#/account">🔒 ${tr('Account and safety')}</a> · <button type="button" class="btn secondary sm" id="preview">👁 ${tr('Preview my profile')}</button></span></div>
   ${u.role === 'family' && pass && (pass.required || pass.active) ? `<div class="card spread"><span>💛 <strong>Family Pass</strong> · ${pass.active ? tr('active until {date}', { date: fmtDate(pass.ends_at) }) : tr('not active')}</span>
     <a class="btn sm" href="#/family-pass">${pass.active ? tr('Details') : tr('Get it')}</a></div>` : ''}
+  <div id="guideFull"></div>
   ${!u.verification?.id ? `<a class="alert info nudge" href="#/account">🪪 ${tr('Verify your ID to get the ID verified badge on your profile.')}</a>` : ''}
   <div class="card"><h2>${tr('Photos')}</h2><p class="muted small">${isAp ? tr('Your first photo is what people see when they swipe. Add up to 6; clear, smiling, recent photos work best. Photos with children need their parents\' permission.') : tr('Your first photo is what people see when they swipe. Add up to 6; clear, smiling, recent photos work best, and a family photo plus your home helps.')}</p>
     <div class="photo-grid" id="photoGrid"></div></div>
@@ -2183,6 +2190,7 @@ views.profile = async () => {
   <div class="card spread profile-foot"><a href="#/notifications">🔔 ${tr('Notifications')}</a><a class="btn ghost sm" href="#/logout">${tr('Sign out')}</a></div>`);
 
   renderPhotoGrid(u.photos || []);
+  fillGuideFull();
   if (isAp) renderProofs(p.certificates || []);
   if (isAp) renderReferences();
   document.querySelectorAll('.chip-toggle').forEach((b) => { b.onclick = () => b.classList.toggle('on'); });
@@ -2331,6 +2339,7 @@ views.messages = async ([convId]) => {
   const $msgs = document.getElementById('msgs');
   let lastId = 0;
   const add = (list) => {
+    if (list.length) document.getElementById('chatHint')?.remove();
     for (const m of list) {
       const mine = m.sender_id === me.user.id;
       $msgs.insertAdjacentHTML('beforeend', m.is_call
@@ -2342,6 +2351,7 @@ views.messages = async ([convId]) => {
     $msgs.scrollTop = $msgs.scrollHeight;
   };
   add(data.messages);
+  if (!data.messages.length) $msgs.innerHTML = `<div class="empty small" id="chatHint">👋 ${tr('Say hi to {name}! Ask about daily routines, hobbies and what they hope for from the year. When it feels right, tap 📹 Video call above.', { name: esc(firstName(data.other.name)) })}</div>`;
   const form = document.getElementById('send');
   form.body.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); } };
   form.onsubmit = async (e) => {
@@ -2396,7 +2406,9 @@ views.placements = async ([id, sub]) => {
   if (id && sub === 'documents') return documentsPage(id);
   if (id) return placementDetail(id);
   const { placements } = await api('/placements');
-  render(`<h1>${tr('Placements')}</h1><div class="card">${placements.map(placementRow).join('') || `<div class="empty">${tr("No placements yet. Once you match, propose one from the other person's profile.")}</div>`}</div>`);
+  render(`<h1>${tr('Placements')}</h1><div class="card">${placements.map(placementRow).join('') || `<div class="empty"><div style="font-size:2.4rem">🧳</div>${tr("No placements yet. Once you match, propose one from the other person's profile.")}
+    <p class="small">💡 ${tr("Found the one? In your chat, tap their name to open their profile, then 🧳 Propose placement. We check it against the country's au pair rules and give you both a checklist for the contract, visa, insurance and travel.")}</p>
+    <a class="btn" href="#/matches">${tr('Matches')}</a></div>`}</div>`);
 };
 
 function complianceBox(c) {
@@ -2440,6 +2452,42 @@ views['new-placement'] = async ([otherId]) => {
   };
 };
 
+// A placement, step by step: where it is and what this person does next (server/guide.js placementJourney), and a
+// pop-up whenever that changes, so after each step people see the next one.
+function journeyButton(n) {
+  if (!n?.cta) return '';
+  return n.action ? `<button type="button" class="btn sm" data-jaction="${esc(n.action)}">${esc(n.cta)} →</button>` : `<a class="btn sm" href="${esc(n.link)}">${esc(n.cta)} →</a>`;
+}
+function journeyCard(j) {
+  if (!j) return '';
+  const cur = j.stages.find((s) => !s.done)?.key;
+  return `<div class="card guide-card journey-card"><ol class="journey">${j.stages.map((s) => `<li class="${s.done ? 'done' : s.key === cur ? 'next' : ''}"><span class="guide-dot">${s.done ? '✓' : ''}</span>${esc(s.label)}</li>`).join('')}</ol>
+    <div class="guide-next"><div class="muted small">${j.next.waiting ? '⏳ ' : ''}${tr('Next step')}</div><strong>${esc(j.next.title)}</strong>
+      <p class="small" style="margin:4px 0 8px">${esc(j.next.text)}</p>${journeyButton(j.next)}</div></div>`;
+}
+function journeyPopup(id, j, onAction) {
+  if (!j) return;
+  const key = `pm-journey-${id}`;
+  const done = j.stages.filter((s) => s.done).length;
+  const now = `${done}|${j.next.key}|${j.next.title}`;
+  let before = null;
+  try { before = localStorage.getItem(key); localStorage.setItem(key, now); } catch { return; }
+  if (before === now) return;
+  const progressed = before && Number(before.split('|')[0]) < done;
+  const el = document.createElement('div');
+  el.className = 'tour-overlay'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true');
+  el.innerHTML = `<div class="tour-box"><div class="tour-icon">${progressed ? '✓' : j.next.waiting ? '⏳' : '🧳'}</div>
+    <p class="muted small" style="margin:0 0 4px">${progressed ? tr('Step done! Here is what comes next.') : tr('What happens next')}</p>
+    <h2>${esc(j.next.title)}</h2><p>${esc(j.next.text)}</p>
+    <div class="tour-dots">${j.stages.map((s) => `<span class="${s.done ? 'on' : ''}"></span>`).join('')}</div>
+    <div class="row" style="justify-content:center">${j.next.cta ? journeyButton(j.next).replace('btn sm', 'btn') : ''}<button type="button" class="btn ghost" id="jLater">${j.next.cta ? tr('Later') : tr('OK')}</button></div></div>`;
+  const close = () => el.remove();
+  el.onclick = (e) => { if (e.target === el) close(); };
+  el.querySelector('#jLater').onclick = close;
+  el.querySelector('a.btn')?.addEventListener('click', close);
+  el.querySelector('[data-jaction]')?.addEventListener('click', (e) => { close(); onAction(e.currentTarget.dataset.jaction); });
+  document.body.appendChild(el);
+}
 async function placementDetail(id) {
   const p = await api(`/placements/${id}`);
   const isAp = me.user.id === p.aupair_id; const isAdmin = me.user.role === 'admin';
@@ -2449,6 +2497,7 @@ async function placementDetail(id) {
   const next = { proposed: [], confirmed: ['active'], active: ['completed'] }[p.status] || [];
   const markAs = { active: tr('Mark as active'), completed: tr('Mark as completed') };
   render(`<div class="spread"><h1>${tr('Placement: {aupair} with {family}', { aupair: esc(p.aupair.name), family: esc(p.family.name) })}</h1><span class="chip ${['confirmed', 'active'].includes(p.status) ? 'ok' : p.status === 'proposed' ? 'warn' : ''}">${statusLabel(p.status)}</span></div>
+  ${journeyCard(p.journey)}
   <div class="cols-2"><div>
     <div class="card"><table>
       <tr><th>${tr('Country')}</th><td>${cname(p.country)}${p.program ? ` · <a href="#/programs/${p.program.code}">${tr('program guide')}</a>` : ''}</td></tr>
@@ -2474,7 +2523,7 @@ async function placementDetail(id) {
       <a class="btn ${p.documents.done === p.documents.total ? 'ghost' : 'secondary'}" style="margin-top:10px" href="#/placements/${p.id}/documents">${tr('Open the visa documents')}</a></div>` : ''}
     <div class="card"><h2>${tr('Program check')}</h2>${complianceBox(p.compliance)}</div>
   </div><div>
-    <div class="card"><h2>${tr('Checklist')}</h2><div class="muted small">${tr('{done} of {total} done', { done: p.tasks.filter((t) => t.done).length, total: p.tasks.length })}</div>
+    <div class="card" id="checklist"><h2>${tr('Checklist')}</h2><div class="muted small">${tr('{done} of {total} done', { done: p.tasks.filter((t) => t.done).length, total: p.tasks.length })}</div>
       ${p.tasks.map((t) => `<label class="task ${t.done ? 'done' : ''}"><input type="checkbox" data-task="${t.id}" ${t.done ? 'checked' : ''} ${isAdmin ? 'disabled' : ''}>
         <span class="t" style="flex:1">${esc(tr(t.title))}${t.link ? ` <a class="small" href="${esc(t.link)}" target="_blank" rel="noopener">${tr('Official site')} ↗</a>` : ''}
           ${(t.offers || []).map((o) => o.referral && !isAdmin ? referButton(o, p.id)
@@ -2492,8 +2541,21 @@ async function placementDetail(id) {
     : p.my_review ? `<div class="card"><h2>${tr('Your review')}</h2>${stars(p.my_review.score ?? p.my_review.overall)}${ratingBreakdown({ count: 1, criteria: p.my_review.criteria })}<p style="white-space:pre-wrap">${esc(p.my_review.comment)}</p></div>` : ''}
   </div></div>`);
   const reload = () => placementDetail(id);
+  const doConfirm = async () => { await api(`/placements/${id}/confirm`, { method: 'POST' }); toast(tr('Confirmed')); reload(); };
   const c = document.getElementById('confirm');
-  if (c) c.onclick = async () => { await api(`/placements/${id}/confirm`, { method: 'POST' }); toast(tr('Confirmed')); reload(); };
+  if (c) c.onclick = doConfirm;
+  // The next-step card's button does the step itself where it can.
+  const jumpTo = (el) => { el?.scrollIntoView({ behavior: 'smooth', block: 'start' }); el?.classList.add('flash'); setTimeout(() => el?.classList.remove('flash'), 1600); };
+  const journeyAction = async (action) => {
+    try {
+      if (action === 'confirm') return doConfirm();
+      if (action === 'checklist') return jumpTo(document.getElementById('checklist'));
+      if (action === 'review') return jumpTo(document.getElementById('review'));
+      if (action === 'active' || action === 'completed') { await api(`/placements/${id}/status`, { method: 'POST', body: { status: action } }); return reload(); }
+    } catch (e) { toast(e.message); }
+  };
+  document.querySelectorAll('[data-jaction]').forEach((b) => { b.onclick = () => { document.querySelector('.tour-overlay')?.remove(); journeyAction(b.dataset.jaction); }; });
+  journeyPopup(id, p.journey, journeyAction);
   document.querySelectorAll('[data-status]').forEach((b) => { b.onclick = async () => {
     if (b.dataset.status === 'cancelled' && !confirm(tr('Cancel this placement?'))) return;
     try { await api(`/placements/${id}/status`, { method: 'POST', body: { status: b.dataset.status } }); reload(); } catch (e) { toast(e.message); }
@@ -2585,7 +2647,10 @@ async function documentsPage(id) {
   document.getElementById('print').onclick = () => window.print();
   bindReferrals();
   document.querySelectorAll('[data-doc]').forEach((cb) => { cb.onchange = async () => {
-    try { await api(`/placements/${id}/documents`, { method: 'PUT', body: { doc: cb.dataset.doc, done: cb.checked } }); cb.closest('.task').classList.toggle('done', cb.checked); }
+    try {
+      const r = await api(`/placements/${id}/documents`, { method: 'PUT', body: { doc: cb.dataset.doc, done: cb.checked } }); cb.closest('.task').classList.toggle('done', cb.checked);
+      if (cb.checked && r.documents.every((x) => x.done)) { toast(tr('All documents ready')); setTimeout(() => go(`#/placements/${id}`), 900); }
+    }
     catch (e) { toast(e.message); cb.checked = !cb.checked; }
   }; });
   const af = document.getElementById('addr');
@@ -2633,7 +2698,7 @@ async function agreementPage(id) {
   const sf = document.getElementById('sign');
   if (sf) sf.onsubmit = async (e) => {
     e.preventDefault();
-    try { await api(`/placements/${id}/agreement/sign`, { method: 'POST', body: { name: sf.name.value } }); toast(tr('Signed')); agreementPage(id); }
+    try { await api(`/placements/${id}/agreement/sign`, { method: 'POST', body: { name: sf.name.value } }); toast(tr('Signed')); go(`#/placements/${id}`); }
     catch (err) { document.getElementById('sign-err').innerHTML = `<div class="alert error">${esc(err.message)}</div>`; }
   };
   const tf = document.getElementById('terms');
@@ -4077,6 +4142,104 @@ views.reference = async ([token]) => {
   };
 };
 
+// ---------- getting started ----------
+// What to do next, for au pairs, families, agencies and Community Managers: a card with the next step and the full
+// checklist (worked out by the server from what the person has really done, see server/guide.js), and a short
+// walkthrough the first time they arrive. The server sends the steps' text in the person's language.
+let guideCache = null;
+async function loadGuide() {
+  const { guide } = await api('/guide').catch(() => ({}));
+  guideCache = guide || null;
+  return guideCache;
+}
+function guideStepsHtml(g) {
+  return `<ol class="guide-steps">${g.steps.map((s) => `<li class="${s.done ? 'done' : s.key === g.next ? 'next' : ''}">
+    <span class="guide-dot">${s.done ? '✓' : ''}</span><span>${s.link && !s.done ? `<a href="${esc(s.link)}">${esc(s.title)}</a>` : esc(s.title)}</span></li>`).join('')}</ol>`;
+}
+/** The getting-started card. compact: the next step only, with the list folded away (Discover, agency, community). */
+function guideCardHtml(g, { compact = true } = {}) {
+  const next = g.steps.find((s) => s.key === g.next);
+  const pct = Math.round((g.done / g.total) * 100);
+  return `<div class="card guide-card" id="guideCard">
+    <div class="spread"><strong>🧭 ${tr('Getting started')}</strong><span class="muted small">${tr('{done} of {total} done', { done: g.done, total: g.total })}</span></div>
+    <div class="guide-bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><span style="width:${Math.max(pct, 4)}%"></span></div>
+    ${g.complete ? `<p style="margin:10px 0 0">🎉 ${tr("You're all set! Everything on your list is done.")}</p>`
+    : `<div class="guide-next"><div class="muted small">${tr('Next step')}</div><strong>${esc(next.title)}</strong><p class="small" style="margin:4px 0 8px">${esc(next.text)}</p>
+      ${next.cta && next.link ? `<a class="btn sm" href="${esc(next.link)}">${esc(next.cta)} →</a>` : ''}</div>`}
+    <div id="guideList" ${compact ? 'hidden' : ''}>${guideStepsHtml(g)}</div>
+    <div class="row small guide-links">${compact ? `<button type="button" class="linkish" id="guideToggle">${tr('See all steps')}</button>` : ''}
+      <button type="button" class="linkish" id="guideTour">${tr('Show me around')}</button>
+      ${compact ? `<button type="button" class="linkish muted" id="guideHide">${tr('Hide')}</button>` : ''}</div></div>`;
+}
+function wireGuideCard(g) {
+  const $t = document.getElementById('guideToggle');
+  if ($t) $t.onclick = () => { const l = document.getElementById('guideList'); l.hidden = !l.hidden; $t.textContent = l.hidden ? tr('See all steps') : tr('Hide steps'); };
+  document.getElementById('guideTour').onclick = () => showTour(g);
+  const $h = document.getElementById('guideHide');
+  if ($h) $h.onclick = async () => {
+    document.getElementById('guideCard')?.remove();
+    toast(tr('Hidden. You can bring it back from your profile or account.'));
+    await api('/guide/hidden', { method: 'PUT', body: { hidden: true } }).catch(() => {});
+  };
+}
+/** Puts the compact card at the top of the page (or into #guideSlot) and, the first time, opens the walkthrough. */
+async function showGuide() {
+  const at = location.hash;
+  const g = await loadGuide();
+  if (!g || location.hash !== at || document.getElementById('guideCard')) return;
+  if (!g.hidden && !g.complete) {
+    const el = document.createElement('div');
+    el.innerHTML = guideCardHtml(g);
+    const slot = document.getElementById('guideSlot');
+    if (slot) slot.replaceWith(el.firstElementChild); else $app.prepend(el.firstElementChild);
+    // The card already points at these, so the separate reminders would say it twice.
+    if (g.next === 'email' || g.next === 'profile') document.querySelectorAll('.discover > a.nudge[href="#/verify"], .discover > a.nudge[href="#/profile"]').forEach((n) => n.remove());
+    wireGuideCard(g);
+  }
+  if (!g.tour_seen && !document.querySelector('.match-overlay')) showTour(g);
+}
+/** The full checklist on the profile (au pairs, families) or account page (agencies, Community Managers). */
+async function fillGuideFull() {
+  const $slot = document.getElementById('guideFull');
+  const g = $slot && await loadGuide();
+  if (!g || !document.body.contains($slot)) return;
+  if (g.hidden) {
+    $slot.innerHTML = `<p class="small"><button type="button" class="linkish" id="guideShow">🧭 ${tr('Show the getting-started steps again')}</button></p>`;
+    document.getElementById('guideShow').onclick = async () => { await api('/guide/hidden', { method: 'PUT', body: { hidden: false } }).catch(() => {}); fillGuideFull(); };
+    return;
+  }
+  $slot.innerHTML = guideCardHtml(g, { compact: false });
+  wireGuideCard(g);
+}
+/** The first-run walkthrough: a few slides, then it doesn't show again (Show me around brings it back). */
+function showTour(g) {
+  document.querySelector('.tour-overlay')?.remove();
+  let i = 0;
+  const el = document.createElement('div');
+  el.className = 'tour-overlay'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true');
+  const done = () => {
+    el.remove(); document.removeEventListener('keydown', onKey);
+    if (!g.tour_seen) { g.tour_seen = true; api('/guide/tour-seen', { method: 'POST' }).catch(() => {}); }
+  };
+  const paint = () => {
+    const s = g.tour[i]; const last = i === g.tour.length - 1;
+    el.innerHTML = `<div class="tour-box"><button type="button" class="tour-skip" aria-label="${tr('Close')}">${last ? '✕' : tr('Skip')}</button>
+      <div class="tour-icon">${esc(s.icon)}</div><h2>${esc(s.title)}</h2><p>${esc(s.text)}</p>
+      <div class="tour-dots">${g.tour.map((_, j) => `<span class="${j === i ? 'on' : ''}"></span>`).join('')}</div>
+      <div class="row" style="justify-content:center">${i ? `<button type="button" class="btn ghost" id="tourBack">${tr('Back')}</button>` : ''}
+        <button type="button" class="btn" id="tourNext">${last ? `${tr("Let's go")} →` : tr('Next')}</button></div></div>`;
+    el.querySelector('.tour-skip').onclick = done;
+    el.querySelector('#tourBack')?.addEventListener('click', () => { i -= 1; paint(); });
+    el.querySelector('#tourNext').onclick = () => { if (last) done(); else { i += 1; paint(); } };
+    el.querySelector('#tourNext').focus();
+  };
+  const onKey = (e) => { if (e.key === 'Escape') done(); };
+  document.addEventListener('keydown', onKey);
+  el.onclick = (e) => { if (e.target === el) done(); };
+  document.body.appendChild(el);
+  paint();
+}
+
 // ---------- router ----------
 // A link from an email or a notification (#/family-pass, #/profile…) opened while signed out lands on that page
 // once they sign in, instead of on the home page.
@@ -4094,7 +4257,7 @@ views.messages = ((orig) => (args) => (args[0] ? orig(args) : go('#/matches')))(
 // A message from PairMundo shows as a card at the top of the page until it is closed.
 async function showNews() {
   const at = location.hash;
-  const { news } = await api('/news').catch(() => ({}));
+  const { news } = await api('/news?guide=0').catch(() => ({}));
   if (!news || location.hash !== at || document.getElementById('newsCard')) return;
   const el = document.createElement('div');
   el.id = 'newsCard'; el.className = 'card news-card';
@@ -4114,7 +4277,11 @@ async function route() {
   renderNav();
   if (!view) return render(`<div class="empty">${tr('Page not found.')} <a href="#/">${tr('Go home')}</a></div>`);
   if (!me && !PUBLIC.has(name || 'home')) return toLogin();
-  try { await view(args, new URLSearchParams(qs || '')); if (me && me.user.role !== 'admin' && ['discover', 'agency', 'ambassador', 'matches', 'likes', 'placements', 'profile', 'nearby'].includes(name)) showNews(); }
+  try {
+    await view(args, new URLSearchParams(qs || ''));
+    if (me && me.user.role !== 'admin' && ['discover', 'agency', 'ambassador', 'matches', 'likes', 'placements', 'profile', 'nearby'].includes(name)) showNews();
+    if (me && ['discover', 'agency', 'community'].includes(name) && !args.length) showGuide();
+  }
   catch (e) {
     if (e.status === 401) { me = null; return toLogin(); }
     render(`<div class="alert error">${esc(e.message)}</div>`);

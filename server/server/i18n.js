@@ -16,6 +16,12 @@ export function pickLang(header) {
 }
 
 export const DICT = {
+  'Your placement is confirmed. Next: read and sign the au pair agreement together.': {
+    es: 'Tu estancia está confirmada. Siguiente paso: leed y firmad juntos el acuerdo de au pair.', fr: 'Votre placement est confirmé. Prochaine étape : lisez et signez ensemble le contrat au pair.',
+    de: 'Eure Vermittlung ist bestätigt. Nächster Schritt: Lest und unterschreibt gemeinsam den Au-pair-Vertrag.', pt: 'Sua estadia está confirmada. Próximo passo: leiam e assinem juntos o acordo de au pair.' },
+  'Your au pair agreement is signed by both of you. Next: work through your checklist.': {
+    es: 'Ambos habéis firmado el acuerdo de au pair. Siguiente paso: completa tu lista.', fr: 'Vous avez tous deux signé le contrat au pair. Prochaine étape : avancez dans votre liste.',
+    de: 'Ihr habt beide den Au-pair-Vertrag unterschrieben. Nächster Schritt: Arbeite deine Checkliste ab.', pt: 'Vocês dois assinaram o acordo de au pair. Próximo passo: complete sua lista.' },
   "It's a match! {name} liked you back.": {
     es: '¡Es un match! A {name} también le gustas.', fr: "C'est un match ! {name} vous a aussi liké.",
     de: 'Es ist ein Match! {name} mag dich auch.', pt: 'Deu match! {name} também curtiu você.' },

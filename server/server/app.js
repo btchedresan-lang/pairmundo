@@ -13,6 +13,7 @@ import { mountPipeline } from './pipeline.js';
 import { mountHiring } from './hiring.js';
 import { mountNearby } from './nearby.js';
 import { mountCommunity } from './community.js';
+import { mountGuide, placementJourney } from './guide.js';
 import { countryName, pickLang, t as translate } from './i18n.js';
 import { createCheckout, createIdentity, verifyWebhook } from './identity.js';
 import { createRevenueCat, storeName, webhookAuthorized } from './revenuecat.js';
@@ -2186,7 +2187,20 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
       review_criteria: REVIEW_CRITERIA[me.id === p.aupair_id ? 'family' : 'aupair'],
       // Only the family sees whether their Rematch Guarantee covers this placement.
       rematch: me.id === p.family_id ? rematchCover(p.id) : null,
+      // Where the placement is and what this person does next (guide.js).
+      journey: [p.aupair_id, p.family_id].includes(me.id) ? journeyFor(p, me, me.lang || 'en') : null,
     };
+  };
+  /** The step-by-step view of a placement for one of its two people. */
+  const journeyFor = (p, me, lang) => {
+    const side = me.id === p.aupair_id ? 'aupair' : 'family';
+    const other = getUser(side === 'aupair' ? p.family_id : p.aupair_id);
+    const program = getProgram(p.country);
+    return placementJourney(p, { side, other: shortName(other?.name), lang, agreement: agreementStatus(p),
+      documents: AGREEMENT_OPEN.includes(p.status) ? { done: db.prepare('SELECT COUNT(*) n FROM placement_documents WHERE placement_id = ?').get(p.id).n,
+        total: familyDocuments(program, getProfile(getUser(p.aupair_id))?.nationality).length } : null,
+      tasks: db.prepare('SELECT owner, due_date, done FROM placement_tasks WHERE placement_id = ?').all(p.id),
+      my_review: db.prepare('SELECT 1 FROM reviews WHERE placement_id = ? AND reviewer_id = ?').get(p.id, me.id) });
   };
 
   // ---------- partner offers ----------
@@ -2358,7 +2372,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const other = side === 'aupair' ? p.family_id : p.aupair_id;
     if (a.aupair_signed_at && a.family_signed_at) {
       db.prepare("UPDATE placement_tasks SET done = 1 WHERE placement_id = ? AND title = 'Sign au pair agreement / contract'").run(p.id);
-      notify(other, 'placement', 'Your au pair agreement is signed by both of you.', {}, `#/placements/${p.id}/agreement`);
+      notify(other, 'placement', 'Your au pair agreement is signed by both of you. Next: work through your checklist.', {}, `#/placements/${p.id}`);
     } else {
       notify(other, 'placement', '{name} signed the au pair agreement. Read it and sign it too.', { name: shortName(req.user.name) }, `#/placements/${p.id}/agreement`);
     }
@@ -2421,7 +2435,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (fresh.aupair_confirmed && fresh.family_confirmed) {
       db.prepare("UPDATE placements SET status = 'confirmed' WHERE id = ?").run(p.id);
       attachGuarantee(p.family_id);
-      for (const uid of [p.aupair_id, p.family_id]) notify(uid, 'placement', 'Your placement is confirmed. Work through the checklist together.', {}, `#/placements/${p.id}`);
+      for (const uid of [p.aupair_id, p.family_id]) notify(uid, 'placement', 'Your placement is confirmed. Next: read and sign the au pair agreement together.', {}, `#/placements/${p.id}/agreement`);
     }
     return placementView(db.prepare('SELECT * FROM placements WHERE id = ?').get(p.id), req.user);
   }));
@@ -2987,6 +3001,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   const community = mountCommunity(api, { db, wrap, requireAuth, requireRole, HttpError, str, normEmail, hashPassword, mailer, withMedia, publicBase, notify, csvCell, shortName });
   const nearby = mountNearby(api, { db, wrap, requireAuth, requireRole, HttpError, str, tx, notify, publicUser, getUser, getProfile, blockedBetween, closedApart,
     conversationFor, mustBeReady, mustBeVerified, agencySpace, shortName, photosOf, publicBase, communityManagerOf: community.managerOf, logCommunity: community.logActivity });
+  // The in-app guide: next steps per role, the first-run walkthrough, and the next-step card in the app.
+  const guide = mountGuide(api, { db, wrap, requireAuth, profileGaps, passView, identityOn: () => !!identity, community, pickLang, journeyFor });
   // Hourly: ask people who checked in at a meetup that ended to rate it.
   app.sendRatingRequests = () => nearby.askForRatings();
   api.get('/admin/waitlist', requireRole('admin'), wrap(() => ({
@@ -3847,12 +3863,17 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   }));
 
   // The newest message from PairMundo this member hasn't closed yet, shown as a card at the top of the app.
+  // Without one, au pairs and families get their next step from the guide (guide.js) in the same card, so the app
+  // already in the stores shows it. The website has its own getting-started card and asks with ?guide=0.
   api.get('/news', requireAuth, wrap((req) => {
     const m = db.prepare(`SELECT m.* FROM admin_messages m JOIN admin_message_recipients r ON r.message_id = m.id
       WHERE r.user_id = ? AND r.seen_at IS NULL AND m.created_at >= datetime('now', '-30 days') ORDER BY m.id DESC LIMIT 1`).get(req.user.id);
-    return { news: m ? { id: m.id, title: m.subject || null, text: personalize(m.text, req.user), link: m.link, created_at: m.created_at } : null };
+    if (m) return { news: { id: m.id, title: m.subject || null, text: personalize(m.text, req.user), link: m.link, created_at: m.created_at } };
+    return { news: req.query.guide === '0' ? null : guide.newsFor(req.user) };
   }));
   api.post('/news/:id/seen', requireAuth, wrap((req) => {
+    const step = /^step-([a-z0-9_]+)$/.exec(req.params.id);
+    if (step) { guide.snooze(req.user, step[1]); return { ok: true }; }
     db.prepare("UPDATE admin_message_recipients SET seen_at = datetime('now') WHERE message_id = ? AND user_id = ? AND seen_at IS NULL").run(Number(req.params.id), req.user.id);
     return { ok: true };
   }));

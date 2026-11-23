@@ -164,5 +164,7 @@
   "{name} said hi back. You can chat now.": "{name} sa hej tillbaka. Nu kan ni chatta.",
   "{agency} invited you to a meetup in {city}: {title}": "{agency} bjuder in dig till en träff i {city}: {title}",
   "{name} is coming to {title}.": "{name} kommer till {title}.",
-  "{title} was cancelled.": "{title} är inställd."
+  "{title} was cancelled.": "{title} är inställd.",
+  "Your placement is confirmed. Next: read and sign the au pair agreement together.": "Er vistelse är bekräftad. Nästa steg: läs och skriv under au pair-avtalet tillsammans.",
+  "Your au pair agreement is signed by both of you. Next: work through your checklist.": "Ni har båda skrivit under au pair-avtalet. Nästa steg: gå igenom din checklista."
 }
