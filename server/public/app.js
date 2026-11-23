@@ -1233,11 +1233,16 @@ async function nearbyMap(box, isFamily) {
     // so ask for the origin to be sent with tile requests (osm.wiki/Blocked).
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 17, referrerPolicy: 'strict-origin-when-cross-origin', attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' }).addTo(map);
     const pts = [];
-    for (const a of d.areas) {
+    // Your own side in blue, the other side (au pairs for a family, families for an au pair) in green, set a little
+    // apart so two bubbles on the same city don't cover each other.
+    const bubble = (a, families, other) => {
       const size = Math.min(84, 44 + a.count * 3);
-      L.marker([a.lat, a.lng], { interactive: false, icon: L.divIcon({ className: '', iconSize: [size, size], html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:rgba(59,91,219,.18);border:2px solid rgba(59,91,219,.6);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#1e2a5a;font-weight:700;font-size:13px;line-height:1.1"><span>${a.count}</span><span style="font-weight:500;font-size:10px">${isFamily ? tr('families') : tr('au pairs')}</span></div>` }) }).addTo(map);
+      const [bg, line, ink] = other ? ['rgba(47,158,68,.18)', 'rgba(47,158,68,.65)', '#1b4d27'] : ['rgba(59,91,219,.18)', 'rgba(59,91,219,.6)', '#1e2a5a'];
+      L.marker([a.lat, a.lng], { interactive: false, icon: L.divIcon({ className: '', iconSize: [size, size], iconAnchor: other ? [-6, size / 2] : [size + 6, size / 2], html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${bg};border:2px solid ${line};display:flex;flex-direction:column;align-items:center;justify-content:center;color:${ink};font-weight:700;font-size:13px;line-height:1.1"><span>${a.count}</span><span style="font-weight:500;font-size:10px">${families ? tr('families') : tr('au pairs')}</span></div>` }) }).addTo(map);
       pts.push([a.lat, a.lng]);
-    }
+    };
+    for (const a of d.areas) bubble(a, isFamily, false);
+    for (const a of d.other_areas || []) bubble(a, a.role === 'family', true);
     for (const m of d.meetups) {
       const color = m.official ? '#2f9e44' : '#3b5bdb';
       L.marker([m.point.lat, m.point.lng], { icon: L.divIcon({ className: '', iconSize: [42, 42], html: `<div style="width:42px;height:42px;border-radius:21px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;box-shadow:0 2px 8px rgba(0,0,0,.25);border:3px ${m.point.exact ? 'solid' : 'dashed'} ${color}">${esc((MEETUP_KINDS[m.kind] || '✨').split(' ')[0])}</div>` }) })
@@ -1248,8 +1253,8 @@ async function nearbyMap(box, isFamily) {
     else if (pts.length || d.center) map.setView(pts[0] || [d.center.lat, d.center.lng], 13);
     else map.setView([59.33, 18.07], 4);
     document.getElementById('nbMapNote').textContent = `${isFamily
-      ? tr('Pins are meetups. Bubbles show how many families are in each part of town, never where anyone is. A meetup pin is approximate until you join.')
-      : tr('Pins are meetups. Bubbles show how many au pairs are in each part of town, never where anyone is. A meetup pin is approximate until you join.')}${d.city && !d.areas.length ? ` ${tr('A bubble appears once 3 or more people are in an area.')}` : ''}`;
+      ? tr('Pins are meetups. Bubbles show how many families (blue) and au pairs (green) are in each part of town, never where anyone is. A meetup pin is approximate until you join.')
+      : tr('Pins are meetups. Bubbles show how many au pairs (blue) and families (green) are in each part of town, never where anyone is. A meetup pin is approximate until you join.')}${d.city && !d.areas.length && !d.other_areas?.length ? ` ${tr('A bubble appears once 3 or more people are in an area.')}` : ''}`;
   } catch (e) { box.innerHTML = `<div class="alert error">${esc(e.message)}</div>`; }
 }
 views.nearby = async (_, qs) => {

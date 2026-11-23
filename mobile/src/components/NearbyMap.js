@@ -11,9 +11,9 @@ const TILES = brand.mapTiles || 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
 const ATTRIBUTION = brand.mapAttribution || '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
 /** The page inside the web view. Data goes in as JSON; taps on a meetup come back as { type: 'meetup', id }. */
-function mapHtml({ meetups, areas, center, labels }) {
+function mapHtml({ meetups, areas, otherAreas = [], center, labels }) {
   const data = JSON.stringify({ meetups: meetups.map((m) => ({ id: m.id, title: m.title, lat: m.point.lat, lng: m.point.lng, exact: m.point.exact,
-    emoji: (MEETUP_KINDS[m.kind] || MEETUP_KINDS.other)[0], official: !!m.official, external: !!m.external })), areas, center, labels, primary: C.primary })
+    emoji: (MEETUP_KINDS[m.kind] || MEETUP_KINDS.other)[0], official: !!m.official, external: !!m.external })), areas, otherAreas, center, labels, primary: C.primary })
     .replace(/</g, '\\u003c');
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="referrer" content="strict-origin-when-cross-origin"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -21,6 +21,7 @@ function mapHtml({ meetups, areas, center, labels }) {
 <style>html,body,#map{margin:0;height:100%;font-family:-apple-system,system-ui,sans-serif}
 .pin{width:42px;height:42px;border-radius:21px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;box-shadow:0 2px 8px rgba(0,0,0,.25);border:3px solid var(--c)}
 .pin.approx{border-style:dashed}
+.bubble.other{background:rgba(47,158,68,.18);border-color:rgba(47,158,68,.65);color:#1b4d27}
 .bubble{flex-direction:column;border-radius:50%;background:rgba(59,91,219,.18);border:2px solid rgba(59,91,219,.6);display:flex;align-items:center;justify-content:center;color:#1e2a5a;font-weight:700;font-size:13px;text-align:center;line-height:1.1}
 .leaflet-tooltip{font-weight:600}</style></head><body><div id="map"></div><script>
 const D = ${data};
@@ -28,11 +29,14 @@ const send = (m) => { const s = JSON.stringify(m); if (window.ReactNativeWebView
 const map = L.map('map', { zoomControl: false, attributionControl: true });
 L.tileLayer(${JSON.stringify(TILES)}, { maxZoom: 17, referrerPolicy: 'strict-origin-when-cross-origin', attribution: ${JSON.stringify(ATTRIBUTION)} }).addTo(map);
 const pts = [];
-for (const a of D.areas) {
+// Your own side in blue, the other side in green, set a little apart so two bubbles on one city don't cover each other.
+const bubble = (a, other) => {
   const size = Math.min(84, 44 + a.count * 3);
-  L.marker([a.lat, a.lng], { interactive: false, icon: L.divIcon({ className: '', iconSize: [size, size], html: '<div class="bubble" style="width:' + size + 'px;height:' + size + 'px"><span>' + a.count + '</span><span style="font-weight:500;font-size:10px">' + D.labels.people + '</span></div>' }) }).addTo(map);
+  L.marker([a.lat, a.lng], { interactive: false, icon: L.divIcon({ className: '', iconSize: [size, size], iconAnchor: other ? [-6, size / 2] : [size + 6, size / 2], html: '<div class="bubble' + (other ? ' other' : '') + '" style="width:' + size + 'px;height:' + size + 'px"><span>' + a.count + '</span><span style="font-weight:500;font-size:10px">' + (other ? D.labels.other : D.labels.people) + '</span></div>' }) }).addTo(map);
   pts.push([a.lat, a.lng]);
-}
+};
+for (const a of D.areas) bubble(a, false);
+for (const a of D.otherAreas) bubble(a, true);
 for (const m of D.meetups) {
   const color = m.official ? '#2f9e44' : m.external ? '#3b5bdb' : D.primary;
   L.marker([m.lat, m.lng], { icon: L.divIcon({ className: '', iconSize: [42, 42], html: '<div class="pin' + (m.exact ? '' : ' approx') + '" style="--c:' + color + '">' + m.emoji + '</div>' }) })
@@ -46,8 +50,8 @@ else map.setView([30, 10], 2);
 </script></body></html>`;
 }
 
-export function NearbyMap({ meetups, areas, center, labels, onMeetup, style }) {
-  const html = useMemo(() => mapHtml({ meetups, areas, center, labels }), [meetups, areas, center, labels]);
+export function NearbyMap({ meetups, areas, otherAreas, center, labels, onMeetup, style }) {
+  const html = useMemo(() => mapHtml({ meetups, areas, otherAreas, center, labels }), [meetups, areas, otherAreas, center, labels]);
   const onMeetupRef = useRef(onMeetup);
   useEffect(() => { onMeetupRef.current = onMeetup; }, [onMeetup]);
   const handle = (raw) => {

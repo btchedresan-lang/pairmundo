@@ -300,6 +300,10 @@ test('map: everyone counts at the general spot of their profile city, without tu
   assert.deepEqual(map.areas, [{ lat: 59.34, lng: 18.08, count: 5 }]);
   const total = 5;
   assert.ok(!JSON.stringify(map).includes('Geo '));
+  // Au pairs around Stockholm show too, in their own bubbles, as counts only.
+  assert.ok(map.other_areas.length > 0);
+  assert.ok(map.other_areas.every((a) => a.role === 'aupair' && a.count >= 3));
+  assert.ok(map.areas.every((a) => !('role' in a)));
   // Nobody is counted twice, and the hidden family really is left out.
   await call(hid.token, 'PUT', '/me/nearby', { city: 'Stockholm', country: 'SE', visible: true });
   const after = (await call(viewer.token, 'GET', '/nearby/map')).body.areas.reduce((n, a) => n + a.count, 0);

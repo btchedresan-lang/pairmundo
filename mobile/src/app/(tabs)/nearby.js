@@ -293,13 +293,13 @@ function MapPane({ isFamily, onHost }) {
   const [error, setError] = useState(null);
   const loadMap = useCallback(() => api('/nearby/map').then((d) => { setMap(d); setError(null); }).catch((e) => setError(e.message)), []);
   useFocusEffect(useCallback(() => { loadMap(); }, [loadMap]));
-  const labels = useMemo(() => ({ people: isFamily ? tr('families') : tr('au pairs') }), [isFamily]);
+  const labels = useMemo(() => ({ people: isFamily ? tr('families') : tr('au pairs'), other: isFamily ? tr('au pairs') : tr('families') }), [isFamily]);
   if (error) return <Alert level="error" text={error} />;
   if (!map) return <View style={{ height: 420, alignItems: 'center', justifyContent: 'center' }}><T muted>{tr('Loading…')}</T></View>;
-  const empty = !map.meetups.length && !map.areas.length;
+  const empty = !map.meetups.length && !map.areas.length && !map.other_areas?.length;
   return (
     <View style={{ gap: 10 }}>
-      <NearbyMap meetups={map.meetups} areas={map.areas} center={map.center} labels={labels} onMeetup={(id) => router.push(`/meetup/${id}`)}
+      <NearbyMap meetups={map.meetups} areas={map.areas} otherAreas={map.other_areas || []} center={map.center} labels={labels} onMeetup={(id) => router.push(`/meetup/${id}`)}
         style={{ height: 440, backgroundColor: t.card }} />
       {empty ? (
         <Card style={{ alignItems: 'center' }}>

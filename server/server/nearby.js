@@ -574,34 +574,43 @@ export function mountNearby(api, deps) {
     // Before someone sets up Nearby, the map uses the city on their profile.
     const area = settings ?? (me.city && me.country ? { city: me.city, city_key: cityKey(me.city), country: String(me.country).toUpperCase(), lat: null, lng: null, visible: 0 } : null);
     if (!area) return { settings: null, needs_city: true };
-    const rows = mapPeople(area.country, me.role, me.demo).filter((u) => u.n_visible !== 0);
+    const other = me.role === 'family' ? 'aupair' : 'family';
+    const rowsOf = (role) => mapPeople(area.country, role, me.demo).filter((u) => u.n_visible !== 0);
+    const byRole = { [me.role]: rowsOf(me.role), [other]: rowsOf(other) };
     const placeOf = (u) => (u.n_lat != null ? null : [u.n_city || u.city, area.country]);
-    await geo.warm([[area.city, area.country], ...rows.map(placeOf).filter(Boolean)]);
+    await geo.warm([[area.city, area.country], ...[...byRole[me.role], ...byRole[other]].map(placeOf).filter(Boolean)]);
     const centre = hasPoint(area) ? { lat: area.lat, lng: area.lng } : geo.point(area.city, area.country);
     const here = { ...area, ...(centre || {}) };
-    const cells = new Map();
-    for (const u of rows) {
-      if (u.id !== me.id && !canMeet(me, u)) continue;
-      const spot = u.n_lat != null ? { lat: u.n_lat, lng: u.n_lng } : geo.point(u.n_city || u.city, area.country);
-      if (!spot) continue;
-      if (!isNear(here, { country: area.country, city_key: u.n_city_key || cityKey(u.city), ...spot }, NEAR_KM)) continue;
-      const key = `${Math.round(spot.lat / MAP_CELL)}:${Math.round(spot.lng / MAP_CELL)}`;
-      const c = cells.get(key) || { n: 0, lat: 0, lng: 0 };
-      c.n++; c.lat += spot.lat; c.lng += spot.lng;
-      cells.set(key, c);
-    }
-    // An area with too few people for its own bubble joins the nearest bubble within 15 km, or else they all add up at
-    // the city's general spot, so people in small neighbourhoods still count without standing out.
-    const mid = (c) => ({ lat: c.lat / c.n, lng: c.lng / c.n });
-    const big = [...cells.values()].filter((c) => c.n >= MAP_MIN_BUBBLE).map((c) => ({ ...mid(c), count: c.n }));
-    const rest = { n: 0 };
-    for (const c of cells.values()) {
-      if (c.n >= MAP_MIN_BUBBLE) continue;
-      const near = big.map((b) => ({ b, km: distanceKm(b, mid(c)) })).filter((x) => x.km <= 15).sort((x, y) => x.km - y.km)[0];
-      if (near) near.b.count += c.n; else rest.n += c.n;
-    }
-    if (rest.n >= MAP_MIN_BUBBLE && centre) big.push({ ...centre, count: rest.n });
-    const areas = big.map((b) => ({ lat: Number(b.lat.toFixed(2)), lng: Number(b.lng.toFixed(2)), count: b.count }));
+    /** Anonymous counts per area of about 5 km for one side, each 3 or more. */
+    const bubbles = (rows) => {
+      const cells = new Map();
+      for (const u of rows) {
+        if (u.id !== me.id && !canMeet(me, u)) continue;
+        const spot = u.n_lat != null ? { lat: u.n_lat, lng: u.n_lng } : geo.point(u.n_city || u.city, area.country);
+        if (!spot) continue;
+        if (!isNear(here, { country: area.country, city_key: u.n_city_key || cityKey(u.city), ...spot }, NEAR_KM)) continue;
+        const key = `${Math.round(spot.lat / MAP_CELL)}:${Math.round(spot.lng / MAP_CELL)}`;
+        const c = cells.get(key) || { n: 0, lat: 0, lng: 0 };
+        c.n++; c.lat += spot.lat; c.lng += spot.lng;
+        cells.set(key, c);
+      }
+      // An area with too few people for its own bubble joins the nearest bubble within 15 km, or else they all add up
+      // at the city's general spot, so people in small neighbourhoods still count without standing out.
+      const mid = (c) => ({ lat: c.lat / c.n, lng: c.lng / c.n });
+      const big = [...cells.values()].filter((c) => c.n >= MAP_MIN_BUBBLE).map((c) => ({ ...mid(c), count: c.n }));
+      const rest = { n: 0 };
+      for (const c of cells.values()) {
+        if (c.n >= MAP_MIN_BUBBLE) continue;
+        const near = big.map((x) => ({ x, km: distanceKm(x, mid(c)) })).filter((y) => y.km <= 15).sort((p, q) => p.km - q.km)[0];
+        if (near) near.x.count += c.n; else rest.n += c.n;
+      }
+      if (rest.n >= MAP_MIN_BUBBLE && centre) big.push({ ...centre, count: rest.n });
+      return big.map((x) => ({ lat: Number(x.lat.toFixed(2)), lng: Number(x.lng.toFixed(2)), count: x.count }));
+    };
+    // areas: your own side, as the apps have always read it. other_areas: the other side (au pairs for a family,
+    // families for an au pair), with role, for apps that show both.
+    const areas = bubbles(byRole[me.role]);
+    const otherAreas = bubbles(byRole[other]).map((x) => ({ ...x, role: other }));
     const meetups = meetupsIn(area, me).filter((m) => m.point);
     const listed = settings ? cityPeople(settings, me.role, me.demo).length : 0;
     return {
@@ -609,7 +618,7 @@ export function mountNearby(api, deps) {
       // Where to centre the map: your own rounded point, else your city's general spot, else the middle of what's on it.
       center: centre,
       city: { name: area.city, country: area.country, unlocked: listed >= minPeople(), people: listed, needed: Math.max(0, minPeople() - listed) },
-      areas, meetups,
+      areas, other_areas: otherAreas, meetups,
     };
   }));
 
