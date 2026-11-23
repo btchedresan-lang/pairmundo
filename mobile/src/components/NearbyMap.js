@@ -1,6 +1,6 @@
 // The Nearby map: meetups as pins and people as counts per area, never a pin per person (see server/nearby.js).
 // Drawn with Leaflet and OpenStreetMap tiles inside a web view, so it needs no map API key and works the same on
-// iPhone, Android and the web preview. brand.json's mapTiles / mapAttribution can point it at another tile provider.
+// iPhone, Android and the web preview. OpenStreetMap blocks tile requests without a Referer, so the page sends its origin. brand.json's mapTiles / mapAttribution can point it at another tile provider.
 import { useEffect, useMemo, useRef } from 'react';
 import { Platform, View } from 'react-native';
 import { WebView } from 'react-native-webview';
@@ -15,7 +15,7 @@ function mapHtml({ meetups, areas, center, labels }) {
   const data = JSON.stringify({ meetups: meetups.map((m) => ({ id: m.id, title: m.title, lat: m.point.lat, lng: m.point.lng, exact: m.point.exact,
     emoji: (MEETUP_KINDS[m.kind] || MEETUP_KINDS.other)[0], official: !!m.official, external: !!m.external })), areas, center, labels, primary: C.primary })
     .replace(/</g, '\\u003c');
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="referrer" content="strict-origin-when-cross-origin"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>html,body,#map{margin:0;height:100%;font-family:-apple-system,system-ui,sans-serif}
@@ -26,7 +26,7 @@ function mapHtml({ meetups, areas, center, labels }) {
 const D = ${data};
 const send = (m) => { const s = JSON.stringify(m); if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(s); else parent.postMessage(s, '*'); };
 const map = L.map('map', { zoomControl: false, attributionControl: true });
-L.tileLayer(${JSON.stringify(TILES)}, { maxZoom: 17, attribution: ${JSON.stringify(ATTRIBUTION)} }).addTo(map);
+L.tileLayer(${JSON.stringify(TILES)}, { maxZoom: 17, referrerPolicy: 'strict-origin-when-cross-origin', attribution: ${JSON.stringify(ATTRIBUTION)} }).addTo(map);
 const pts = [];
 for (const a of D.areas) {
   const size = Math.min(84, 44 + a.count * 3);

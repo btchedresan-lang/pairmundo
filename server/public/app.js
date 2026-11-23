@@ -1229,7 +1229,9 @@ async function nearbyMap(box, isFamily) {
   try {
     const [L, d] = await Promise.all([loadLeaflet(), api('/nearby/map')]);
     const map = L.map('nbMap');
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 17, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' }).addTo(map);
+    // OpenStreetMap blocks browser tile requests that carry no Referer, and our pages send Referrer-Policy: same-origin,
+    // so ask for the origin to be sent with tile requests (osm.wiki/Blocked).
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 17, referrerPolicy: 'strict-origin-when-cross-origin', attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' }).addTo(map);
     const pts = [];
     for (const a of d.areas) {
       const size = Math.min(84, 44 + a.count * 3);
