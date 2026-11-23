@@ -953,6 +953,8 @@ export function openDb(file = process.env.DB_FILE || 'data/aupair.db') {
   if (!cols.includes('lang')) db.exec('ALTER TABLE users ADD COLUMN lang TEXT');
   // Demo accounts for app store review (server/demo.js): they and real members never see each other.
   if (!cols.includes('demo')) db.exec('ALTER TABLE users ADD COLUMN demo INTEGER NOT NULL DEFAULT 0');
+  // Accounts the team made to try the app with a normal email (the admin marks them): left out of every number.
+  if (!cols.includes('test_account')) db.exec('ALTER TABLE users ADD COLUMN test_account INTEGER NOT NULL DEFAULT 0');
   // News emails from the admin: on unless they unsubscribe (link in each email) or turn them off in Account.
   if (!cols.includes('news_emails')) db.exec('ALTER TABLE users ADD COLUMN news_emails INTEGER NOT NULL DEFAULT 1');
   if (!cols.includes('news_token')) db.exec('ALTER TABLE users ADD COLUMN news_token TEXT');

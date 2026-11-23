@@ -68,9 +68,9 @@ export function mountCommunity(api, deps) {
   const scoreOf = (m, r = rules()) => {
     const now = Date.now();
     const c = db.prepare(`SELECT COUNT(*) n, COALESCE(SUM(c.newcomer), 0) newcomers FROM meetup_checkins c JOIN users u ON u.id = c.user_id
-      WHERE c.meetup_id = ? AND u.suspended = 0 AND u.demo = ?`).get(m.id, m.demo ? 1 : 0);
+      WHERE c.meetup_id = ? AND u.suspended = 0 AND u.test_account = 0 AND u.demo = ?`).get(m.id, m.demo ? 1 : 0);
     const rt = db.prepare(`SELECT COUNT(*) n, AVG(stars) avg FROM meetup_ratings x JOIN users u ON u.id = x.user_id
-      WHERE x.meetup_id = ? AND u.suspended = 0 AND u.demo = ?`).get(m.id, m.demo ? 1 : 0);
+      WHERE x.meetup_id = ? AND u.suspended = 0 AND u.test_account = 0 AND u.demo = ?`).get(m.id, m.demo ? 1 : 0);
     const rating = rt.avg == null ? null : Math.round(rt.avg * 100) / 100;
     const closes = Date.parse(m.starts_at) + r.rating_days * 86400e3;
     const misses = [];
@@ -89,7 +89,7 @@ export function mountCommunity(api, deps) {
    *  first paid Family Pass within pass_days, with the month it was bought. */
   const familyPasses = (cm, r = rules()) => {
     const firsts = db.prepare(`SELECT c.user_id, MIN(c.created_at) first_at FROM meetup_checkins c JOIN meetups m ON m.id = c.meetup_id JOIN users u ON u.id = c.user_id
-      WHERE m.source = 'community' AND u.role = 'family' AND u.suspended = 0 AND u.demo = 0 GROUP BY c.user_id`).all();
+      WHERE m.source = 'community' AND u.role = 'family' AND u.suspended = 0 AND u.demo = 0 AND u.test_account = 0 GROUP BY c.user_id`).all();
     const out = [];
     for (const f of firsts) {
       const host = db.prepare(`SELECT m.host_id FROM meetup_checkins c JOIN meetups m ON m.id = c.meetup_id WHERE c.user_id = ? AND c.created_at = ? AND m.source = 'community' LIMIT 1`).get(f.user_id, f.first_at)?.host_id;
@@ -164,7 +164,7 @@ export function mountCommunity(api, deps) {
       expenses: db.prepare(`SELECT e.id, e.meetup_id, m.title meetup_title, e.amount, e.currency, e.description, e.receipt_url, e.spent_on, e.status, e.review_note, e.created_at
         FROM community_expenses e LEFT JOIN meetups m ON m.id = e.meetup_id WHERE e.user_id = ? ORDER BY e.created_at DESC, e.id DESC LIMIT 50`).all(cm.user_id),
       kit: KIT,
-      community: db.prepare(`SELECT u.role, COUNT(*) n FROM nearby_settings n JOIN users u ON u.id = n.user_id WHERE n.country = ? AND n.city_key = ? AND u.demo = 0 AND u.suspended = 0 GROUP BY u.role`)
+      community: db.prepare(`SELECT u.role, COUNT(*) n FROM nearby_settings n JOIN users u ON u.id = n.user_id WHERE n.country = ? AND n.city_key = ? AND u.demo = 0 AND u.test_account = 0 AND u.suspended = 0 GROUP BY u.role`)
         .all(cm.country, cm.city_key),
     };
   }));
