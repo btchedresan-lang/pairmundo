@@ -937,6 +937,14 @@ CREATE TABLE IF NOT EXISTS meetup_messages (
 
 CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_reviews_reviewee ON reviews(reviewee_id);
+-- The in-app guide (guide.js): when someone saw the first-run walkthrough, whether they hid the getting-started card,
+-- and next-step cards they closed (JSON { step: until }), so a closed card stays away for a few days.
+CREATE TABLE IF NOT EXISTS guide_state (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  tour_seen_at TEXT,
+  hidden INTEGER NOT NULL DEFAULT 0,
+  snooze TEXT NOT NULL DEFAULT '{}'
+);
 CREATE INDEX IF NOT EXISTS idx_requests_to ON match_requests(to_user, status);
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read);
 `;
