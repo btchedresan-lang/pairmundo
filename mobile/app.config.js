@@ -56,6 +56,8 @@ module.exports = {
       ...(brand.googleIosClientId ? [['@react-native-google-signin/google-signin', { iosUrlScheme: `com.googleusercontent.apps.${brand.googleIosClientId.replace(/\.apps\.googleusercontent\.com$/, '')}` }]] : []),
       ['expo-location', { locationWhenInUsePermission: `${brand.name} uses your approximate location, only when you ask, to find your city for Nearby. Your exact location is never saved.`,
         isIosBackgroundLocationEnabled: false, isAndroidBackgroundLocationEnabled: false, isAndroidForegroundServiceEnabled: false }],
+      // Location hardware is optional (people can type their city), so Google Play keeps the app on devices without it.
+      './plugins/optional-location',
       ['expo-image-picker', { photosPermission: `${brand.name} needs your photos so you can add them to your profile.` }],
     ],
     // Translated iOS permission prompts.
