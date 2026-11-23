@@ -1253,8 +1253,8 @@ async function nearbyMap(box, isFamily) {
     else if (pts.length || d.center) map.setView(pts[0] || [d.center.lat, d.center.lng], 13);
     else map.setView([59.33, 18.07], 4);
     document.getElementById('nbMapNote').textContent = `${isFamily
-      ? tr('Pins are meetups. Bubbles show how many families (blue) and au pairs (green) are in each part of town, never where anyone is. A meetup pin is approximate until you join.')
-      : tr('Pins are meetups. Bubbles show how many au pairs (blue) and families (green) are in each part of town, never where anyone is. A meetup pin is approximate until you join.')}${d.city && !d.areas.length && !d.other_areas?.length ? ` ${tr('A bubble appears once 3 or more people are in an area.')}` : ''}`;
+      ? tr('Pins are meetups. Bubbles show how many au pairs (green) and families on Nearby (blue) are in each part of town, never where anyone is. A meetup pin is approximate until you join.')
+      : tr('Pins are meetups. Bubbles show how many au pairs are in each part of town, never where anyone is. A meetup pin is approximate until you join.')}${d.city && !d.areas.length && !d.other_areas?.length ? ` ${tr('A bubble appears once 3 or more people are in an area.')}` : ''}`;
   } catch (e) { box.innerHTML = `<div class="alert error">${esc(e.message)}</div>`; }
 }
 views.nearby = async (_, qs) => {
@@ -1269,12 +1269,12 @@ views.nearby = async (_, qs) => {
     render(`<div style="max-width:720px;margin:0 auto">${intro}
       <div class="card"><strong>${tr('Your privacy comes first')}</strong><ul class="small">
         <li>${tr('Off until you turn it on. Turn it off any time and we forget your city.')}</li>
-        <li>${tr('Until then you only count in a number on the map, like "5 families" in your city, never by name.')}</li>
+        <li>${isFamily ? tr('Families never show on the map until they turn Nearby on, and then only to other families, as a number.') : tr('Until then you only count in a number on the map, like "5 au pairs" in your city, never by name.')}</li>
         <li>${tr('Others see your city and a rough distance like "under 5 km", never where you live.')}</li>
         <li>${isFamily ? tr('Families see families. Au pairs see au pairs.') : tr('Au pairs see au pairs. Families only find you if you say so.')}</li>
         <li>${tr('Meetups are in public places. Block or report anyone, any time.')}</li></ul></div>
       ${nearbySettingsForm(null, isFamily)}
-      ${me.user.city ? `<h2>${isFamily ? tr('Families around you') : tr('Au pairs around you')}</h2><div id="nbPreview"></div>` : ''}
+      ${me.user.city ? `<h2>${tr('Au pairs around you')}</h2><div id="nbPreview"></div>` : ''}
       ${d.my_meetups?.length ? `<h2>${tr('Your meetups')}</h2>${d.my_meetups.map(nearbyMeetupCard).join('')}` : ''}</div>`);
     // A first look at the map, from the city on their profile, before they turn anything on.
     const preview = document.getElementById('nbPreview');

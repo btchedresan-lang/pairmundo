@@ -558,9 +558,9 @@ export function mountNearby(api, deps) {
   // ---------- the map ----------
   // Never a pin per person: meetups as pins (rounded unless you're going), and people as counts per area of about
   // 5 km, shown only where at least MAP_MIN_BUBBLE people are, so no bubble points at one person.
-  // Everyone counts, not only people who set up Nearby: someone who shared a point counts there, and everyone else
-  // counts at the general spot of the city or neighbourhood on their profile (geo.js), so nobody has to turn on
-  // location. Only people who turned Nearby on and chose to hide are left out.
+  // Au pairs count whether or not they set up Nearby: at their shared point, or else at the general spot of the city or
+  // neighbourhood on their profile (geo.js), so nobody has to turn on location. Au pairs who turned Nearby on and chose
+  // to hide are left out. Families count only once they turn Nearby on, and only other such families see them.
   const MAP_CELL = 0.05;
   const MAP_MIN_BUBBLE = 3;
   /** Members of role active lately and in good standing, with their Nearby row if they have one. */
@@ -575,7 +575,10 @@ export function mountNearby(api, deps) {
     const area = settings ?? (me.city && me.country ? { city: me.city, city_key: cityKey(me.city), country: String(me.country).toUpperCase(), lat: null, lng: null, visible: 0 } : null);
     if (!area) return { settings: null, needs_city: true };
     const other = me.role === 'family' ? 'aupair' : 'family';
-    const rowsOf = (role) => mapPeople(area.country, role, me.demo).filter((u) => u.n_visible !== 0);
+    // Au pairs count wherever they are, so newcomers find their community. Families count only once they turned Nearby
+    // on and chose to be seen, are shown only to other families who did the same, and never to au pairs.
+    const rowsOf = (role) => mapPeople(area.country, role, me.demo)
+      .filter((u) => (role === 'family' ? u.n_visible === 1 : u.n_visible !== 0));
     const byRole = { [me.role]: rowsOf(me.role), [other]: rowsOf(other) };
     const placeOf = (u) => (u.n_lat != null ? null : [u.n_city || u.city, area.country]);
     await geo.warm([[area.city, area.country], ...[...byRole[me.role], ...byRole[other]].map(placeOf).filter(Boolean)]);
@@ -609,8 +612,9 @@ export function mountNearby(api, deps) {
     };
     // areas: your own side, as the apps have always read it. other_areas: the other side (au pairs for a family,
     // families for an au pair), with role, for apps that show both.
-    const areas = bubbles(byRole[me.role]);
-    const otherAreas = bubbles(byRole[other]).map((x) => ({ ...x, role: other }));
+    const familiesSee = me.role === 'family' && settings?.visible === 1;
+    const areas = me.role === 'family' && !familiesSee ? [] : bubbles(byRole[me.role]);
+    const otherAreas = other === 'family' ? [] : bubbles(byRole[other]).map((x) => ({ ...x, role: other }));
     const meetups = meetupsIn(area, me).filter((m) => m.point);
     const listed = settings ? cityPeople(settings, me.role, me.demo).length : 0;
     return {
