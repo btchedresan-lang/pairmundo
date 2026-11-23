@@ -213,6 +213,20 @@ CREATE TABLE IF NOT EXISTS waitlist (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Sends the admin set up ahead of time (Admin -> Message users, Admin -> Waitlist -> Launch email), so launch day runs
+-- without anyone at a keyboard. kind: message | launch_email. payload holds what to send; the audience of a message
+-- is worked out again when it goes, so people who join in between get it too.
+CREATE TABLE IF NOT EXISTS scheduled_sends (
+  id INTEGER PRIMARY KEY,
+  kind TEXT NOT NULL,
+  payload TEXT NOT NULL DEFAULT '{}',
+  run_at TEXT NOT NULL,                             -- ISO time in UTC
+  status TEXT NOT NULL DEFAULT 'scheduled',         -- scheduled | done | cancelled | failed
+  result TEXT,
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Who already got the "the apps are out" email, so sending again picks up where it stopped and never repeats.
 CREATE TABLE IF NOT EXISTS launch_emails (
   email TEXT PRIMARY KEY,

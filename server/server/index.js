@@ -44,4 +44,6 @@ setInterval(() => {
 setInterval(() => {
   try { app.sendUnreadMessageAlerts(); } catch (e) { console.error('Unread message emails failed:', e.message); }
 }, 10 * 60 * 1000).unref();
+// Messages and the launch email the admin scheduled ahead of time: check every minute.
+setInterval(() => { app.runScheduled().catch((e) => console.error('Scheduled sends failed:', e.message)); }, 60 * 1000).unref();
 app.listen(port, () => console.log(`PairMundo running on http://localhost:${port}`));
