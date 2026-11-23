@@ -251,3 +251,28 @@ test('map: meetups as rounded pins unless going, people only as area counts of 3
   const off = await member('mapoff@near.io', 'aupair', 'Map Off');
   assert.equal((await call(off.token, 'GET', '/nearby/map')).body.settings, null);
 });
+
+test('people nearby: suburbs within 30 km count toward the big city when both shared a point', async () => {
+  const sto = await member('sto@fam.io', 'family', 'Sto Family', { country: 'NO', city: 'Oslo' });
+  const sol = await member('sol@fam.io', 'family', 'Sol Family', { country: 'NO', city: 'Baerum' });
+  const nac = await member('nac@fam.io', 'family', 'Nac Family', { country: 'NO', city: 'Lorenskog' });
+  const nopt = await member('nopt@fam.io', 'family', 'Nopoint Family', { country: 'NO', city: 'Asker' });
+  const gbg = await member('gbg@fam.io', 'family', 'Gbg Family', { country: 'NO', city: 'Bergen' });
+  await call(sto.token, 'PUT', '/me/nearby', { city: 'Oslo', country: 'NO', lat: 59.91, lng: 10.75 });
+  await call(sol.token, 'PUT', '/me/nearby', { city: 'Baerum', country: 'NO', lat: 59.89, lng: 10.52 });
+  await call(nopt.token, 'PUT', '/me/nearby', { city: 'Asker', country: 'NO' });
+  await call(gbg.token, 'PUT', '/me/nearby', { city: 'Bergen', country: 'NO', lat: 60.39, lng: 5.32 });
+  // Oslo plus Baerum is two families, under the minimum of three; Asker shared no point and Bergen is too far.
+  let n = (await call(sto.token, 'GET', '/nearby')).body;
+  assert.equal(n.city.people, 2);
+  assert.equal(n.city.unlocked, false);
+  await call(nac.token, 'PUT', '/me/nearby', { city: 'Lorenskog', country: 'NO', lat: 59.93, lng: 10.96 });
+  n = (await call(sto.token, 'GET', '/nearby')).body;
+  assert.equal(n.city.unlocked, true);
+  assert.deepEqual(n.people.map((p) => p.user.id).sort(), [sol.id, nac.id].sort());
+  // Suburbs see Oslo too, and can say hi across the city line.
+  assert.ok((await call(sol.token, 'GET', '/nearby')).body.people.some((p) => p.user.id === sto.id));
+  assert.equal((await call(sol.token, 'POST', `/nearby/people/${nac.id}/hello`, { message: 'Hej!' })).status, 201);
+  // Without a shared point, a suburb stays on its own.
+  assert.equal((await call(nopt.token, 'GET', '/nearby')).body.city.people, 1);
+});

@@ -18,6 +18,7 @@ import { randomInt } from 'node:crypto';
 import QRCode from 'qrcode';
 
 const GRID = 0.02; // degrees, about 2.2 km north-south
+const NEAR_KM = 30; // people this close count as the same city, so suburbs under another name join the big city
 const ACTIVE_DAYS = 30;
 const MAX_HOSTED = 3; // upcoming meetups a member can host at once
 const HELLOS_PER_DAY = 20;
@@ -113,10 +114,13 @@ export function mountNearby(api, deps) {
   }));
 
   // ---------- people nearby ----------
-  /** People of role in the same city who are on Nearby and visible, active lately and in good standing. */
-  const cityPeople = (area, role, demo) => db.prepare(`SELECT u.*, n.lat, n.lng FROM nearby_settings n JOIN users u ON u.id = n.user_id
-      WHERE n.country = ? AND n.city_key = ? AND n.visible = 1 AND u.role = ? AND u.suspended = 0 AND u.email_verified = 1 AND u.demo = ?
-        AND u.last_active_at >= datetime('now', ?)`).all(area.country, area.city_key, role, demo ? 1 : 0, `-${ACTIVE_DAYS} days`);
+  /** People of role in the same city, or within NEAR_KM when both shared a point (Solna and Nacka count for Stockholm),
+   *  who are on Nearby and visible, active lately and in good standing. */
+  const cityPeople = (area, role, demo) => db.prepare(`SELECT u.*, n.lat, n.lng, n.city_key, n.country FROM nearby_settings n JOIN users u ON u.id = n.user_id
+      WHERE n.country = ? AND (n.city_key = ? OR (? AND n.lat IS NOT NULL AND n.lng IS NOT NULL)) AND n.visible = 1 AND u.role = ?
+        AND u.suspended = 0 AND u.email_verified = 1 AND u.demo = ? AND u.last_active_at >= datetime('now', ?)`)
+    .all(area.country, area.city_key, hasPoint(area) ? 1 : 0, role, demo ? 1 : 0, `-${ACTIVE_DAYS} days`)
+    .filter((u) => isNear(area, u, NEAR_KM));
   const helloBetween = (a, b) => db.prepare(`SELECT * FROM nearby_hellos WHERE (from_user = ? AND to_user = ?) OR (from_user = ? AND to_user = ?)
       ORDER BY status = 'accepted' DESC, id DESC LIMIT 1`).get(a, b, b, a);
   const helloState = (me, otherId) => {
@@ -233,7 +237,7 @@ export function mountNearby(api, deps) {
     if (!area?.visible) throw bad('Turn on Nearby and show yourself to others first.', 'nearby_off');
     const t = getUser(req.params.id);
     const theirs = t && areaOf(t.id);
-    if (!t || t.role !== me.role || t.suspended || !theirs?.visible || !isNear(area, theirs, 0) || !canMeet(me, t)) throw notFound();
+    if (!t || t.role !== me.role || t.suspended || !theirs?.visible || !isNear(area, theirs, NEAR_KM) || !canMeet(me, t)) throw notFound();
     if (cityPeople(area, me.role, me.demo).length < minPeople()) throw notFound();
     const prev = helloBetween(me.id, t.id);
     if (prev?.status === 'accepted') return { status: 'connected', conversation_id: conversationFor(me.id, t.id, true).id };
