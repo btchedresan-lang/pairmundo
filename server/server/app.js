@@ -3024,8 +3024,10 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (!n) throw bad('Nothing scheduled with that number (it may have gone out already).');
     return { ok: true };
   }));
-  const storeLinks = () => [['iPhone (App Store)', process.env.APP_STORE_URL], ['Android (Google Play)', process.env.PLAY_STORE_URL || 'https://play.google.com/store/apps/details?id=com.pairmundo.app']]
-    .filter(([, url]) => url);
+  // Until the iPhone app is out, iPhone users are sent to the website, which does everything the app does.
+  const storeLinks = () => [['iPhone (App Store)', process.env.APP_STORE_URL], ['Android (Google Play)', process.env.PLAY_STORE_URL || 'https://play.google.com/store/apps/details?id=com.pairmundo.app'],
+    process.env.APP_STORE_URL ? null : ['iPhone (on the web until the app is out)', `${publicBase()}/#/register`]]
+    .filter((x) => x && x[1]);
   const launchRecipients = () => {
     const sent = new Set(db.prepare('SELECT email FROM launch_emails').all().map((r) => r.email));
     const seen = new Set();
@@ -3059,7 +3061,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     const links = storeLinks();
     return withMedia(launchEmail(lang, { kind: r.kind, role: r.role, email: r.email, links, earlyDays: early?.days || 0, useBy,
       leaveUrl: r.token ? `${publicBase()}/api/waitlist/leave?t=${r.token}` : null }),
-    { image: r.role === 'aupair' ? 'hero-aupair.jpg' : 'hero-family.jpg', alt: 'The PairMundo app', base: publicBase(), lang,
+    { image: 'launch-day.jpg', alt: 'PairMundo is live: swipe, match, welcome your au pair', base: publicBase(), lang,
       cta: links[0] ? { label: translate(lang, 'Get the app'), link: links[0][1] } : null });
   };
   const launchJob = { running: false, sent: 0, error: null, finished_at: null };

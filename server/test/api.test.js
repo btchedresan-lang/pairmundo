@@ -3089,7 +3089,7 @@ test('admin emails carry media: a designed version with a picture and a button, 
   testDb.prepare("INSERT OR IGNORE INTO users (email, password_hash, role, name, email_verified) VALUES ('admin@test.io', ?, 'admin', 'Admin', 1)").run(hashPassword('password123'));
   const admin = (await call(null, 'POST', '/auth/login', { email: 'admin@test.io', password: 'password123' })).body.token;
   const launch = (await call(admin, 'GET', '/admin/launch-email')).body;
-  assert.ok(launch.samples.length && launch.samples.every((x) => x.html && x.html.includes('/media/email/hero-')), 'launch emails have a picture');
+  assert.ok(launch.samples.length && launch.samples.every((x) => x.html && x.html.includes('/media/email/launch-day.jpg')), 'launch emails have the launch picture');
   const invites = (await call(admin, 'GET', '/admin/profile-invites')).body;
   assert.ok(invites.samples.every((x) => x.html && x.html.includes('hero-family.jpg') && x.html.includes('#/register?role=family')), 'profile invites have a picture and a button');
   assert.ok((await call(admin, 'GET', '/admin/agency-nudge')).body.one_pager.endsWith('.pdf'));
