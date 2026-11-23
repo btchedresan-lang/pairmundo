@@ -23,6 +23,7 @@ export default function TabsLayout() {
       tabBarBadgeStyle: { backgroundColor: C.nope, fontFamily: font('700'), fontSize: 11 },
       tabBarStyle: { backgroundColor: t.card, borderTopColor: t.line }, sceneStyle: { backgroundColor: t.bg } }}>
       <Tabs.Screen name="discover" options={{ title: tr('Discover'), headerShown: false, tabBarIcon: icon('flame') }} />
+      <Tabs.Screen name="nearby" options={{ title: tr('Nearby'), tabBarIcon: icon('people') }} />
       <Tabs.Screen name="likes" options={{ title: tr('Likes'), tabBarIcon: icon('heart'), tabBarBadge: c.requests || undefined }} />
       <Tabs.Screen name="matches" options={{ title: tr('Matches'), tabBarIcon: icon('chatbubbles'), tabBarBadge: c.messages || undefined }} />
       <Tabs.Screen name="placements" options={{ title: tr('Placements'), tabBarIcon: icon('briefcase') }} />

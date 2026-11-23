@@ -2,6 +2,7 @@
   "ios": {
     "NSPhotoLibraryUsageDescription": "O PairMundo precisa acessar suas fotos para você adicioná-las ao seu perfil.",
     "NSCameraUsageDescription": "O PairMundo precisa da tua câmara para videochamadas com famílias e au pairs.",
-    "NSMicrophoneUsageDescription": "O PairMundo precisa do teu microfone para videochamadas com famílias e au pairs."
+    "NSMicrophoneUsageDescription": "O PairMundo precisa do teu microfone para videochamadas com famílias e au pairs.",
+    "NSLocationWhenInUseUsageDescription": "A PairMundo usa sua localização aproximada, só quando você pede, para encontrar sua cidade em Por perto. Sua localização exata nunca é salva."
   }
 }

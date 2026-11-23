@@ -456,6 +456,24 @@ export const DICT = {
   "This link is not valid.": {
     es: "Este enlace no es válido.", fr: "Ce lien n'est pas valide.",
     de: "Dieser Link ist ungültig.", pt: "Este link não é válido." },
+  "{name}, an au pair near you, said hi. Open Nearby to answer.": {
+    es: "{name}, una au pair cerca de ti, te ha saludado. Abre Cerca para responder.", fr: "{name}, au pair près de chez vous, vous a dit bonjour. Ouvrez À proximité pour répondre.",
+    de: "{name}, ein Au-pair in deiner Nähe, hat Hallo gesagt. Öffne In der Nähe, um zu antworten.", pt: "{name}, au pair perto de você, disse oi. Abra Por perto para responder." },
+  "{name}, a family near you, said hi. Open Nearby to answer.": {
+    es: "{name}, una familia cerca de ti, te ha saludado. Abre Cerca para responder.", fr: "{name}, une famille près de chez vous, vous a dit bonjour. Ouvrez À proximité pour répondre.",
+    de: "{name}, eine Familie in deiner Nähe, hat Hallo gesagt. Öffne In der Nähe, um zu antworten.", pt: "{name}, uma família perto de você, disse oi. Abra Por perto para responder." },
+  "{name} said hi back. You can chat now.": {
+    es: "{name} te ha devuelto el saludo. Ya podéis chatear.", fr: "{name} vous a répondu. Vous pouvez discuter maintenant.",
+    de: "{name} hat zurückgegrüßt. Ihr könnt jetzt chatten.", pt: "{name} respondeu o seu oi. Vocês já podem conversar." },
+  "{agency} invited you to a meetup in {city}: {title}": {
+    es: "{agency} te invita a un encuentro en {city}: {title}", fr: "{agency} vous invite à une rencontre à {city} : {title}",
+    de: "{agency} lädt dich zu einem Treffen in {city} ein: {title}", pt: "{agency} convidou você para um encontro em {city}: {title}" },
+  "{name} is coming to {title}.": {
+    es: "{name} viene a {title}.", fr: "{name} vient à {title}.",
+    de: "{name} kommt zu {title}.", pt: "{name} vai a {title}." },
+  "{title} was cancelled.": {
+    es: "{title} se ha cancelado.", fr: "{title} a été annulé.",
+    de: "{title} wurde abgesagt.", pt: "{title} foi cancelado." },
 };
 
 // Swedish lives in its own file, keyed by the same English text.

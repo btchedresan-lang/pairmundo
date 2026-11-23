@@ -753,6 +753,7 @@ views.agency = async () => {
       ${[[tr('Au pairs who joined'), 'aupairs'], [tr('Profiles families can see'), 'profiles'], [tr('ID verified'), 'verified'], [tr('Placements agreed'), 'placements']]
     .map(([label, k]) => `<tr><td>${label}</td><td>${amb.this_month[k]}</td><td>${amb.total[k]}</td></tr>`).join('')}</table>
       <p class="muted small">${tr('Au pairs count here when they sign up with your code or link, or add your code later in their account. A profile shows to families once it has a photo and an About me.')}</p></div>
+    <div class="card" id="agencyMeetups"><h2>☕ ${tr('Meetups for your au pairs')}</h2><p class="muted">${tr('Loading…')}</p></div>
     ${amb.network ? `<div class="card"><h2>🤝 ${tr('Partner agencies')}</h2><p>${tr('Find agencies to work with, like a sending agency for your families or a host agency for your au pairs. Partners share their spaces, and you can show memberships like IAPA.')}</p>
       <a class="btn sm" href="#/network">${tr('Open partner agencies')}</a></div>` : ''}
     ${amb.space ? `<div class="card"><h2>${amb.space.loop ? `🔒 ${tr('Your Closed Loop')}` : tr('Your agency space')}</h2>
@@ -817,6 +818,7 @@ views.agency = async () => {
       ${amb.introductions.map((i) => `<tr><td>${esc(i.created_at.slice(0, 16))}</td><td>${esc(i.family_name)}</td><td>${esc(i.aupair_name)}</td>${amb.introductions.some((x) => x.partner_name) ? `<td>${esc(i.partner_name || '')}</td>` : ''}</tr>`).join('')}</table></div>` : `<p class="muted">${tr('No matches yet.')}</p>`}</div>
     ${amb.flags.length ? `<div class="card"><h2>${tr('Flagged')}</h2><table>${amb.flags.map((f) => `<tr><td>${esc(f.created_at.slice(0, 16))}</td><td>${esc(f.user_name)}</td><td>${tr('Tried to share contact details before a confirmed placement. They were hidden.')}</td></tr>`).join('')}</table></div>` : ''}` : ''}`);
   if (amb.space) { loadAgencyFamilies(); loadFamilyInvites(); }
+  agencyMeetups(amb);
   const crit = document.getElementById('critForm');
   if (crit) crit.onsubmit = async (e) => {
     e.preventDefault();
@@ -863,6 +865,90 @@ views.agency = async () => {
     toast(tr('Link copied'));
   };
 };
+
+// ---------- meetups (Nearby) ----------
+// Members find meetups in the app's Nearby tab. Agencies host official meetups for their own people here, and the admin
+// lists meetups from elsewhere (an expat group, a library language café) that link out.
+const MEETUP_KINDS = { coffee: '☕ Coffee', walk: '🚶 Walk', picnic: '🧺 Picnic', playdate: '🛝 Playdate', sport: '⚽ Sport', language: '🗣️ Language exchange', culture: '🎨 Museum or culture', other: '✨ Something else' };
+const meetupWhen = (iso) => new Date(iso).toLocaleString(LANG, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+function meetupFormHtml({ external = false } = {}) {
+  return `<form class="meetupForm"><div class="form-grid">
+    <div class="field"><label>${tr('Title')}</label><input name="title" required maxlength="80" placeholder="${tr('For example: Welcome picnic for new au pairs')}"></div>
+    <div class="field"><label>${tr('Kind')}</label><select name="kind">${Object.entries(MEETUP_KINDS).map(([k, v]) => `<option value="${k}">${tr(v)}</option>`).join('')}</select></div>
+    <div class="field"><label>${tr('City')}</label><input name="city" required maxlength="80"></div>
+    <div class="field"><label>${tr('Country')}</label><select name="country" required>${options(COUNTRIES, me.user.country || '', tr('Choose a country'))}</select></div>
+    <div class="field"><label>${tr('Public place')}</label><input name="place" required maxlength="120" placeholder="${tr('For example: Pildammsparken, by the big pond')}"></div>
+    <div class="field"><label>${tr('Neighbourhood (optional)')}</label><input name="area" maxlength="80"></div>
+    <div class="field"><label>${tr('Map pin (optional)')}</label><input name="pin" maxlength="60" placeholder="59.3326, 18.0649">
+      <div class="muted small">${tr('Right-click the place in Google Maps or OpenStreetMap and copy its coordinates. Without them the meetup shows in the list only.')}</div></div>
+    <div class="field"><label>${tr('Starts')}</label><input name="starts_at" type="datetime-local" required></div>
+    <div class="field"><label>${tr('Ends (optional)')}</label><input name="ends_at" type="datetime-local"></div>
+    <div class="field"><label>${tr('For')}</label><select name="audience"><option value="aupair">${tr('Au pairs')}</option><option value="family">${tr('Host families')}</option><option value="both" ${external ? 'selected' : ''}>${tr('Au pairs and families')}</option></select></div>
+    ${external ? `<div class="field"><label>Organiser</label><input name="organizer" required maxlength="80"></div>
+      <div class="field"><label>Sign-up link (https)</label><input name="external_url" type="url" required maxlength="500"></div>`
+    : `<div class="field"><label>${tr('Places (optional)')}</label><input name="max_people" type="number" min="2" max="300"></div>`}
+    </div>
+    <div class="field"><label>${tr('About (optional)')}</label><textarea name="about" rows="2" maxlength="1000"></textarea></div>
+    ${external ? '' : `<label class="small"><input type="checkbox" name="agency_only" checked style="width:auto"> ${tr('Only for au pairs and families in our agency')}</label><br>
+      <label class="small"><input type="checkbox" name="public_place" required style="width:auto"> ${tr("It is in a public place, not at anyone's home.")}</label>`}
+    <div class="meetupErr"></div><button class="btn sm">${external ? 'Add listing' : tr('Host meetup')}</button></form>`;
+}
+function readMeetupForm(f) {
+  const iso = (v) => (v ? new Date(v).toISOString() : null);
+  const pin = /^\s*(-?\d+(?:\.\d+)?)\s*[,; ]\s*(-?\d+(?:\.\d+)?)\s*$/.exec(f.pin.value);
+  return { title: f.title.value, kind: f.kind.value, city: f.city.value, country: f.country.value, place: f.place.value, area: f.area.value, about: f.about.value,
+    starts_at: iso(f.starts_at.value), ends_at: iso(f.ends_at.value), audience: f.audience.value, ...(pin ? { lat: Number(pin[1]), lng: Number(pin[2]) } : {}),
+    ...(f.external_url ? { external_url: f.external_url.value, organizer: f.organizer.value } : { max_people: f.max_people.value || null, agency_only: f.agency_only.checked, public_place: f.public_place.checked }) };
+}
+function meetupRow(m, { admin = false } = {}) {
+  const status = m.status === 'open' ? '' : `<span class="chip ${m.status === 'hidden' ? 'warn' : ''}">${esc(m.status)}</span>`;
+  return `<tr><td><strong>${esc(m.title)}</strong> ${status}${m.open_reports ? ` <span class="chip warn">${m.open_reports} report${m.open_reports > 1 ? 's' : ''}</span>` : ''}
+      <div class="muted small">${esc(MEETUP_KINDS[m.kind] || m.kind)} · ${esc(m.place || '')}${m.area ? `, ${esc(m.area)}` : ''}</div></td>
+    <td>${meetupWhen(m.starts_at)}</td><td>${esc(m.city)} ${flag(m.country)}</td>
+    <td>${m.external ? `<a href="${esc(m.external_url)}" target="_blank" rel="noopener">↗ ${esc(m.organizer)}</a>` : m.official ? `✔ ${esc(m.agency)}` : m.host ? `<a href="#/u/${m.host.id}">${esc(m.host.name)}</a>` : ''}</td>
+    <td>${m.external ? '—' : `${m.going}${m.max_people ? ` / ${m.max_people}` : ''}`}${m.attendees?.length ? `<div class="muted small">${m.attendees.map((a) => esc(a.name)).join(', ')}</div>` : ''}</td>
+    <td>${admin ? `${m.status !== 'open' ? `<button class="btn sm" data-mt="${m.id}" data-st="open">Show</button>` : `<button class="btn danger sm" data-mt="${m.id}" data-st="hidden">Hide</button>`}`
+    : m.status === 'open' ? `<button class="btn ghost sm" data-cancel="${m.id}">${tr('Cancel')}</button>` : ''}</td></tr>`;
+}
+async function agencyMeetups(amb) {
+  const box = document.getElementById('agencyMeetups');
+  if (!box) return;
+  let list = [];
+  try { ({ meetups: list } = await api('/agency/meetups')); } catch (e) { box.innerHTML = `<div class="alert error">${esc(e.message)}</div>`; return; }
+  box.innerHTML = `<h2>☕ ${tr('Meetups for your au pairs')}</h2>
+    <p class="muted small">${tr('Host an official meetup, like a welcome picnic or a language café. It shows in the Nearby tab of the app for your au pairs (or families) in that city, marked Official · {agency}, and they get a notification.', { agency: esc(amb.name) })}</p>
+    ${list.length ? `<div class="table-wrap"><table><tr><th>${tr('Meetup')}</th><th>${tr('When')}</th><th>${tr('City')}</th><th></th><th>${tr('Going')}</th><th></th></tr>${list.map((m) => meetupRow(m)).join('')}</table></div>` : ''}
+    <details ${list.length ? '' : 'open'}><summary>${tr('Host a meetup')}</summary>${meetupFormHtml()}</details>`;
+  wireMeetupForm(box, () => agencyMeetups(amb));
+  box.querySelectorAll('[data-cancel]').forEach((b) => { b.onclick = async () => {
+    if (!confirm(tr('Cancel this meetup? Everyone going gets a notification.'))) return;
+    try { await api(`/meetups/${b.dataset.cancel}/cancel`, { method: 'POST' }); agencyMeetups(amb); } catch (e) { toast(e.message); }
+  }; });
+}
+function wireMeetupForm(box, done) {
+  const form = box.querySelector('.meetupForm');
+  if (!form) return;
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    try { await api('/meetups', { method: 'POST', body: readMeetupForm(form) }); toast(tr('Meetup added')); done(); }
+    catch (err) { form.querySelector('.meetupErr').innerHTML = `<div class="alert error">${esc(err.message)}</div>`; }
+  };
+}
+async function adminMeetups(head) {
+  const d = await api('/admin/meetups');
+  render(`${head}<div class="card"><h2>Meetups</h2>
+    <p class="muted small">Members host meetups in the app's Nearby tab (hosts need an ID check); agencies host official ones from their page. Three reports hide a meetup until you show it again. A city lists its people once ${d.min_people} are on Nearby (<code>NEARBY_MIN_PEOPLE</code>); meetups always show.</p>
+    ${d.meetups.length ? `<div class="table-wrap"><table><tr><th>Meetup</th><th>When</th><th>City</th><th>Host</th><th>Going</th><th></th></tr>${d.meetups.map((m) => meetupRow(m, { admin: true })).join('')}</table></div>` : '<div class="empty">No meetups yet.</div>'}</div>
+    <div class="card" id="extMeetup"><h2>Add a meetup from elsewhere</h2>
+      <p class="muted small">For cities with few members yet: list a real, public meetup run by someone else (an au pair or expat group, a library language café, a city welcome event). It shows in Nearby marked as external, with its place, and links out to sign up. Only list events whose organiser publishes them openly, and link to their own page.</p>
+      ${meetupFormHtml({ external: true })}</div>
+    <div class="card"><h2>Cities on Nearby</h2><table><tr><th>City</th><th>Side</th><th>People</th></tr>
+      ${d.cities.map((c) => `<tr><td>${esc(c.city)} ${flag(c.country)}</td><td>${c.role === 'aupair' ? 'Au pairs' : 'Families'}</td><td>${c.people}${c.people >= d.min_people ? ' ✔' : ''}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">Nobody yet.</td></tr>'}</table></div>`);
+  wireMeetupForm(document.getElementById('extMeetup'), () => views.admin(['meetups']));
+  document.querySelectorAll('[data-mt]').forEach((b) => { b.onclick = async () => {
+    try { await api(`/admin/meetups/${b.dataset.mt}`, { method: 'POST', body: { status: b.dataset.st } }); views.admin(['meetups']); } catch (e) { toast(e.message); }
+  }; });
+}
 
 // The Founding Partner Race, at the top of the agency page while it runs: the agency's own count, place, prizes and links.
 function raceCard(amb) {
@@ -2277,7 +2363,7 @@ async function adminLaunchEmail() {
 }
 views.admin = async ([tab = 'overview', id], qs) => {
   if (me.user.role !== 'admin') return go('#/');
-  const tabs = { overview: 'Overview', users: 'Users & verification', reports: 'Reports', programs: 'Program rules', placements: 'Placements', waitlist: 'Waitlist', ambassadors: 'Ambassadors', messages: 'Message users', certificates: 'Certificates', partners: 'Partners', referrals: 'Referrals', ...(me.agency_network ? { affiliations: 'Affiliations' } : {}) };
+  const tabs = { overview: 'Overview', users: 'Users & verification', reports: 'Reports', programs: 'Program rules', placements: 'Placements', waitlist: 'Waitlist', ambassadors: 'Ambassadors', messages: 'Message users', meetups: 'Meetups', certificates: 'Certificates', partners: 'Partners', referrals: 'Referrals', ...(me.agency_network ? { affiliations: 'Affiliations' } : {}) };
   const head = `<h1>Program administration</h1><div class="row" style="margin-bottom:16px">${Object.entries(tabs).map(([k, v]) =>
     `<a class="btn ${k === tab ? '' : 'ghost'} sm" href="#/admin/${k}">${v}</a>`).join('')}</div>`;
   if (tab === 'overview') {
@@ -2295,6 +2381,7 @@ views.admin = async ([tab = 'overview', id], qs) => {
     return adminBackup();
   }
   if (tab === 'messages') return adminMessages(head, qs);
+  if (tab === 'meetups') return adminMeetups(head);
   if (tab === 'users') {
     const { users } = await api('/admin/users');
     render(`${head}<div class="card table-wrap"><table><tr><th>Member</th><th>Role</th><th>Rating</th><th>ID</th><th>References</th><th>Background</th><th>Suspended</th><th>Family Pass</th></tr>
@@ -2320,14 +2407,14 @@ views.admin = async ([tab = 'overview', id], qs) => {
   if (tab === 'reports') {
     const { reports } = await api('/admin/reports');
     render(`${head}<div class="card">${reports.map((r) => `<div style="border-top:1px solid var(--line);padding:12px 0">
-      <div class="spread"><strong>${r.review_id ? 'Review' : 'Profile'} report</strong><span class="chip ${r.status === 'open' ? 'warn' : ''}">${r.status}</span></div>
+      <div class="spread"><strong>${r.meetup_id ? 'Meetup' : r.review_id ? 'Review' : 'Profile'} report</strong><span class="chip ${r.status === 'open' ? 'warn' : ''}">${r.status}</span></div>
       <div class="small muted">by ${esc(r.reporter_name)} · ${fmtTime(r.created_at)}${r.target_user_id ? ` · about <a href="#/u/${r.target_user_id}">${esc(r.target_name)}</a>` : ''}</div>
-      <p style="margin:6px 0">${esc(r.reason)}</p>${r.review_comment ? `<div class="alert info small">Review: “${esc(r.review_comment)}” ${r.review_hidden ? '(hidden)' : ''}</div>` : ''}
-      ${r.status === 'open' ? `<div class="row">${r.review_id ? `<button class="btn danger sm" data-rep="${r.id}" data-hide="1">Hide review & resolve</button>` : ''}
+      <p style="margin:6px 0">${esc(r.reason)}</p>${r.review_comment ? `<div class="alert info small">Review: “${esc(r.review_comment)}” ${r.review_hidden ? '(hidden)' : ''}</div>` : ''}${r.meetup_id ? `<div class="alert info small">Meetup: “${esc(r.meetup_title)}” (${esc(r.meetup_status)}) · <a href="#/admin/meetups">Meetups</a></div>` : ''}
+      ${r.status === 'open' ? `<div class="row">${r.review_id ? `<button class="btn danger sm" data-rep="${r.id}" data-hide="1">Hide review & resolve</button>` : ''}${r.meetup_id ? `<button class="btn danger sm" data-rep="${r.id}" data-hidemeetup="1">Hide meetup & resolve</button>` : ''}
         <button class="btn sm" data-rep="${r.id}">Resolve</button><button class="btn ghost sm" data-rep="${r.id}" data-dismiss="1">Dismiss</button></div>` : ''}</div>`).join('')
       || '<div class="empty">No reports. 🎉</div>'}</div>`);
     document.querySelectorAll('[data-rep]').forEach((b) => { b.onclick = async () => {
-      await api(`/admin/reports/${b.dataset.rep}`, { method: 'POST', body: { status: b.dataset.dismiss ? 'dismissed' : 'resolved', ...(b.dataset.hide ? { hide_review: true } : {}) } });
+      await api(`/admin/reports/${b.dataset.rep}`, { method: 'POST', body: { status: b.dataset.dismiss ? 'dismissed' : 'resolved', ...(b.dataset.hide ? { hide_review: true } : {}), ...(b.dataset.hidemeetup ? { hide_meetup: true } : {}) } });
       views.admin(['reports']);
     }; });
     return;

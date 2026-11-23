@@ -57,6 +57,8 @@ function RootStack() {
         <Stack.Screen name="family-pass" options={{ title: 'Family Pass', presentation: 'modal' }} />
         <Stack.Screen name="call" options={{ headerShown: false, presentation: 'fullScreenModal', gestureEnabled: false }} />
         <Stack.Screen name="account" options={{ title: tr('Account and safety') }} />
+        <Stack.Screen name="meetup/[id]" options={{ title: tr('Meetup') }} />
+        <Stack.Screen name="new-meetup" options={{ title: tr('Host a meetup'), presentation: 'modal' }} />
       </Stack.Protected>
       <Stack.Screen name="programs/index" options={{ title: tr('Country programs') }} />
       <Stack.Screen name="programs/[code]" options={{ title: tr('Program') }} />

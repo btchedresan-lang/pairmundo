@@ -11,6 +11,7 @@ import { isDemoEmail } from './demo.js';
 import { createMailer, withMedia, agencyFamilyInviteEmail, agencyUpdateEmail, agencyUploadOfferEmail, agencyLeadEmail, agencyNetworkInviteEmail, ambassadorInviteEmail, codeEmail, launchEmail, accountInviteEmail, profileInviteEmail, referenceEmail, teamInviteEmail, waitlistEmail } from './mailer.js';
 import { mountPipeline } from './pipeline.js';
 import { mountHiring } from './hiring.js';
+import { mountNearby } from './nearby.js';
 import { countryName, pickLang, t as translate } from './i18n.js';
 import { createCheckout, createIdentity, verifyWebhook } from './identity.js';
 import { createRevenueCat, storeName, webhookAuthorized } from './revenuecat.js';
@@ -1245,6 +1246,9 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (q.nationality && targetRole === 'aupair') { where.push('p.nationality = ?'); params.push(String(q.nationality).toUpperCase()); }
     if (q.verified === '1') where.push('u.id_verified = 1');
     if (q.driver === '1' && targetRole === 'aupair') where.push('p.drivers_license = 1');
+    // "Find an au pair near you": only au pairs who let families nearby find them (Nearby), in or around the family's city.
+    const near = q.near === '1' && targetRole === 'aupair' ? nearby.nearFamily(me) : undefined;
+    if (near === null) return { total: 0, results: [], near_needs_city: true };
     if (q.cpr === '1' && targetRole === 'aupair') where.push("EXISTS (SELECT 1 FROM json_each(p.certificates) WHERE json_extract(value, '$.kind') IN ('cpr', 'first_aid'))");
     if (discover) {
       // Hide anyone already swiped on, liked, or matched with; keep people who liked me so I can like them back.
@@ -1256,6 +1260,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     if (q.q) { where.push('(u.name LIKE ? OR p.bio LIKE ? OR u.city LIKE ?)'); const like = `%${q.q}%`; params.push(`${q.q}%`, like, like); }
     let rows = db.prepare(`SELECT u.* FROM users u JOIN ${table} p ON p.user_id = u.id WHERE ${where.join(' AND ')}`).all(...params);
     rows = rows.filter((u) => !closedApart(me, u));
+    if (near) rows = rows.filter((u) => near(u.id));
 
     let results = rows.map((u) => {
       const profile = getProfile(u);
@@ -1265,7 +1270,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
         : [{ user: u, profile }, { user: me, profile: myProfile }];
       const match = scoreMatch(ap, fam, getProgram(fam.user.country), ratingSummary(ap.user.id), me.lang);
       const likesYou = !!db.prepare("SELECT 1 FROM match_requests WHERE from_user = ? AND to_user = ? AND status = 'pending'").get(u.id, me.id);
-      return { user: publicUser(u, me), profile, rating, match, likes_you: likesYou && !lockLikes };
+      return { user: publicUser(u, me), profile, rating, match, likes_you: likesYou && !lockLikes, ...(near ? { near: near(u.id) } : {}) };
     });
 
     if (q.language) {
@@ -2033,10 +2038,12 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   api.post('/conversations/:id/messages', requireAuth, wrap((req, res) => {
     const c = myConversation(req);
     mustBeVerified(req.user);
-    mustHavePass(req.user);
+    const other = getUser(c.user_a === req.user.id ? c.user_b : c.user_a);
+    // The Family Pass is for messaging au pairs; families who met through Nearby chat with each other for free.
+    if (other?.role !== req.user.role) mustHavePass(req.user);
     const raw = str(req.body?.body, 4000);
     if (!raw) throw bad('Message is empty.');
-    const body = agencySafeText(req.user, getUser(c.user_a === req.user.id ? c.user_b : c.user_a), raw);
+    const body = agencySafeText(req.user, other, raw);
     const r = db.prepare('INSERT INTO messages (conversation_id, sender_id, body) VALUES (?,?,?)').run(c.id, req.user.id, body);
     push(c.user_a === req.user.id ? c.user_b : c.user_a, body.length > 140 ? `${body.slice(0, 139)}…` : body, `#/messages/${c.id}`, shortName(req.user.name));
     res.status(201);
@@ -2971,6 +2978,8 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
   const csvCell = (v) => { if (v == null) return ''; let s = String(v); if (/^[=+\-@]/.test(s)) s = `'${s}`; return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
   const { addTeamMember } = mountPipeline(api, { db, wrap, requireRole, HttpError, str, isDate, normEmail, csvCell, mailer, publicBase, hashPassword, notify, teamInviteEmail });
   mountHiring(api, { db, wrap, requireRole, rateLimit, HttpError, str, normEmail, mailer, publicBase, notify, video, addTeamMember });
+  const nearby = mountNearby(api, { db, wrap, requireAuth, requireRole, HttpError, str, tx, notify, publicUser, getUser, getProfile, blockedBetween, closedApart,
+    conversationFor, mustBeReady, mustBeVerified, agencySpace, shortName, photosOf });
   api.get('/admin/waitlist', requireRole('admin'), wrap(() => ({
     total: db.prepare('SELECT COUNT(*) n FROM waitlist').get().n,
     by_role: db.prepare('SELECT role, COUNT(*) n FROM waitlist GROUP BY role ORDER BY n DESC').all(),
@@ -3445,9 +3454,10 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     return { ...publicUser(getUser(u.id), req.user), suspended: !!getUser(u.id).suspended };
   }));
   api.get('/admin/reports', requireRole('admin'), wrap(() => ({
-    reports: db.prepare(`SELECT rp.*, ru.name reporter_name, tu.name target_name, rv.comment review_comment, rv.hidden review_hidden
+    reports: db.prepare(`SELECT rp.*, ru.name reporter_name, tu.name target_name, rv.comment review_comment, rv.hidden review_hidden,
+          mt.title meetup_title, mt.status meetup_status
         FROM reports rp JOIN users ru ON ru.id = rp.reporter_id LEFT JOIN users tu ON tu.id = rp.target_user_id
-        LEFT JOIN reviews rv ON rv.id = rp.review_id ORDER BY rp.status = 'open' DESC, rp.created_at DESC`).all(),
+        LEFT JOIN reviews rv ON rv.id = rp.review_id LEFT JOIN meetups mt ON mt.id = rp.meetup_id ORDER BY rp.status = 'open' DESC, rp.created_at DESC`).all(),
   })));
   api.post('/admin/reports/:id', requireRole('admin'), wrap((req) => {
     const rp = db.prepare('SELECT * FROM reports WHERE id = ?').get(Number(req.params.id));
@@ -3457,6 +3467,7 @@ export function createApp(db, { mailer = createMailer(), pusher = createPusher()
     tx(db, () => {
       db.prepare('UPDATE reports SET status = ? WHERE id = ?').run(status, rp.id);
       if (rp.review_id && 'hide_review' in req.body) db.prepare('UPDATE reviews SET hidden = ? WHERE id = ?').run(req.body.hide_review ? 1 : 0, rp.review_id);
+      if (rp.meetup_id && 'hide_meetup' in req.body) db.prepare('UPDATE meetups SET status = ? WHERE id = ?').run(req.body.hide_meetup ? 'hidden' : 'open', rp.meetup_id);
     });
     return { ok: true };
   }));

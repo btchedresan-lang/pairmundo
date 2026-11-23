@@ -22,15 +22,18 @@ module.exports = {
         ITSAppUsesNonExemptEncryption: false,
         NSCameraUsageDescription: `${brand.name} needs your camera for video calls with families and au pairs.`,
         NSMicrophoneUsageDescription: `${brand.name} needs your microphone for video calls with families and au pairs.`,
+        // Nearby (src/app/(tabs)/nearby.js): only when someone taps "Use my location", and only to find their city.
+        NSLocationWhenInUseUsageDescription: `${brand.name} uses your approximate location, only when you ask, to find your city for Nearby. Your exact location is never saved.`,
       },
     },
     android: {
       package: brand.bundleId,
       // Firebase config for Android push notifications. Download it from Firebase and drop it next to this file.
       ...(fs.existsSync('./google-services.json') ? { googleServicesFile: './google-services.json' } : {}),
-      permissions: ['android.permission.CAMERA', 'android.permission.RECORD_AUDIO', 'android.permission.MODIFY_AUDIO_SETTINGS'],
+      // Nearby asks for the approximate (coarse) location only: never the precise one, never in the background.
+      permissions: ['android.permission.CAMERA', 'android.permission.RECORD_AUDIO', 'android.permission.MODIFY_AUDIO_SETTINGS', 'android.permission.ACCESS_COARSE_LOCATION'],
       // No ads, so no advertising ID; some Google libraries add this permission on their own, which would contradict the Play declaration.
-      blockedPermissions: ['com.google.android.gms.permission.AD_ID'],
+      blockedPermissions: ['com.google.android.gms.permission.AD_ID', 'android.permission.ACCESS_FINE_LOCATION', 'android.permission.ACCESS_BACKGROUND_LOCATION'],
       adaptiveIcon: {
         backgroundColor: brand.primary,
         foregroundImage: './assets/android-icon-foreground.png',
@@ -51,6 +54,8 @@ module.exports = {
       'expo-apple-authentication',
       // Sign in with Google, once the Google client IDs are in brand.json (see README). Without them the button stays hidden.
       ...(brand.googleIosClientId ? [['@react-native-google-signin/google-signin', { iosUrlScheme: `com.googleusercontent.apps.${brand.googleIosClientId.replace(/\.apps\.googleusercontent\.com$/, '')}` }]] : []),
+      ['expo-location', { locationWhenInUsePermission: `${brand.name} uses your approximate location, only when you ask, to find your city for Nearby. Your exact location is never saved.`,
+        isIosBackgroundLocationEnabled: false, isAndroidBackgroundLocationEnabled: false, isAndroidForegroundServiceEnabled: false }],
       ['expo-image-picker', { photosPermission: `${brand.name} needs your photos so you can add them to your profile.` }],
     ],
     // Translated iOS permission prompts.
