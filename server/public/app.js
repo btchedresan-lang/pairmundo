@@ -2884,7 +2884,7 @@ const ADMIN_MENU = [
   ['', [['overview', '🏠', 'Overview', 'Key numbers and what needs you today.']]],
   ['Launch', [['waitlist', '🚀', 'Waitlist & launch email', 'Turn the waitlist into members and send the launch email.'],
     ['messages', '📣', 'Message users', 'In-app messages, push and email to members, now or scheduled.']]],
-  ['Members', [['users', '👥', 'Users & verification', 'Every member, their checks, test accounts and Family Pass days.', 'pending_verification'],
+  ['Members', [['users', '👥', 'Users & verification', 'Every member, their checks, test accounts and Family Pass days.'],
     ['reports', '🚩', 'Reports', 'Profiles, reviews and meetups members reported.', 'open_reports'],
     ['certificates', '📄', 'Certificates', 'Childcare and first-aid certificates to check.', 'pending_certificates']]],
   ['Agencies & partners', [['ambassadors', '🤝', 'Agencies & ambassadors', 'Agency codes, ambassadors, payouts and agency emails.'],
@@ -2930,9 +2930,10 @@ async function adminOverview(head) {
   const funnel = (label, x, icon) => `<div class="card kpi-big"><div class="kpi-label">${icon} ${label}</div><div class="kpi-num">${x.signed_up}</div>
     <div class="funnel"><div><span>Confirmed email</span><strong>${x.confirmed}</strong></div><div class="bar"><span style="width:${pct(x.confirmed, x.signed_up)}%"></span></div>
       <div><span>Complete profile</span><strong>${x.complete}</strong></div><div class="bar"><span style="width:${pct(x.complete, x.signed_up)}%"></span></div></div></div>`;
-  const todo = [['Awaiting ID check', s.pending_verification, '#/admin/users'], ['Open reports', s.open_reports, '#/admin/reports'],
+  // Stripe checks IDs on its own, so members without the badge simply haven't verified yet: a number to know, not a task.
+  const todo = [['Open reports', s.open_reports, '#/admin/reports'],
     ['Certificates to check', s.pending_certificates, '#/admin/certificates']];
-  const kpis = [['On the waitlist', s.waitlist, '#/admin/waitlist'], ['Pending likes', s.open_requests], ['Matches', s.matches],
+  const kpis = [['Not ID verified yet', s.pending_verification, '#/admin/users'], ['On the waitlist', s.waitlist, '#/admin/waitlist'], ['Pending likes', s.open_requests], ['Matches', s.matches],
     ['Active placements', s.placements_active, '#/admin/placements'], ['Completed placements', s.placements_completed], ['Reviews', s.reviews]];
   const tile = ([k, v, href], cls = '') => `<${href ? `a href="${href}"` : 'div'} class="kpi ${cls}"><div class="kpi-label">${k}</div><div class="kpi-num">${v}</div></${href ? 'a' : 'div'}>`;
   render(`${head}
